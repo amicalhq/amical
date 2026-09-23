@@ -3,6 +3,7 @@ import { logger } from "../logger";
 import {
   closeSessionTrace,
   openSessionTrace,
+  markSessionTraceAnchor,
   recordPoint,
 } from "../telemetry/dictation-trace";
 import { ErrorCodes, type ErrorCode } from "../../types/error";
@@ -446,6 +447,7 @@ export function createRecordingLifecycle(
       now.publicState === "starting" &&
       snapshot.sessionId !== null
     ) {
+      openSessionTrace(snapshot.sessionId, {});
       sessionWork.open(snapshot.sessionId);
       transcription.open(snapshot.sessionId);
       transcription.setDraft(
@@ -453,7 +455,7 @@ export function createRecordingLifecycle(
         snapshot.metadata?.isDraft === true,
       );
       traceDisposition = null;
-      openSessionTrace(snapshot.sessionId, {});
+      markSessionTraceAnchor(snapshot.sessionId);
       // Wedge watchdog: every stage is bounded, so a session outliving the
       // whole budget means a wedged timer or port — force-reset (R10). A
       // delivery-region fiber: the IDLE edge retires it (canceller clears
@@ -504,6 +506,14 @@ export function createRecordingLifecycle(
     if (was.publicState === "recording" && now.publicState !== "recording") {
       recordingStoppedAt = performance.now();
       clearReminder();
+    }
+
+    if (
+      now.publicState === "stopping" &&
+      was.publicState !== "stopping" &&
+      snapshot.sessionId
+    ) {
+      recordPoint(snapshot.sessionId, "lifecycle.recording-stopping");
     }
 
     if (now.stopOrigin === "auto" && was.stopOrigin !== "auto") {

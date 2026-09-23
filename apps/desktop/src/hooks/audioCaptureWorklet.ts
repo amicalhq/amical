@@ -19,11 +19,13 @@ export const attachAudioWorkletFrameHandler = ({
   onAudioChunk,
   finishPendingFlush,
   captureConfig,
+  onFirstFrame,
 }: {
   workletNode: AudioWorkletNode;
   onAudioChunk: AudioChunkForwarder;
   finishPendingFlush: (didFlush?: boolean) => void;
   captureConfig: Omit<AudioCaptureInfo, "inputChannelCount">;
+  onFirstFrame?: () => void;
 }) => {
   let firstFrameReceived = false;
   let lastInputChannelCount: number | undefined;
@@ -40,8 +42,9 @@ export const attachAudioWorkletFrameHandler = ({
       return;
     }
 
-    if (!firstFrameReceived) {
+    if (!firstFrameReceived && data.frame.length > 0) {
       firstFrameReceived = true;
+      onFirstFrame?.();
       const firstFrameDuration = performance.now() - firstFrameStartTime;
       console.log(
         `AudioCapture: First audio frame received after ${firstFrameDuration.toFixed(2)}ms`,

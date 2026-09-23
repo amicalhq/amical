@@ -28,8 +28,8 @@ vi.mock("@/hooks/audioCaptureRecycle", () => ({
 }));
 
 import { useAudioCapture } from "@/hooks/useAudioCapture";
-import type { CaptureFailure } from "@/types/recording";
 import { api } from "@/trpc/react";
+import type { CaptureTimingsBatch } from "@/types/capture-timings";
 
 // ── Web Audio fakes ────────────────────────────────────────────────────────────
 interface FakeTrack extends EventTarget {
@@ -184,7 +184,8 @@ interface AudioCaptureHookProps {
 function mountHook() {
   const onAudioChunk = vi.fn();
   const onCaptureStarted = vi.fn();
-  const onCaptureFailure = vi.fn<(failure: CaptureFailure) => void>();
+  const onCaptureFailure = vi.fn();
+  const onCaptureTimings = vi.fn();
   const initialProps: AudioCaptureHookProps = {
     enabled: false,
     idle: true,
@@ -196,16 +197,67 @@ function mountHook() {
         onAudioChunk,
         onCaptureStarted,
         onCaptureFailure,
+        onCaptureTimings,
         sessionId,
         enabled,
         idle,
       }),
     { initialProps },
   );
-  return { onAudioChunk, onCaptureStarted, onCaptureFailure, ...view };
+  return {
+    onAudioChunk,
+    onCaptureStarted,
+    onCaptureFailure,
+    onCaptureTimings,
+    ...view,
+  };
 }
 
 describe("useAudioCapture lifecycle", () => {
+  it("batches cold and warm startup and first-frame phases for their own session", async () => {
+    const { rerender, onCaptureStarted, onCaptureTimings } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "cold" });
+    await settle();
+    const startup = onCaptureStarted.mock.calls[0][2] as CaptureTimingsBatch;
+    expect(startup.phases.map((phase) => phase.name)).toEqual([
+      "capture.get-user-media",
+      "capture.audio-context-create",
+    ]);
+
+    // An empty final frame must not claim that real PCM arrived.
+    await act(async () => {
+      workletNodes[0].port.onmessage?.({
+        data: { type: "audioFrame", frame: new Float32Array(0) },
+      });
+    });
+    expect(onCaptureTimings).not.toHaveBeenCalled();
+    await act(async () => {
+      workletNodes[0].port.onmessage?.({
+        data: { type: "audioFrame", frame: new Float32Array(512) },
+      });
+    });
+    expect(onCaptureTimings).toHaveBeenCalledWith(
+      "cold",
+      expect.objectContaining({
+        phases: [
+          expect.objectContaining({
+            name: "capture.first-frame-wait",
+          }),
+        ],
+      }),
+      false,
+    );
+
+    rerender({ enabled: true, idle: false, sessionId: "warm" });
+    await settle();
+    expect(onCaptureTimings).toHaveBeenCalledWith("cold", { phases: [] }, true);
+    const warm = onCaptureStarted.mock.calls[1][2] as CaptureTimingsBatch;
+    expect(warm.phases.map((phase) => phase.name)).toEqual([
+      "capture.get-user-media",
+      "capture.audio-context-resume",
+    ]);
+  });
+
   it("snapshots the remote control per capture without restarting an active graph", async () => {
     const query = vi.spyOn(api.useUtils().client.remoteConfig.get, "query");
     query.mockResolvedValue({
@@ -244,12 +296,30 @@ describe("useAudioCapture lifecycle", () => {
     });
   });
 
+  it("releases capture after a failed flush without claiming a first-frame timing", async () => {
+    const { rerender, onCaptureTimings } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    workletNodes[0].port.postMessage = () => {
+      throw new Error("port closed");
+    };
+    rerender({ enabled: false, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(onCaptureTimings).toHaveBeenCalledWith(
+      "session-1",
+      { phases: [] },
+      true,
+    );
+    expect(streams[0].track.stop).toHaveBeenCalled();
+    expect(audioContexts[0].state).toBe("closed");
+  });
+
   it("does not open the mic after unmount while waiting for config", async () => {
     const query = vi.spyOn(api.useUtils().client.remoteConfig.get, "query");
     const pendingConfig =
       Promise.withResolvers<Awaited<ReturnType<typeof query>>>();
     query.mockReturnValueOnce(pendingConfig.promise);
-    const { rerender, unmount } = mountHook();
+    const { rerender, unmount, onCaptureTimings } = mountHook();
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
     expect(query).toHaveBeenCalledOnce();
@@ -260,6 +330,36 @@ describe("useAudioCapture lifecycle", () => {
     await settle();
     expect(getUserMedia).not.toHaveBeenCalled();
     expect(workletNodes).toHaveLength(0);
+    expect(onCaptureTimings).toHaveBeenCalledWith(
+      "session-1",
+      { phases: [] },
+      true,
+    );
+  });
+
+  it("reports startup timings and releases capture when unmounted during worklet loading", async () => {
+    const pendingModule = Promise.withResolvers<undefined>();
+    (globalThis as Record<string, unknown>).AudioContext = class extends (
+      FakeAudioContext
+    ) {
+      audioWorklet = { addModule: vi.fn(() => pendingModule.promise) };
+    };
+    const { rerender, unmount, onCaptureTimings } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    const context = audioContexts[0];
+
+    unmount();
+    pendingModule.resolve(undefined);
+    await settle();
+
+    expect(context.close).toHaveBeenCalledOnce();
+    expect(streams[0].track.stop).toHaveBeenCalled();
+    const batch = onCaptureTimings.mock.calls[0][1] as CaptureTimingsBatch;
+    expect(batch.phases.map((phase) => phase.name)).toEqual([
+      "capture.get-user-media",
+      "capture.audio-context-create",
+    ]);
   });
 
   it("falls back to first-channel capture if the config IPC read fails", async () => {
@@ -321,11 +421,14 @@ describe("useAudioCapture lifecycle", () => {
     await settle();
 
     expect(onCaptureFailure).toHaveBeenCalledOnce();
-    expect(onCaptureFailure).toHaveBeenCalledWith({
-      sessionId: "session-1",
-      name: "NotAllowedError",
-      message: "Permission denied",
-    });
+    expect(onCaptureFailure).toHaveBeenCalledWith(
+      {
+        sessionId: "session-1",
+        name: "NotAllowedError",
+        message: "Permission denied",
+      },
+      { phases: [] },
+    );
     expect(audioContexts).toHaveLength(0);
   });
 
@@ -381,11 +484,13 @@ describe("useAudioCapture lifecycle", () => {
       1,
       expect.objectContaining({ captureSource: "default" }),
       "session-1",
+      expect.objectContaining({ phases: expect.any(Array) }),
     );
     expect(onCaptureStarted).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ captureSource: "default" }),
       "session-2",
+      expect.objectContaining({ phases: expect.any(Array) }),
     );
 
     onAudioChunk.mockClear();

@@ -6,6 +6,7 @@ import type { UseAudioCaptureParams } from "@/hooks/useAudioCapture";
 const mocks = vi.hoisted(() => ({
   captureStarted: vi.fn(),
   captureFailed: vi.fn(),
+  captureTimings: vi.fn(),
   dismiss: vi.fn(),
   sendAudioChunk: vi.fn(),
   signalStop: vi.fn(),
@@ -33,6 +34,9 @@ vi.mock("@/trpc/react", () => {
         captureFailed: {
           useMutation: () => ({ mutate: mocks.captureFailed }),
         },
+        captureTimings: {
+          useMutation: () => ({ mutate: mocks.captureTimings }),
+        },
         stateUpdates: { useSubscription: mocks.stateUpdates },
       },
     },
@@ -44,6 +48,7 @@ import { useRecording } from "@/hooks/useRecording";
 beforeEach(() => {
   mocks.captureStarted.mockReset();
   mocks.captureFailed.mockReset();
+  mocks.captureTimings.mockReset();
   mocks.dismiss.mockReset();
   mocks.dismiss.mockResolvedValue(undefined);
   mocks.signalStop.mockReset();
@@ -130,6 +135,36 @@ describe("useRecording capture failure wiring", () => {
 });
 
 describe("useRecording capture identity wiring", () => {
+  it("forwards startup and final timing batches with their capture identity", () => {
+    renderHook(() => useRecording());
+    const params = mocks.useAudioCapture.mock
+      .lastCall?.[0] as UseAudioCaptureParams;
+    const timings = { phases: [] };
+    act(() => {
+      params.onCaptureStarted?.(
+        { captureSource: "default" },
+        "old-session",
+        timings,
+      );
+      params.onCaptureTimings?.("old-session", timings, true);
+    });
+    expect(mocks.captureStarted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "old-session",
+        timings,
+      }),
+      expect.any(Object),
+    );
+    expect(mocks.captureTimings).toHaveBeenCalledWith(
+      {
+        sessionId: "old-session",
+        timings,
+        complete: true,
+      },
+      expect.any(Object),
+    );
+  });
+
   it("I-54 forwards the capture session ID with microphone and audio reports", async () => {
     renderHook(() => useRecording());
     const captureParams = mocks.useAudioCapture.mock.lastCall?.[0] as

@@ -1,4 +1,5 @@
 import { audioCaptureDiagnostics } from "./audioCaptureDiagnostics";
+import type { AudioCaptureTimings } from "./audioCaptureTimings";
 import {
   DEFAULT_DEVICE_ID,
   resolveActiveMicrophone,
@@ -8,6 +9,7 @@ import {
 export interface AcquireMicrophoneStreamOptions {
   microphonePriority: MicrophonePriorityEntry[] | undefined;
   sampleRate: number;
+  timings: AudioCaptureTimings;
 }
 
 export interface AcquiredMicrophoneMetadata {
@@ -25,6 +27,7 @@ export interface AcquiredMicrophoneStream {
 export const acquireMicrophoneStream = async ({
   microphonePriority,
   sampleRate,
+  timings,
 }: AcquireMicrophoneStreamOptions): Promise<AcquiredMicrophoneStream> => {
   const audioConstraints: MediaTrackConstraints = {
     channelCount: 1,
@@ -37,7 +40,9 @@ export const acquireMicrophoneStream = async ({
   let preferredDevice: MediaDeviceInfo | undefined;
   if (microphonePriority?.length) {
     const enumerateStartTime = performance.now();
-    const devices = await navigator.mediaDevices.enumerateDevices();
+    const devices = await timings.measure("capture.enumerate-devices", () =>
+      navigator.mediaDevices.enumerateDevices(),
+    );
     const enumerateDuration = performance.now() - enumerateStartTime;
     const audioInputDevices = devices.filter(
       (device) => device.kind === "audioinput",
@@ -79,9 +84,11 @@ export const acquireMicrophoneStream = async ({
   }
 
   const getUserMediaStartTime = performance.now();
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: audioConstraints,
-  });
+  const stream = await timings.measure("capture.get-user-media", () =>
+    navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints,
+    }),
+  );
   console.log(
     `AudioCapture: getUserMedia (${captureSource}) took ${(
       performance.now() - getUserMediaStartTime

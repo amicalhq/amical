@@ -2,6 +2,8 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import audioWorkletUrl from "@/assets/audio-recorder-processor.js?url";
 import { api } from "@/trpc/react";
 import type { CaptureFailure } from "@/types/recording";
+import type { CaptureTimingsBatch } from "@/types/capture-timings";
+import { AudioCaptureTimings } from "./audioCaptureTimings";
 import {
   DESKTOP_STEREO_MIC_DOWNMIX_FLAG,
   type AudioCaptureInfo,
@@ -76,8 +78,17 @@ export interface UseAudioCaptureParams {
   onCaptureStarted?: (
     microphone: AcquiredMicrophoneMetadata,
     sessionId: string,
+    timings?: CaptureTimingsBatch,
   ) => Promise<void> | void;
-  onCaptureFailure?: (failure: CaptureFailure) => void;
+  onCaptureFailure?: (
+    failure: CaptureFailure,
+    timings?: CaptureTimingsBatch,
+  ) => void;
+  onCaptureTimings?: (
+    sessionId: string,
+    timings: CaptureTimingsBatch,
+    complete: boolean,
+  ) => void;
   sessionId: string | null;
   enabled: boolean;
   idle: boolean;
@@ -92,6 +103,7 @@ export const useAudioCapture = ({
   onAudioChunk,
   onCaptureStarted,
   onCaptureFailure,
+  onCaptureTimings,
   sessionId,
   enabled,
   idle,
@@ -115,6 +127,7 @@ export const useAudioCapture = ({
   const idleRef = useRef(idle);
   const onCaptureStartedRef = useRef(onCaptureStarted);
   const onCaptureFailureRef = useRef(onCaptureFailure);
+  const onCaptureTimingsRef = useRef(onCaptureTimings);
   const pendingWorkletFlushRef = useRef<WorkletFlushRequest | null>(null);
   // performance.now() when the current AudioContext was constructed (for max-age).
   const contextCreatedAtRef = useRef(0);
@@ -127,6 +140,22 @@ export const useAudioCapture = ({
   idleRef.current = idle;
   onCaptureStartedRef.current = onCaptureStarted;
   onCaptureFailureRef.current = onCaptureFailure;
+  onCaptureTimingsRef.current = onCaptureTimings;
+
+  const reportTimings = useCallback(
+    (
+      captureSessionId: string,
+      timings: AudioCaptureTimings,
+      complete: boolean,
+    ) => {
+      onCaptureTimingsRef.current?.(
+        captureSessionId,
+        timings.takeBatch(),
+        complete,
+      );
+    },
+    [],
+  );
 
   // Get the user's microphone fallback chain from settings.
   const { data: settings } = api.settings.getSettings.useQuery();
@@ -210,7 +239,7 @@ export const useAudioCapture = ({
   }, [resetBars]);
 
   const startCapture = useCallback(
-    async (onEnded: () => void) => {
+    async (onEnded: () => void, timings: AudioCaptureTimings) => {
       const captureSessionId = sessionId!;
       const microphonePriority = microphonePriorityRef.current;
       // StrictMode can remount and call us before the teardown effect's cleanup is
@@ -246,6 +275,7 @@ export const useAudioCapture = ({
               await acquireMicrophoneStream({
                 microphonePriority,
                 sampleRate: SAMPLE_RATE,
+                timings,
               });
             streamRef.current = stream;
             audioCaptureDiagnostics.logTrackState(audioTrack);
@@ -270,6 +300,7 @@ export const useAudioCapture = ({
                 currentAudioContext: audioContextRef.current,
                 sampleRate: SAMPLE_RATE,
                 audioWorkletUrl,
+                timings,
               });
             audioContextRef.current = audioContext;
             if (createdAt !== undefined) {
@@ -294,6 +325,14 @@ export const useAudioCapture = ({
               captureConfig: {
                 stereoDownmixEnabled,
                 trackChannelCount: audioTrack.getSettings?.().channelCount,
+              },
+              onFirstFrame: () => {
+                timings.finishFirstFrameWait();
+                // Hand the PCM frame to main first; timing reports never await
+                // or delay audio delivery.
+                queueMicrotask(() =>
+                  reportTimings(captureSessionId, timings, false),
+                );
               },
               onAudioChunk: (
                 arrayBuffer,
@@ -323,6 +362,7 @@ export const useAudioCapture = ({
 
             // Connect audio graph
             sourceRef.current.connect(workletNodeRef.current);
+            timings.startFirstFrameWait();
 
             // Tap the source with an analyser for the spectrum visualiser. It's a
             // passive branch (no downstream connection) and doesn't touch the
@@ -340,7 +380,11 @@ export const useAudioCapture = ({
             const reportCaptureStarted = onCaptureStartedRef.current;
             if (reportCaptureStarted) {
               void Promise.resolve(
-                reportCaptureStarted(microphone, captureSessionId),
+                reportCaptureStarted(
+                  microphone,
+                  captureSessionId,
+                  timings.takeBatch(),
+                ),
               ).catch((error) => {
                 console.warn(
                   "AudioCapture: Failed to report active microphone:",
@@ -366,7 +410,15 @@ export const useAudioCapture = ({
           pendingStartRef.current = false;
         });
     },
-    [onAudioChunk, releaseAll, clearIdleTimer, updateBars, sessionId, utils],
+    [
+      onAudioChunk,
+      releaseAll,
+      clearIdleTimer,
+      updateBars,
+      sessionId,
+      utils,
+      reportTimings,
+    ],
   );
 
   // Device-change diagnostics are only attached while dictation is active, so
@@ -533,6 +585,9 @@ export const useAudioCapture = ({
 
     // Retire both startup errors and track-loss reports before teardown.
     let isCurrentAttempt = true;
+    // A collector belongs to this effect's capture attempt until it stops.
+    // A later session cannot steal its pending phases.
+    const timings = new AudioCaptureTimings();
     const reportFailure = (error: unknown) => {
       if (!isCurrentAttempt) {
         return;
@@ -540,26 +595,33 @@ export const useAudioCapture = ({
 
       const reportCaptureFailure = onCaptureFailureRef.current;
       if (reportCaptureFailure) {
-        reportCaptureFailure({
-          sessionId,
-          ...normalizeCaptureFailure(error),
-        });
+        reportCaptureFailure(
+          {
+            sessionId,
+            ...normalizeCaptureFailure(error),
+          },
+          timings.takeBatch(),
+        );
       }
     };
     startCapture(() => {
       reportFailure(new Error("Microphone capture track ended unexpectedly"));
-    }).catch((error) => {
+    }, timings).catch((error) => {
       console.error("AudioCapture: Failed to start:", error);
       reportFailure(error);
     });
 
     return () => {
       isCurrentAttempt = false;
-      stopCapture().catch((error) => {
-        console.error("AudioCapture: Failed to stop:", error);
-      });
+      stopCapture()
+        .catch((error) => {
+          console.error("AudioCapture: Failed to stop:", error);
+        })
+        .finally(() => {
+          reportTimings(sessionId, timings, true);
+        });
     };
-  }, [enabled, sessionId, startCapture, stopCapture]);
+  }, [enabled, sessionId, startCapture, stopCapture, reportTimings]);
 
   useEffect(() => {
     if (!idle) {

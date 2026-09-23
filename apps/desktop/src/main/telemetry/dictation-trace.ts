@@ -1,12 +1,13 @@
 import { Cause, Exit, Option } from "effect";
 import type * as Tracer from "effect/Tracer";
+import type { CaptureTimingsBatch } from "../../types/capture-timings";
 import { setSpanEndSink } from "../runtime/telemetry-runtime";
 import { logger } from "../logger";
 import { codeOf, tagOf } from "../../types/errors";
 
 /**
  * Per-session dictation trace: collects span records, obligation markers,
- * and point events for one recording session, then flushes ONE flattened
+ * and point events for one recording session, then flushes ONE summary and waterfall
  * telemetry event — `transcription_completed_v2`, fired on every disposition.
  *
  * Flush policy: flush when the root is closed AND every expected obligation
@@ -25,6 +26,8 @@ export interface SpanRecord {
   durationMs: number;
   status: "ok" | "failed" | "interrupted";
   attributes: Record<string, unknown>;
+  process?: "main" | "renderer";
+  point?: boolean;
 }
 
 export interface ChunkAggregate {
@@ -49,6 +52,8 @@ export interface DictationTraceTelemetry {
 }
 
 const GRACE_MS = 15_000;
+const SLOW_SPAN_THRESHOLD_MS = 20;
+const MAX_SLOW_SPANS = 64;
 const LATCH_EVENT = "transcription.terminal-latch";
 
 /** Naming scheme: `*_duration_ms` is a span length; `*_offset_ms` is a
@@ -71,12 +76,26 @@ const FLAT_KEYS: Record<string, string> = {
   "resolve.drain": "resolve_drain_duration_ms",
   "resolve.flush": "resolve_flush_duration_ms",
   "resolve.format": "resolve_format_duration_ms",
+  "lifecycle.recorder-start-gate-wait": "recorder_start_gate_wait_duration_ms",
+  "capture.enumerate-devices": "capture_enumerate_devices_duration_ms",
+  "capture.get-user-media": "capture_get_user_media_duration_ms",
+  "capture.audio-context-create": "capture_audio_context_create_duration_ms",
+  "capture.audio-context-resume": "capture_audio_context_resume_duration_ms",
+  "capture.first-frame-wait": "capture_first_frame_wait_duration_ms",
+  "native.start-recording.rpc": "native_start_recording_rpc_duration_ms",
+  "native.stop-recording.rpc": "native_stop_recording_rpc_duration_ms",
+  "context.accessibility-refresh": "accessibility_refresh_duration_ms",
+  "context.draft-selection-copy": "draft_selection_copy_duration_ms",
+  "resolve.draft-selection-wait": "draft_selection_wait_duration_ms",
+  "transcription.provider-warmup": "provider_warmup_duration_ms",
 };
 
 /** Records whose payload value is their END moment, relative to root (a
  * point's start and end coincide). */
 const OFFSET_KEYS: Record<string, string> = {
   "lifecycle.recording-live": "recording_live_offset_ms",
+  "lifecycle.recording-stopping": "recording_stopping_offset_ms",
+  "lifecycle.first-accepted-frame": "first_accepted_frame_offset_ms",
   // The user-felt delivery moment (native layer confirmed the paste);
   // stop-to-pasted is pasted_offset_ms - last_chunk_offset_ms. A paste
   // confirmed after the trace flushed is dropped: omitted, never faked.
@@ -90,6 +109,7 @@ interface SessionTrace {
   meta: Record<string, unknown>;
   records: SpanRecord[];
   expected: Map<string, boolean>;
+  pendingPhases: Map<string, number>;
   rootClosed: boolean;
   rootClosedAt: number | null;
   disposition: string | null;
@@ -103,15 +123,18 @@ interface SessionTrace {
   /** A defect occurred during this session (independent of the disposition). */
   defect: boolean;
   chunks: ChunkAggregate | null;
+  captureInfo: Record<string, unknown> | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
   flushReason: "settled" | "grace" | null;
+  slowSpanCount: number;
+  droppedSlowSpanCount: number;
 }
 
 let telemetry: DictationTraceTelemetry | null = null;
 const sessions = new Map<string, SessionTrace>();
 let syntheticCounter = 0;
 
-const nsToMs = (ns: bigint): number => Number(ns / 1_000_000n);
+const roundMs = (ms: number): number => Math.round(ms * 1000) / 1000;
 
 const dropLate = (sessionId: string, what: string): void => {
   logger.transcription.debug("Dictation trace record after flush; dropped", {
@@ -140,6 +163,7 @@ export function openSessionTrace(
     meta,
     records: [],
     expected: new Map(),
+    pendingPhases: new Map(),
     rootClosed: false,
     rootClosedAt: null,
     disposition: null,
@@ -148,9 +172,19 @@ export function openSessionTrace(
     latch: null,
     defect: false,
     chunks: null,
+    captureInfo: null,
     graceTimer: null,
     flushReason: null,
+    slowSpanCount: 0,
+    droppedSlowSpanCount: 0,
   });
+}
+
+/** Preserve the historical session-open boundary after registering early
+ * enough to collect synchronous warmup spans. Earlier spans have negative offsets. */
+export function markSessionTraceAnchor(sessionId: string): void {
+  const trace = sessions.get(sessionId);
+  if (trace && !trace.rootClosed) trace.rootStartedAt = Date.now();
 }
 
 /** Register an expected obligation. Call in the fork's synchronous prefix. */
@@ -192,6 +226,12 @@ export function recordPoint(
     dropLate(sessionId, `point:${name}`);
     return;
   }
+  // Format metadata accompanies every PCM frame. Keep its latest value;
+  // it is not a timing milestone and must not grow the waterfall per frame.
+  if (name === "lifecycle.audio-capture") {
+    trace.captureInfo = attributes;
+    return;
+  }
   const now = Date.now();
   trace.records.push({
     sessionId,
@@ -203,6 +243,7 @@ export function recordPoint(
     durationMs: 0,
     status: "ok",
     attributes,
+    point: true,
   });
   if (name === LATCH_EVENT && !trace.latch) {
     trace.latch = {
@@ -215,17 +256,34 @@ export function recordPoint(
   }
 }
 
-/** Synthetic duration record for promise-side phases (recorder start). */
+export interface PhaseOptions {
+  chunkIndex?: number;
+  slow?: boolean;
+  durationMs?: number;
+}
+
+/** Start/end timestamps are Unix epoch milliseconds for session offsets. */
 export function recordPhase(
   sessionId: string,
   name: string,
   startedAt: number,
   endedAt: number,
+  options: PhaseOptions = {},
 ): void {
+  const durationMs = options.durationMs ?? endedAt - startedAt;
+  // Fast chunk work needs no record allocation or session lookup.
+  if (options.slow && durationMs <= SLOW_SPAN_THRESHOLD_MS) return;
   const trace = sessions.get(sessionId);
   if (!trace) {
     dropLate(sessionId, `phase:${name}`);
     return;
+  }
+  if (options.slow) {
+    if (trace.slowSpanCount >= MAX_SLOW_SPANS) {
+      trace.droppedSlowSpanCount++;
+      return;
+    }
+    trace.slowSpanCount++;
   }
   trace.records.push({
     sessionId,
@@ -234,13 +292,73 @@ export function recordPhase(
     name,
     startedAt,
     endedAt,
-    durationMs: endedAt - startedAt,
+    durationMs,
     status: "ok",
-    attributes: {},
+    attributes: { chunkIndex: options.chunkIndex },
   });
-  if (trace.expected.has(name)) {
+  if (trace.expected.has(name) && !trace.pendingPhases.has(name))
     trace.expected.set(name, true);
-    maybeFlush(trace);
+  maybeFlush(trace);
+}
+
+/** Time successful promise work; always settle its reporting obligation. */
+export async function tracePhase<T>(
+  sessionId: string,
+  name: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  // Do not retain the session record while work awaits past the grace period.
+  {
+    const trace = sessions.get(sessionId);
+    if (trace) {
+      trace.pendingPhases.set(name, (trace.pendingPhases.get(name) ?? 0) + 1);
+      trace.expected.set(name, false);
+    }
+  }
+  const startedAt = Date.now();
+  const timerStartedAt = performance.now();
+  try {
+    const result = await work();
+    recordPhase(sessionId, name, startedAt, Date.now(), {
+      durationMs: performance.now() - timerStartedAt,
+    });
+    return result;
+  } finally {
+    const trace = sessions.get(sessionId);
+    if (trace) {
+      const remaining = (trace.pendingPhases.get(name) ?? 1) - 1;
+      if (remaining > 0) trace.pendingPhases.set(name, remaining);
+      else {
+        trace.pendingPhases.delete(name);
+        settleObligation(sessionId, name);
+      }
+    }
+  }
+}
+
+/** Import the full renderer batch before its reporting obligation settles. */
+export function recordCapturePhases(
+  sessionId: string,
+  phases: CaptureTimingsBatch["phases"],
+): void {
+  const trace = sessions.get(sessionId);
+  if (!trace) {
+    dropLate(sessionId, "capture:phases");
+    return;
+  }
+  for (const phase of phases) {
+    trace.records.push({
+      sessionId,
+      spanId: `phase-${++syntheticCounter}`,
+      parentId: trace.rootSpanId,
+      name: phase.name,
+      startedAt: phase.startedAtMs,
+      endedAt: phase.startedAtMs + phase.durationMs,
+      durationMs: phase.durationMs,
+      status: "ok",
+      attributes: {},
+      process: "renderer",
+    });
   }
 }
 
@@ -325,6 +443,7 @@ function handleSpanEnd(
   span: Tracer.Span,
   exit: Exit.Exit<unknown, unknown>,
   endTime: bigint,
+  startedAt: number,
 ): void {
   const sessionId = span.attributes.get("sessionId");
   if (typeof sessionId !== "string") {
@@ -336,15 +455,11 @@ function handleSpanEnd(
     return;
   }
 
-  // Anchor discipline: every offset subtracts Date.now() moments (root
-  // open, points, chunk stamps), but Effect's clock pins its wall origin
-  // once at startup and only advances monotonically — a system clock step
-  // after boot would skew span-derived offsets. Stamp the
-  // end moment from Date.now() here (the sink runs synchronously inside
-  // end()) and keep the duration on the monotonic clock.
-  const endedAt = Date.now();
   const durationMs =
-    span.status._tag === "Ended" ? nsToMs(endTime - span.status.startTime) : 0;
+    span.status._tag === "Ended"
+      ? Number(endTime - span.status.startTime) / 1_000_000
+      : 0;
+  const endedAt = startedAt + durationMs;
   const status = Exit.isSuccess(exit)
     ? "ok"
     : Cause.hasInterruptsOnly(exit.cause)
@@ -370,7 +485,7 @@ function handleSpanEnd(
         ? span.parent.value.spanId
         : trace.rootSpanId,
     name: span.name,
-    startedAt: endedAt - durationMs,
+    startedAt,
     endedAt,
     durationMs,
     status,
@@ -414,6 +529,7 @@ function flush(trace: SessionTrace): void {
     trace.graceTimer = null;
   }
 
+  const recordedSpanIds = new Set(trace.records.map((record) => record.spanId));
   const payload: Record<string, unknown> = {
     session_id: trace.sessionId,
     disposition: trace.disposition ?? "unknown",
@@ -423,20 +539,59 @@ function flush(trace: SessionTrace): void {
         ? trace.rootClosedAt - trace.rootStartedAt
         : undefined,
     ...trace.meta,
+    trace_schema_version: 1,
+    trace_offset_anchor: "session_open",
+    trace_slow_span_threshold_ms: SLOW_SPAN_THRESHOLD_MS,
+    trace_slow_span_limit: MAX_SLOW_SPANS,
+    trace_dropped_slow_span_count: trace.droppedSlowSpanCount,
+    trace_unsettled_obligations: [...trace.expected]
+      .filter(([, settled]) => !settled)
+      .map(([name]) => name),
+    trace_spans: trace.records
+      .filter((record) => !record.point)
+      .map((record) => ({
+        span_id: record.spanId,
+        parent_span_id:
+          record.parentId && recordedSpanIds.has(record.parentId)
+            ? record.parentId
+            : trace.rootSpanId,
+        name: record.name,
+        process: record.process ?? "main",
+        duration_ms: roundMs(record.durationMs),
+        status: record.status,
+        start_offset_ms: roundMs(record.startedAt - trace.rootStartedAt),
+        ...(typeof record.attributes.chunkIndex === "number"
+          ? { chunk_index: record.attributes.chunkIndex }
+          : {}),
+      })),
+    trace_points: trace.records
+      .filter((record) => record.point)
+      .map((record) => ({
+        name: record.name,
+        offset_ms: roundMs(record.startedAt - trace.rootStartedAt),
+        process: "main",
+      })),
+    trace_root_span_id: trace.rootSpanId,
   };
 
+  if (trace.captureInfo) {
+    payload.audio_input_channel_count = trace.captureInfo.inputChannelCount;
+    payload.audio_track_channel_count = trace.captureInfo.trackChannelCount;
+    payload.audio_stereo_downmix_enabled =
+      trace.captureInfo.stereoDownmixEnabled;
+  }
   for (const record of trace.records) {
-    if (record.name === "lifecycle.audio-capture") {
-      // Latest observed format, reported before mono conversion. Keep these
-      // as top-level properties on transcription_completed_v2 in PostHog.
-      payload.audio_input_channel_count = record.attributes.inputChannelCount;
-      payload.audio_track_channel_count = record.attributes.trackChannelCount;
-      payload.audio_stereo_downmix_enabled =
-        record.attributes.stereoDownmixEnabled;
+    if (record.name === "lifecycle.ambiance-config") {
+      payload.dictation_sounds_enabled =
+        record.attributes.dictationSoundsEnabled;
+      payload.system_audio_mute_enabled =
+        record.attributes.systemAudioMuteEnabled;
     }
     const key = FLAT_KEYS[record.name];
     if (key !== undefined && payload[key] === undefined) {
       payload[key] = Math.round(record.durationMs);
+      const startKey = key.replace(/_duration_ms$/, "_start_offset_ms");
+      payload[startKey] = roundMs(record.startedAt - trace.rootStartedAt);
     }
     const offsetKey = OFFSET_KEYS[record.name];
     if (offsetKey !== undefined && payload[offsetKey] === undefined) {

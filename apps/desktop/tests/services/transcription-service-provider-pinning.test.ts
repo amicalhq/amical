@@ -127,6 +127,12 @@ import {
   RateLimited,
   ServerRejected,
 } from "../../src/types/errors";
+import {
+  _resetDictationTraceForTests,
+  closeSessionTrace,
+  installDictationTrace,
+  openSessionTrace,
+} from "../../src/main/telemetry/dictation-trace";
 
 type MockProvider = typeof providerMocks.cloud;
 type MockProviderSession = ReturnType<MockProvider["openSession"]>;
@@ -282,6 +288,163 @@ describe("TranscriptionService — provider session pinning", () => {
       expect.any(AbortSignal),
     );
     expect(cloudSession.cancel).toHaveBeenCalledOnce();
+  });
+
+  describe("streaming trace timings", () => {
+    const trackDictationTrace = vi.fn();
+    type Timing = {
+      name: string;
+      start_offset_ms: number;
+      duration_ms: number;
+      status: string;
+      chunk_index?: number;
+    };
+
+    beforeEach(() => {
+      _resetDictationTraceForTests();
+      installDictationTrace({ trackDictationTrace });
+      selectedModelId = "amical-cloud";
+      openSessionTrace("timed-session", {});
+      service.beginStreamingSession("timed-session");
+    });
+
+    afterEach(() => {
+      _resetDictationTraceForTests();
+    });
+
+    const exported = (disposition = "success") => {
+      closeSessionTrace("timed-session", { disposition });
+      expect(trackDictationTrace).toHaveBeenCalledOnce();
+      return trackDictationTrace.mock.calls[0][0] as {
+        trace_spans: Timing[];
+        first_chunk_offset_ms: number;
+        last_chunk_offset_ms: number;
+        vad_duration_sum_ms: number;
+      };
+    };
+
+    it("separates slow VAD work from the next chunk's lock wait", async () => {
+      const started = deferred<void>();
+      const gate = deferred<void>();
+      processVadFrame.mockImplementationOnce(async () => {
+        started.resolve();
+        await gate.promise;
+        return { probability: 1, isSpeaking: true };
+      });
+      const first = processChunk("timed-session", 0.1);
+      await started.promise;
+      const second = processChunk("timed-session", 0.2);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 35));
+      } finally {
+        gate.resolve();
+        await Promise.all([first, second]);
+      }
+      await service.resolveStreamingSession({ sessionId: "timed-session" });
+
+      const payload = exported();
+      const work = payload.trace_spans.find(
+        (span) => span.name === "transcription.vad-process",
+      );
+      const wait = payload.trace_spans.find(
+        (span) => span.name === "transcription.vad-lock-wait",
+      );
+      expect(work).toMatchObject({ status: "ok", chunk_index: 1 });
+      expect(wait).toMatchObject({ status: "ok", chunk_index: 2 });
+      expect(work!.duration_ms).toBeGreaterThan(20);
+      expect(wait!.duration_ms).toBeGreaterThan(20);
+      expect(payload.vad_duration_sum_ms).toBeGreaterThanOrEqual(
+        work!.duration_ms + wait!.duration_ms - 2,
+      );
+      expect(payload.first_chunk_offset_ms).toBeGreaterThanOrEqual(0);
+      expect(payload.last_chunk_offset_ms).toBeLessThan(2000);
+      expect(payload.trace_spans).toContainEqual(
+        expect.objectContaining({
+          name: "transcription.session-setup",
+          status: "ok",
+          start_offset_ms: expect.any(Number),
+          duration_ms: expect.any(Number),
+        }),
+      );
+    });
+
+    it("propagates a slow provider failure without adding a timing", async () => {
+      const started = deferred<void>();
+      const gate = deferred<void>();
+      providerMocks.cloud.setupSession("timed-session", (session) => {
+        session.transcribe.mockImplementationOnce(async () => {
+          started.resolve();
+          await gate.promise;
+          throw new CloudQuotaExceeded({ message: "quota" });
+        });
+      });
+      const outcome = processChunk("timed-session", 0.1).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await started.promise;
+      await new Promise((resolve) => setTimeout(resolve, 35));
+      gate.resolve();
+      expect(await outcome).toBeInstanceOf(CloudQuotaExceeded);
+
+      expect(exported("failure").trace_spans).not.toContainEqual(
+        expect.objectContaining({
+          name: "transcription.provider-transcribe",
+          chunk_index: 1,
+        }),
+      );
+    });
+
+    it("cancels a queued chunk without starting its work or timing its wait", async () => {
+      const started = deferred<void>();
+      const gate = deferred<void>();
+      processVadFrame.mockImplementationOnce(async () => {
+        started.resolve();
+        await gate.promise;
+        return { probability: 1, isSpeaking: true };
+      });
+      const first = processChunk("timed-session", 0.1);
+      await started.promise;
+      const second = processChunk("timed-session", 0.2);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 35));
+        await service.cancelStreamingSession("timed-session");
+        await second;
+      } finally {
+        gate.resolve();
+        await first;
+      }
+
+      expect(exported("dismissed").trace_spans).not.toContainEqual(
+        expect.objectContaining({
+          name: "transcription.vad-lock-wait",
+          chunk_index: 2,
+        }),
+      );
+      expect(processVadFrame).toHaveBeenCalledOnce();
+    });
+
+    it("abandons materialization after cancellation without adding a setup timing", async () => {
+      const started = deferred<void>();
+      const gate = deferred<void>();
+      vi.mocked(loadDictationContext).mockImplementationOnce(async () => {
+        started.resolve();
+        await gate.promise;
+        return dictationContext("timed-session");
+      });
+      const chunk = processChunk("timed-session", 0.1);
+      await started.promise;
+      await service.cancelStreamingSession("timed-session");
+      gate.resolve();
+      await chunk;
+
+      expect(exported("dismissed").trace_spans).not.toContainEqual(
+        expect.objectContaining({
+          name: "transcription.session-setup",
+        }),
+      );
+      expect(providerMocks.cloud.openSession).not.toHaveBeenCalled();
+    });
   });
 
   it("keeps a local recording and model pinned after selection changes", async () => {

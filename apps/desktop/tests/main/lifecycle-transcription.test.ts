@@ -18,7 +18,9 @@ import {
 } from "../../src/types/errors";
 import {
   _resetDictationTraceForTests,
+  closeSessionTrace,
   installDictationTrace,
+  openSessionTrace,
 } from "../../src/main/telemetry/dictation-trace";
 
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -80,6 +82,42 @@ function makeHarness(overrides: Partial<StreamingTranscriptionService> = {}) {
 }
 
 describe("lifecycle transcription adapter", () => {
+  it("preserves warmup failure recovery without adding a failed timing", async () => {
+    const trackDictationTrace = vi.fn();
+    installDictationTrace({ trackDictationTrace });
+    openSessionTrace("s1", {});
+    try {
+      const h = makeHarness({
+        resetVadForNewSession: vi.fn(async () => {
+          throw new Error("VAD reset failed");
+        }),
+        warmupActiveProvider: vi.fn(async () => {
+          throw new Error("Warmup failed");
+        }),
+      });
+      h.adapter.open("s1");
+      h.adapter.finalize("s1");
+      await settle();
+      closeSessionTrace("s1", { disposition: "success" });
+
+      expect(h.facts).toContainEqual({
+        type: "transcriptionFinal",
+        session: "s1",
+        result: { kind: "text", text: "hello world" },
+      });
+      expect(trackDictationTrace).toHaveBeenCalledOnce();
+      const payload = trackDictationTrace.mock.calls[0][0];
+      expect(payload.trace_spans).not.toContainEqual(
+        expect.objectContaining({
+          name: "transcription.provider-warmup",
+        }),
+      );
+      expect(payload.failed_stage).toBeUndefined();
+    } finally {
+      _resetDictationTraceForTests();
+    }
+  });
+
   it("finalize resolves and enriches once despite repeated calls", async () => {
     let finishResolution!: (result: ResolvedStreamingSession) => void;
     const resolution = new Promise<ResolvedStreamingSession>((resolve) => {

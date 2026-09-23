@@ -1,3 +1,5 @@
+import type { AudioCaptureTimings } from "./audioCaptureTimings";
+
 export interface PreparedAudioContext {
   audioContext: AudioContext;
   createdAt?: number;
@@ -7,15 +9,19 @@ export const createOrResumeAudioContext = async ({
   currentAudioContext,
   sampleRate,
   audioWorkletUrl,
+  timings,
 }: {
   currentAudioContext: AudioContext | null;
   sampleRate: number;
   audioWorkletUrl: string;
+  timings: AudioCaptureTimings;
 }): Promise<PreparedAudioContext> => {
   const audioContextStartTime = performance.now();
 
   if (currentAudioContext?.state === "suspended") {
-    await currentAudioContext.resume();
+    await timings.measure("capture.audio-context-resume", () =>
+      currentAudioContext.resume(),
+    );
     const resumeDuration = performance.now() - audioContextStartTime;
     console.log(
       `AudioCapture: AudioContext resumed took ${resumeDuration.toFixed(2)}ms`,
@@ -28,10 +34,12 @@ export const createOrResumeAudioContext = async ({
     return { audioContext: currentAudioContext };
   }
 
+  const finishCreate = timings.start("capture.audio-context-create");
   const audioContext = new AudioContext({
     sampleRate,
     latencyHint: "interactive",
   });
+  finishCreate();
   const createdAt = performance.now();
   const audioContextDuration = performance.now() - audioContextStartTime;
   console.log(

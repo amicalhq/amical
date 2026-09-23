@@ -5,6 +5,12 @@ import {
 } from "../../src/main/lifecycle/adapters/host";
 import { createSessionWork } from "../../src/main/lifecycle/effect/session-work";
 import type { LifecyclePortFact } from "../../src/main/lifecycle/ports";
+import {
+  installDictationTrace,
+  openSessionTrace,
+  closeSessionTrace,
+  _resetDictationTraceForTests,
+} from "../../src/main/telemetry/dictation-trace";
 import { FakeTimers } from "../helpers/lifecycle-fakes";
 
 const { getLatestTranscription } = vi.hoisted(() => ({
@@ -73,17 +79,65 @@ function makeHarness(options?: {
 }
 
 describe("lifecycle host adapter", () => {
-  it("stages a plain success as a paste and reports deliveryStaged", async () => {
-    const h = makeHarness();
-    h.open("s1");
-    h.adapter.stageDelivery("s1", { kind: "success", text: "hello" });
-    await settle();
+  it("preserves failed paste preparation handling without claiming native confirmation", async () => {
+    const flushed: Record<string, unknown>[] = [];
+    installDictationTrace({
+      trackDictationTrace: (payload) => {
+        flushed.push(payload);
+      },
+    });
+    try {
+      openSessionTrace("prepare", {});
+      const h = makeHarness({
+        getPreserveClipboard: async () => {
+          throw new Error("settings unavailable");
+        },
+      });
+      h.open("prepare");
+      h.adapter.stageDelivery("prepare", { kind: "success", text: "hello" });
+      await settle();
+      closeSessionTrace("prepare", { disposition: "success" });
+      expect(h.pastes).toEqual([]);
+      expect(h.facts).toEqual([{ type: "deliveryStaged", session: "prepare" }]);
+      expect(flushed).toHaveLength(1);
+      expect(flushed[0]).not.toHaveProperty("paste_duration_ms");
+      expect(flushed[0].trace_spans).not.toContainEqual(
+        expect.objectContaining({ name: "delivery.pasted" }),
+      );
+    } finally {
+      _resetDictationTraceForTests();
+    }
+  });
 
-    expect(h.pastes).toEqual([
-      { transcript: "hello", preserveClipboard: true },
-    ]);
-    expect(h.facts).toEqual([{ type: "deliveryStaged", session: "s1" }]);
-    expect(h.adapter.getPendingDraft()).toBeNull();
+  it("stages a plain success as a paste and reports deliveryStaged", async () => {
+    const flushed: Record<string, unknown>[] = [];
+    installDictationTrace({
+      trackDictationTrace: (payload) => {
+        flushed.push(payload);
+      },
+    });
+    try {
+      openSessionTrace("s1", {});
+      const h = makeHarness();
+      h.open("s1");
+      h.adapter.stageDelivery("s1", { kind: "success", text: "hello" });
+      await settle();
+      closeSessionTrace("s1", { disposition: "success" });
+
+      expect(h.pastes).toEqual([
+        { transcript: "hello", preserveClipboard: true },
+      ]);
+      expect(h.facts).toEqual([{ type: "deliveryStaged", session: "s1" }]);
+      expect(h.adapter.getPendingDraft()).toBeNull();
+      expect(flushed).toHaveLength(1);
+      expect(flushed[0]).toHaveProperty("paste_duration_ms");
+      const spans = flushed[0].trace_spans as { name: string }[];
+      expect(
+        spans.filter((span) => span.name === "delivery.pasted"),
+      ).toHaveLength(1);
+    } finally {
+      _resetDictationTraceForTests();
+    }
   });
 
   it("an abandoned session stages nothing but still reports the fact", async () => {

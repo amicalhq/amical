@@ -27,6 +27,11 @@ import {
   TranscriptionServiceTag,
   WindowManagerTag,
 } from "../../src/main/runtime/tags";
+import {
+  installDictationTrace,
+  settleObligation,
+  _resetDictationTraceForTests,
+} from "../../src/main/telemetry/dictation-trace";
 import type { NativeBridge } from "../../src/services/platform/native-bridge-service";
 import type { SettingsService } from "../../src/services/settings-service";
 import type { ModelService } from "../../src/services/model-service";
@@ -65,7 +70,9 @@ function makeLive(options?: {
     muteSystemAudio: boolean;
     preserveClipboard: boolean;
   }>;
-  startRecording?: () => Promise<{ success: boolean }>;
+  startRecording?: () => Promise<{
+    success: boolean;
+  }>;
   selectedTextViaCopy?: () => Promise<{
     selectedText: string | null;
     clipboardChanged: boolean;
@@ -185,6 +192,50 @@ function makeLive(options?: {
 }
 
 describe("desktop live binding", () => {
+  it("measures native RPCs in main using unchanged native responses", async () => {
+    _resetDictationTraceForTests();
+    const flushed: Record<string, unknown>[] = [];
+    installDictationTrace({
+      trackDictationTrace: (payload) => {
+        flushed.push(payload);
+      },
+    });
+    try {
+      const h = makeLive({
+        startRecording: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return { success: true };
+        },
+      });
+      const session = await h.startToRecording();
+      await h.finishSession(session);
+      await settle(10);
+      expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+      settleObligation(session, "capture.timings");
+      expect(flushed).toHaveLength(1);
+      expect(flushed[0]).toMatchObject({
+        native_start_recording_rpc_duration_ms: expect.any(Number),
+        native_start_recording_rpc_start_offset_ms: expect.any(Number),
+        native_stop_recording_rpc_duration_ms: expect.any(Number),
+        native_stop_recording_rpc_start_offset_ms: expect.any(Number),
+      });
+      const spans = flushed[0].trace_spans as {
+        name: string;
+        process: string;
+      }[];
+      expect(
+        spans
+          .filter((span) => span.name.startsWith("native."))
+          .map((span) => ({ name: span.name, process: span.process })),
+      ).toEqual([
+        { name: "native.start-recording.rpc", process: "main" },
+        { name: "native.stop-recording.rpc", process: "main" },
+      ]);
+    } finally {
+      _resetDictationTraceForTests();
+    }
+  });
+
   it("validates channel metadata at IPC without dropping valid audio", async () => {
     const scope = Effect.runSync(Scope.make());
     try {

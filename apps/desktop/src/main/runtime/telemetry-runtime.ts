@@ -18,6 +18,7 @@ export type SpanEndSink = (
   span: Tracer.Span,
   exit: Exit.Exit<unknown, unknown>,
   endTime: bigint,
+  startedAt: number,
 ) => void;
 
 let spanEndSink: SpanEndSink = () => {};
@@ -34,6 +35,7 @@ class DictationSpan implements Tracer.Span {
   readonly traceId: string;
   readonly attributes = new Map<string, unknown>();
   status: Tracer.SpanStatus;
+  private readonly startedAt = Date.now();
   private readonly mutableLinks: Array<Tracer.SpanLink>;
 
   constructor(
@@ -73,7 +75,7 @@ class DictationSpan implements Tracer.Span {
     // The sink must never poison a dictation fiber: telemetry failures are
     // swallowed here and surfaced by the sink's own logging.
     try {
-      spanEndSink(this, exit, endTime);
+      spanEndSink(this, exit, endTime, this.startedAt);
     } catch {
       // intentionally silent
     }

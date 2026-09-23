@@ -20,6 +20,23 @@ import type {
 } from "../../main/lifecycle/runtime";
 import type { LifecycleSessionMeta } from "../../main/lifecycle/metadata";
 import type { LifecycleSnapshot } from "../../main/lifecycle/shell";
+import {
+  CaptureTimingsSchema,
+  type CaptureTimingsBatch,
+} from "../../types/capture-timings";
+import {
+  recordCapturePhases,
+  settleObligation,
+} from "../../main/telemetry/dictation-trace";
+
+function recordCaptureTimings(
+  sessionId: string,
+  timings?: CaptureTimingsBatch,
+): void {
+  if (timings) {
+    recordCapturePhases(sessionId, timings.phases);
+  }
+}
 
 interface RecordingStateUpdate {
   sessionId: string | null;
@@ -82,9 +99,12 @@ export const recordingRouter = createRouter({
         sessionId: z.string(),
         microphoneName: z.string().optional(),
         captureSource: z.enum(["preferred", "default"]).optional(),
+        timings: CaptureTimingsSchema.optional(),
       }),
     )
     .mutation(({ ctx, input }) => {
+      // Main registers the timing-report obligation when capture is dispatched.
+      recordCaptureTimings(input.sessionId, input.timings);
       requireLifecycle(ctx).captureStarted(input.sessionId, {
         name: input.microphoneName,
       });
@@ -96,10 +116,25 @@ export const recordingRouter = createRouter({
         sessionId: z.string(),
         name: z.string().optional(),
         message: z.string(),
+        timings: CaptureTimingsSchema.optional(),
       }),
     )
     .mutation(({ ctx, input }) => {
+      recordCaptureTimings(input.sessionId, input.timings);
       requireLifecycle(ctx).captureFailed(input.sessionId, input);
+    }),
+
+  captureTimings: procedure
+    .input(
+      z.object({
+        sessionId: z.string(),
+        timings: CaptureTimingsSchema,
+        complete: z.boolean(),
+      }),
+    )
+    .mutation(({ input }) => {
+      recordCaptureTimings(input.sessionId, input.timings);
+      if (input.complete) settleObligation(input.sessionId, "capture.timings");
     }),
 
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict

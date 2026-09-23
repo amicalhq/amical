@@ -3,6 +3,8 @@ import {
   expectObligation,
   flushAllDictationTraces,
   recordPhase,
+  recordPoint,
+  tracePhase,
 } from "../telemetry/dictation-trace";
 import { ipcMain, app } from "electron";
 import * as fs from "node:fs";
@@ -112,13 +114,22 @@ export function createDesktopRecordingLifecycle(deps: {
           const preferences = await settingsService.getPreferences();
           muteSounds = preferences.muteDictationSounds;
           const muteSystemAudio = preferences.muteSystemAudio;
+          recordPoint(session, "lifecycle.ambiance-config", {
+            dictationSoundsEnabled: !muteSounds,
+            systemAudioMuteEnabled: muteSystemAudio,
+          });
           // No beep when dictation sounds are muted: frames are clean at once.
           if (muteSounds) releaseGate();
           if (nativeBridge) {
-            const result = await nativeBridge.call("startRecording", {
-              muteSystemAudio,
-              muteSounds,
-            });
+            const result = await tracePhase(
+              session,
+              "native.start-recording.rpc",
+              () =>
+                nativeBridge.call("startRecording", {
+                  muteSystemAudio,
+                  muteSounds,
+                }),
+            );
             systemAudioMuted = muteSystemAudio && !!result?.success;
           }
         } finally {
@@ -167,10 +178,12 @@ export function createDesktopRecordingLifecycle(deps: {
           try {
             const resolved =
               context ?? (pending ? await pending.catch(() => null) : null);
-            await nativeBridge.call("stopRecording", {
-              wasMuted: resolved?.systemAudioMuted ?? false,
-              muteSounds: resolved?.soundsMuted ?? false,
-            });
+            await tracePhase(session, "native.stop-recording.rpc", () =>
+              nativeBridge.call("stopRecording", {
+                wasMuted: resolved?.systemAudioMuted ?? false,
+                muteSounds: resolved?.soundsMuted ?? false,
+              }),
+            );
           } catch (error) {
             logger.audio.warn("Failed to end recording ambiance", {
               sessionId: session,
@@ -211,11 +224,17 @@ export function createDesktopRecordingLifecycle(deps: {
           // Bounded barrier: the losing side is interrupted, so a settled
           // capture no longer leaves a dangling timeout behind.
           await runTelemetryPromise(
-            sessionWork.bounded<void>(
-              Deferred.await(capture),
-              DRAFT_CAPTURE_BARRIER_MS,
-              undefined,
-            ),
+            sessionWork
+              .bounded<void>(
+                Deferred.await(capture),
+                DRAFT_CAPTURE_BARRIER_MS,
+                undefined,
+              )
+              .pipe(
+                Effect.withSpan("resolve.draft-selection-wait", {
+                  attributes: { sessionId: options.sessionId },
+                }),
+              ),
           );
         }
         return transcriptionService.resolveStreamingSession(options);
@@ -280,26 +299,24 @@ export function createDesktopRecordingLifecycle(deps: {
     if (!session || !nativeBridge) return;
 
     if (snapshot.projection.publicState === "starting") {
-      void nativeBridge
-        .refreshAccessibilityContext()
-        .then(async () => {
-          const accessibilityContext = nativeBridge.getAccessibilityContext();
-          if (
-            !accessibilityContext ||
-            lifecycle.getSnapshot().sessionId !== session
-          ) {
-            return;
-          }
-          await transcriptionService.updateStreamingSession({
-            sessionId: session,
-            accessibilityContext,
-          });
-        })
-        .catch((error) => {
-          logger.audio.warn("Failed to propagate accessibility context", {
-            error,
-          });
+      void tracePhase(session, "context.accessibility-refresh", async () => {
+        await nativeBridge.refreshAccessibilityContext();
+        const accessibilityContext = nativeBridge.getAccessibilityContext();
+        if (
+          !accessibilityContext ||
+          lifecycle.getSnapshot().sessionId !== session
+        ) {
+          return;
+        }
+        await transcriptionService.updateStreamingSession({
+          sessionId: session,
+          accessibilityContext,
         });
+      }).catch((error) => {
+        logger.audio.warn("Failed to propagate accessibility context", {
+          error,
+        });
+      });
     }
 
     if (
@@ -339,47 +356,49 @@ export function createDesktopRecordingLifecycle(deps: {
       return;
     }
 
-    const captured = await nativeBridge.getSelectedTextViaCopy();
-    const selectedText = captured?.selectedText;
-    if (!selectedText || selectedText.trim() === "") {
-      logger.audio.info("Draft copy-capture found no selection", {
-        sessionId: session,
-        clipboardChanged: captured?.clipboardChanged ?? null,
-        message: captured?.message,
-      });
-      return;
-    }
-    if (lifecycle.getSnapshot().sessionId !== session) {
-      return; // session moved on while the capture was in flight
-    }
+    return tracePhase(session, "context.draft-selection-copy", async () => {
+      const captured = await nativeBridge.getSelectedTextViaCopy();
+      const selectedText = captured?.selectedText;
+      if (!selectedText || selectedText.trim() === "") {
+        logger.audio.info("Draft copy-capture found no selection", {
+          sessionId: session,
+          clipboardChanged: captured?.clipboardChanged ?? null,
+          message: captured?.message,
+        });
+        return;
+      }
+      if (lifecycle.getSnapshot().sessionId !== session) {
+        return; // session moved on while the capture was in flight
+      }
 
-    // clipboardCopy yields only the text; every other selection field would
-    // describe the wrong location, so report null/false rather than junk.
-    const merged: GetAccessibilityContextResult = {
-      context: {
-        ...baseContext,
-        textSelection: {
-          selectedText,
-          fullContent: null,
-          preSelectionText: null,
-          postSelectionText: null,
-          selectionRange: null,
-          isEditable: false,
-          extractionMethod: "clipboardCopy",
-          hasMultipleRanges: false,
-          isPlaceholder: false,
-          isSecure: cached.context?.textSelection?.isSecure ?? false,
-          fullContentTruncated: false,
+      // clipboardCopy yields only the text; every other selection field would
+      // describe the wrong location, so report null/false rather than junk.
+      const merged: GetAccessibilityContextResult = {
+        context: {
+          ...baseContext,
+          textSelection: {
+            selectedText,
+            fullContent: null,
+            preSelectionText: null,
+            postSelectionText: null,
+            selectionRange: null,
+            isEditable: false,
+            extractionMethod: "clipboardCopy",
+            hasMultipleRanges: false,
+            isPlaceholder: false,
+            isSecure: cached.context?.textSelection?.isSecure ?? false,
+            fullContentTruncated: false,
+          },
         },
-      },
-    };
-    await transcriptionService.updateStreamingSession({
-      sessionId: session,
-      accessibilityContext: merged,
-    });
-    logger.audio.info("Draft selection captured via clipboard copy", {
-      sessionId: session,
-      selectedTextLength: selectedText.length,
+      };
+      await transcriptionService.updateStreamingSession({
+        sessionId: session,
+        accessibilityContext: merged,
+      });
+      logger.audio.info("Draft selection captured via clipboard copy", {
+        sessionId: session,
+        selectedTextLength: selectedText.length,
+      });
     });
   }
 

@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RecordingState } from "../../src/types/recording";
 import { recordingRouter } from "../../src/trpc/routers/recording";
+import * as trace from "../../src/main/telemetry/dictation-trace";
+
+afterEach(() => vi.restoreAllMocks());
 
 type FakeSnapshot = {
   sessionId: string | null;
@@ -29,6 +32,89 @@ const makeSnapshot = (
 });
 
 describe("recordingRouter capture lifecycle", () => {
+  const timings = {
+    phases: [
+      {
+        name: "capture.get-user-media" as const,
+        startedAtMs: 1700000000005,
+        durationMs: 80,
+      },
+    ],
+  };
+
+  it("records before readiness and settles capture timings only after the complete batch", async () => {
+    const record = vi
+      .spyOn(trace, "recordCapturePhases")
+      .mockImplementation(() => {});
+    const settle = vi
+      .spyOn(trace, "settleObligation")
+      .mockImplementation(() => {});
+    const captureStarted = vi.fn();
+    const caller = recordingRouter.createCaller({
+      services: {
+        recordingLifecycle: { captureStarted },
+      },
+    } as never);
+    await caller.captureStarted({ sessionId: "one", timings });
+    expect(record).toHaveBeenCalledWith("one", timings.phases);
+    expect(record.mock.invocationCallOrder[0]).toBeLessThan(
+      captureStarted.mock.invocationCallOrder[0],
+    );
+    await caller.captureTimings({ sessionId: "one", timings, complete: false });
+    expect(settle).not.toHaveBeenCalled();
+    await caller.captureTimings({ sessionId: "one", timings, complete: true });
+    expect(record.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      settle.mock.invocationCallOrder[0],
+    );
+    expect(settle).toHaveBeenCalledWith("one", "capture.timings");
+  });
+
+  it("rejects unknown phases, nonfinite times, and oversized timing batches", async () => {
+    const caller = recordingRouter.createCaller({ services: {} } as never);
+    for (const invalid of [
+      {
+        ...timings,
+        phases: [{ ...timings.phases[0], name: "arbitrary.span" }],
+      },
+      { ...timings, phases: [{ ...timings.phases[0], durationMs: Infinity }] },
+      { ...timings, phases: Array(12).fill(timings.phases[0]) },
+    ]) {
+      await expect(
+        caller.captureTimings({
+          sessionId: "one",
+          timings: invalid as never,
+          complete: true,
+        }),
+      ).rejects.toThrow();
+    }
+  });
+
+  it("records completed capture steps before a later failure can close the trace", async () => {
+    const record = vi
+      .spyOn(trace, "recordCapturePhases")
+      .mockImplementation(() => {});
+    const captureFailed = vi.fn();
+    const caller = recordingRouter.createCaller({
+      services: {
+        recordingLifecycle: { captureFailed },
+      },
+    } as never);
+    const completed = {
+      phases: [
+        { ...timings.phases[0], name: "capture.enumerate-devices" as const },
+      ],
+    };
+    await caller.captureFailed({
+      sessionId: "failed",
+      message: "permission denied",
+      timings: completed,
+    });
+    expect(record).toHaveBeenCalledWith("failed", completed.phases);
+    expect(record.mock.invocationCallOrder[0]).toBeLessThan(
+      captureFailed.mock.invocationCallOrder[0],
+    );
+  });
+
   it("I-51 forwards dismiss and signalStop to their distinct lifecycle methods", async () => {
     const stopDictation = vi.fn().mockResolvedValue(undefined);
     const dismiss = vi.fn().mockResolvedValue(undefined);

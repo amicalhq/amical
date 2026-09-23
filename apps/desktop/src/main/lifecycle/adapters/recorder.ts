@@ -1,5 +1,9 @@
 import { runPromise as runTelemetryPromise } from "../../runtime/telemetry-runtime";
-import { expectObligation, recordPhase } from "../../telemetry/dictation-trace";
+import {
+  expectObligation,
+  recordPhase,
+  recordPoint,
+} from "../../telemetry/dictation-trace";
 import { Deferred, Effect } from "effect";
 import { logger } from "../../logger";
 import { StreamingWavWriter } from "../../../utils/streaming-wav-writer";
@@ -109,6 +113,7 @@ export interface CustodyOutcome {
 interface CaptureState {
   session: SessionId;
   startCalledAt: number;
+  acceptedFrame: boolean;
   phase: "starting" | "capturing" | "draining" | "closed";
   beepPending: boolean;
   ambianceContext: AmbianceContext | null;
@@ -251,10 +256,15 @@ export function createRecorderAdapter(
 
   return {
     start(session): void {
+      // Include capture timings even when the user cancels during mic acquisition.
+      // The renderer's final timing batch settles this after capture stops.
+      expectObligation(session, "capture.timings");
+      expectObligation(session, "lifecycle.recorder-start-gate-wait");
       openCustodyWaiter(session);
       const capture: CaptureState = {
         session,
         startCalledAt: Date.now(),
+        acceptedFrame: false,
         phase: "starting",
         beepPending: true,
         ambianceContext: null,
@@ -275,6 +285,12 @@ export function createRecorderAdapter(
         .catch(() => undefined)
         .then(() => {
           capture.beepPending = false;
+          recordPhase(
+            session,
+            "lifecycle.recorder-start-gate-wait",
+            capture.startCalledAt,
+            Date.now(),
+          );
         });
       void done
         .then((context) => {
@@ -365,6 +381,10 @@ export function createRecorderAdapter(
       // still arriving through IPC after stop; only custody close drops.
 
       if (chunk.length > 0) {
+        if (!capture.acceptedFrame) {
+          capture.acceptedFrame = true;
+          recordPoint(session, "lifecycle.first-accepted-frame");
+        }
         if (!capture.writer) {
           const audioFile = deps.audioFilePathFor(session);
           capture.audioFile = audioFile;

@@ -30,6 +30,8 @@ import type { ResolvedStreamingSession } from "../../src/services/transcription-
 import {
   _resetDictationTraceForTests,
   installDictationTrace,
+  recordCapturePhases,
+  settleObligation,
 } from "../../src/main/telemetry/dictation-trace";
 
 const TUNING: LifecycleTuning = {
@@ -232,6 +234,7 @@ describe("recording lifecycle runtime", () => {
       await settle();
       expect(h.pastes).toEqual(["hello world"]);
 
+      settleObligation(session, "capture.timings");
       expect(flushedTraces).toHaveLength(1);
       const trace = flushedTraces[0];
       expect(trace.session_id).toBe(session);
@@ -272,11 +275,47 @@ describe("recording lifecycle runtime", () => {
       // The helper answered { success: false }: the paste was dispatched but
       // never landed — both paste keys must be omitted, never faked, and the
       // settle must not leave the trace waiting out the grace window.
+      settleObligation(session, "capture.timings");
       expect(flushedTraces).toHaveLength(1);
       expect(flushedTraces[0].session_id).toBe(session);
       expect(flushedTraces[0].flush_reason).toBe("settled");
       expect(flushedTraces[0].paste_duration_ms).toBeUndefined();
       expect(flushedTraces[0].pasted_offset_ms).toBeUndefined();
+    } finally {
+      _resetDictationTraceForTests();
+    }
+  });
+
+  it("keeps canceled startup timings until renderer cleanup reports", async () => {
+    const flushed: Record<string, unknown>[] = [];
+    installDictationTrace({
+      trackDictationTrace: (payload) => {
+        flushed.push(payload);
+      },
+    });
+    try {
+      const h = makeHarness();
+      h.lifecycle.setPttLevel(true);
+      await settle();
+      const session = h.lifecycle.getSnapshot().sessionId!;
+      expect(h.lifecycle.getSnapshot().projection.publicState).toBe("starting");
+      await h.lifecycle.dismiss();
+      await settle();
+      expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+      expect(flushed).toHaveLength(0);
+      recordCapturePhases(session, [
+        {
+          name: "capture.get-user-media",
+          startedAtMs: Date.now(),
+          durationMs: 120,
+        },
+      ]);
+      settleObligation(session, "capture.timings");
+      expect(flushed).toHaveLength(1);
+      expect(flushed[0]).toMatchObject({
+        capture_get_user_media_duration_ms: 120,
+        flush_reason: "settled",
+      });
     } finally {
       _resetDictationTraceForTests();
     }
