@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { powerMonitor } from "electron";
 import type { RecordingState } from "../../src/types/recording";
 import { recordingRouter } from "../../src/trpc/routers/recording";
 import * as trace from "../../src/main/telemetry/dictation-trace";
@@ -32,6 +33,28 @@ const makeSnapshot = (
 });
 
 describe("recordingRouter capture lifecycle", () => {
+  it("publishes system resume events and removes the listener on unsubscribe", async () => {
+    const caller = recordingRouter.createCaller({ services: {} } as never);
+    const next = vi.fn();
+    const listenerCount = powerMonitor.listenerCount("resume");
+    const subscription = (await caller.systemResume()).subscribe({ next });
+    try {
+      expect(powerMonitor.listenerCount("resume")).toBe(listenerCount + 1);
+      expect(next).not.toHaveBeenCalled();
+      powerMonitor.emit("unlock-screen");
+      expect(next).not.toHaveBeenCalled();
+      powerMonitor.emit("resume");
+      powerMonitor.emit("resume");
+      expect(next).toHaveBeenCalledTimes(2);
+      expect(next).toHaveBeenLastCalledWith(null);
+    } finally {
+      subscription.unsubscribe();
+    }
+    expect(powerMonitor.listenerCount("resume")).toBe(listenerCount);
+    powerMonitor.emit("resume");
+    expect(next).toHaveBeenCalledTimes(2);
+  });
+
   const timings = {
     phases: [
       {

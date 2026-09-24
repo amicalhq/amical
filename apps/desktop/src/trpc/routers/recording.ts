@@ -1,4 +1,5 @@
 import { observable } from "@trpc/server/observable";
+import { powerMonitor } from "electron";
 import { createRouter, procedure } from "../trpc";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
@@ -152,6 +153,16 @@ export const recordingRouter = createRouter({
       return lifecycle.onSnapshot((snapshot) => {
         emit.next(toStateUpdate(snapshot));
       });
+    });
+  }),
+
+  systemResume: procedure.subscription(() => {
+    return observable<null>((emit) => {
+      const onResume = () => emit.next(null);
+      powerMonitor.on("resume", onResume);
+      return () => {
+        powerMonitor.off("resume", onResume);
+      };
     });
   }),
 

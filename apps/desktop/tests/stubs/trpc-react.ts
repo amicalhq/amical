@@ -14,6 +14,11 @@ const utils = {
 
 export const api = {
   useUtils: () => utils,
+  recording: {
+    systemResume: {
+      useSubscription: () => undefined,
+    },
+  },
   settings: {
     getSettings: {
       useQuery: (): { data: undefined } => ({ data: undefined }),

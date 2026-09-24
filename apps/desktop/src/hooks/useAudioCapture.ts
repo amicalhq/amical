@@ -19,6 +19,7 @@ import {
   type AcquiredMicrophoneMetadata,
 } from "./audioCaptureDevice";
 import { computeIdleRecycleDelayMs } from "./audioCaptureRecycle";
+import { useAudioInputDeviceCache } from "./useAudioInputDeviceCache";
 import {
   attachAudioWorkletFrameHandler,
   createWorkletFlushRequest,
@@ -136,6 +137,7 @@ export const useAudioCapture = ({
   // Set synchronously the instant a start is requested, so a just-fired idle
   // timer keeps the context warm instead of closing it out from under the start.
   const pendingStartRef = useRef(false);
+  const deviceCache = useAudioInputDeviceCache(streamRef);
 
   idleRef.current = idle;
   onCaptureStartedRef.current = onCaptureStarted;
@@ -274,6 +276,7 @@ export const useAudioCapture = ({
             const { stream, audioTrack, microphone } =
               await acquireMicrophoneStream({
                 microphonePriority,
+                deviceCache,
                 sampleRate: SAMPLE_RATE,
                 timings,
               });
@@ -416,48 +419,11 @@ export const useAudioCapture = ({
       clearIdleTimer,
       updateBars,
       sessionId,
+      deviceCache,
       utils,
       reportTimings,
     ],
   );
-
-  // Device-change diagnostics are only attached while dictation is active, so
-  // they don't enumerate/log in the background when not recording.
-  useEffect(() => {
-    if (!enabled || !navigator.mediaDevices?.addEventListener) {
-      return;
-    }
-
-    const handleDeviceChange = async () => {
-      const audioTrack = streamRef.current?.getAudioTracks()[0];
-      audioCaptureDiagnostics.logDeviceChange(
-        Boolean(streamRef.current),
-        audioTrack,
-      );
-
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        audioCaptureDiagnostics.logAudioInputDevices(
-          "Audio input devices after devicechange",
-          devices,
-        );
-      } catch (error) {
-        audioCaptureDiagnostics.logDeviceEnumerationFailure(
-          "Failed to enumerate devices after devicechange",
-          error,
-        );
-      }
-    };
-
-    navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
-
-    return () => {
-      navigator.mediaDevices.removeEventListener(
-        "devicechange",
-        handleDeviceChange,
-      );
-    };
-  }, [enabled]);
 
   // Safe to recycle only when the app is idle with no active dictation and none
   // about to start. Shared by the scheduler and the timer's deferred close.

@@ -425,6 +425,7 @@ export function createElectronMocks() {
     BrowserWindow: FakeBrowserWindow as any,
     screen: mockScreen,
     systemPreferences: mockSystemPreferences,
+    powerMonitor: new EventEmitter(),
     nativeTheme: mockNativeTheme,
     Menu: mockMenu,
     Tray: FakeTray as any,
