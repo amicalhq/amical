@@ -41,8 +41,8 @@ export interface AmbianceContext {
 
 /**
  * Session ambiance: the native start/stop sounds and system-audio mute.
- * `beepGate` resolves once captured frames are no longer contaminated by the
- * start sound (immediately when dictation sounds are muted).
+ * `beepGate` resolves when the start-sound wait ends, on completion or timeout
+ * (immediately when dictation sounds are muted). `done` tracks native completion.
  */
 export interface RecorderAmbiance {
   begin(session: SessionId): {
@@ -372,9 +372,8 @@ export function createRecorderAdapter(
 
       if (capture.phase === "starting") return;
 
-      // Frames captured while the start beep was audible are dropped so the
-      // beep is not transcribed; the final chunk always survives so a stop
-      // mid-beep still finalizes.
+      // Drop ordinary frames while the start-sound gate is pending. The final
+      // chunk always survives so a stop during the gate still finalizes.
       if (capture.beepPending && !isFinalChunk) return;
 
       // Draining accepts every in-flight frame (D19): the tail of speech is

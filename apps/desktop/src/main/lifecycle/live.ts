@@ -1,9 +1,6 @@
 import { runPromise as runTelemetryPromise } from "../runtime/telemetry-runtime";
 import {
-  expectObligation,
   flushAllDictationTraces,
-  recordPhase,
-  recordPoint,
   tracePhase,
 } from "../telemetry/dictation-trace";
 import { ipcMain, app } from "electron";
@@ -30,14 +27,14 @@ import type { SettingsService } from "../../services/settings-service";
 import type { ModelService } from "../../services/model-service";
 import type { TranscriptionService } from "../../services/transcription-service";
 import type { ShortcutManager } from "../managers/shortcut-manager";
-import type { AmbianceContext, RecorderAmbiance } from "./adapters/recorder";
+import { createRecorderAmbiance } from "./adapters/ambiance";
 import {
   createRecordingLifecycle,
   type RecordingLifecycle,
   type RecordingLifecycleDeps,
 } from "./runtime";
 import { createSessionWork } from "./effect/session-work";
-import { REAL_TIMER_HOST } from "./shell";
+import { REAL_TIMER_HOST, type ShellTimerHost } from "./shell";
 import { runLifecycleRecovery } from "./startup-recovery";
 import { DEFAULT_LIFECYCLE_TUNING } from "./tuning";
 import { AudioCaptureInfoSchema } from "../../types/audio-capture";
@@ -79,6 +76,7 @@ export function createDesktopRecordingLifecycle(deps: {
   nativeBridge: NativeBridge | null;
   settingsService: SettingsService;
   modelService: ModelService;
+  startGateTimers?: ShellTimerHost;
   isUpdateRequired?: () => boolean;
   onUpdateRequired?: () => void;
 }): DesktopRecordingLifecycle {
@@ -94,110 +92,12 @@ export function createDesktopRecordingLifecycle(deps: {
 
   let shortcutManager: ShortcutManager | null = null;
 
-  // The begin-side promise is joined at end() so a stop that lands before
-  // the native start call resolves still unmutes with the truthful context.
-  const ambianceInFlight = new Map<string, Promise<AmbianceContext>>();
-
-  const ambiance: RecorderAmbiance = {
-    begin(session) {
-      let releaseGate!: () => void;
-      const beepGate = new Promise<void>((resolve) => {
-        releaseGate = resolve;
-      });
-      const done = (async () => {
-        // Everything before the gate release sits inside try/finally: a
-        // preferences or RPC failure must never leave the beep gate closed
-        // (a closed gate drops every non-final frame).
-        let muteSounds = false;
-        let systemAudioMuted = false;
-        try {
-          const preferences = await settingsService.getPreferences();
-          muteSounds = preferences.muteDictationSounds;
-          const muteSystemAudio = preferences.muteSystemAudio;
-          recordPoint(session, "lifecycle.ambiance-config", {
-            dictationSoundsEnabled: !muteSounds,
-            systemAudioMuteEnabled: muteSystemAudio,
-          });
-          // No beep when dictation sounds are muted: frames are clean at once.
-          if (muteSounds) releaseGate();
-          if (nativeBridge) {
-            const result = await tracePhase(
-              session,
-              "native.start-recording.rpc",
-              () =>
-                nativeBridge.call("startRecording", {
-                  muteSystemAudio,
-                  muteSounds,
-                }),
-            );
-            systemAudioMuted = muteSystemAudio && !!result?.success;
-          }
-        } finally {
-          releaseGate();
-        }
-        return { systemAudioMuted, soundsMuted: muteSounds };
-      })();
-      done.catch((error) => {
-        logger.audio.warn("Native recording ambiance failed", {
-          sessionId: session,
-          error,
-        });
-      });
-      ambianceInFlight.set(session, done);
-      if (nativeBridge) {
-        // The matching unmute obligation is owed from this moment; the
-        // expect must land before the root trace closes at the IDLE edge.
-        // Guarded like end()'s fork: no bridge, no unmute, no expect. An
-        // expectation whose fork never comes waits out the full grace window.
-        expectObligation(session, "lifecycle.unmute-ambiance");
-        const muteStartedAt = Date.now();
-        void done
-          .then(() =>
-            recordPhase(
-              session,
-              "lifecycle.mute-ambiance",
-              muteStartedAt,
-              Date.now(),
-            ),
-          )
-          .catch(() => undefined);
-      }
-      return { beepGate, done };
-    },
-    end(session, context) {
-      const pending = ambianceInFlight.get(session);
-      ambianceInFlight.delete(session);
-      if (!nativeBridge) return;
-      // The unmute is an obligation: it must land even though the session
-      // is already retiring. (begin keeps its promise shape — the port
-      // returns {beepGate, done} promises, so a begin fiber would be pure
-      // ceremony around the same values.)
-      sessionWork.runObligation(
-        session,
-        Effect.promise(async () => {
-          try {
-            const resolved =
-              context ?? (pending ? await pending.catch(() => null) : null);
-            await tracePhase(session, "native.stop-recording.rpc", () =>
-              nativeBridge.call("stopRecording", {
-                wasMuted: resolved?.systemAudioMuted ?? false,
-                muteSounds: resolved?.soundsMuted ?? false,
-              }),
-            );
-          } catch (error) {
-            logger.audio.warn("Failed to end recording ambiance", {
-              sessionId: session,
-              error,
-            });
-          }
-        }).pipe(
-          Effect.withSpan("lifecycle.unmute-ambiance", {
-            attributes: { sessionId: session },
-          }),
-        ),
-      );
-    },
-  };
+  const ambiance = createRecorderAmbiance({
+    nativeBridge,
+    settingsService,
+    sessionWork,
+    timers: deps.startGateTimers ?? REAL_TIMER_HOST,
+  });
 
   // Draft copy-capture barrier (v1 semantics): the clipboard-copy fallback
   // starts when a draft session begins stopping, and resolve waits for it

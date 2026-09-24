@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ipcMain } from "electron";
 import { Context, Effect, Exit, Layer, Scope } from "effect";
 import type { GetAccessibilityContextResult } from "@amical/types";
+import { FakeTimers } from "../helpers/lifecycle-fakes";
 
 const db = vi.hoisted(() => ({
   createProvisionalTranscription: vi.fn(async () => ({ id: 1 })),
@@ -36,6 +37,7 @@ import type { NativeBridge } from "../../src/services/platform/native-bridge-ser
 import type { SettingsService } from "../../src/services/settings-service";
 import type { ModelService } from "../../src/services/model-service";
 import type { TranscriptionService } from "../../src/services/transcription-service";
+import type { ShellTimerHost } from "../../src/main/lifecycle/shell";
 
 const settle = async (rounds = 6) => {
   for (let i = 0; i < rounds; i++) {
@@ -73,6 +75,8 @@ function makeLive(options?: {
   startRecording?: () => Promise<{
     success: boolean;
   }>;
+  startGateTimers?: ShellTimerHost;
+  withoutNativeBridge?: boolean;
   selectedTextViaCopy?: () => Promise<{
     selectedText: string | null;
     clipboardChanged: boolean;
@@ -150,9 +154,10 @@ function makeLive(options?: {
 
   const lifecycle = createDesktopRecordingLifecycle({
     transcriptionService,
-    nativeBridge,
+    nativeBridge: options?.withoutNativeBridge ? null : nativeBridge,
     settingsService,
     modelService,
+    startGateTimers: options?.startGateTimers,
   });
 
   if (options?.draftChord) {
@@ -308,30 +313,231 @@ describe("desktop live binding", () => {
     await h.finishSession(session);
   });
 
-  it("a stop landing before the native start resolves still unmutes truthfully", async () => {
+  it.each([true, false])(
+    "releases the beep gate on native start completion (success: %s)",
+    async (success) => {
+      const timers = new FakeTimers();
+      const h = makeLive({
+        startGateTimers: timers,
+        startRecording: async () => ({ success }),
+      });
+      const session = await h.startToRecording();
+
+      expect(timers.armedDurations()).toEqual([]);
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.4), false);
+      expect(h.chunks).toEqual([{ session, final: false }]);
+      await h.finishSession(session);
+    },
+  );
+
+  it("starts the 200 ms gate bound only after preferences and RPC dispatch", async () => {
+    const timers = new FakeTimers();
+    const preferences = deferred<{
+      muteDictationSounds: boolean;
+      muteSystemAudio: boolean;
+      preserveClipboard: boolean;
+    }>();
     const start = deferred<{ success: boolean }>();
     const h = makeLive({
+      startGateTimers: timers,
+      preferences: () => preferences.promise,
+      startRecording: () => start.promise,
+    });
+
+    const starting = h.lifecycle.startDictation();
+    await settle();
+    const session = h.lifecycle.getSnapshot().sessionId!;
+    h.lifecycle.captureStarted(session, { name: "Mic" });
+    await settle();
+    expect(
+      h.nativeCalls.filter((call) => call.method === "startRecording"),
+    ).toHaveLength(0);
+    expect(timers.armedDurations()).toEqual([]);
+
+    preferences.resolve({
+      muteDictationSounds: false,
+      muteSystemAudio: false,
+      preserveClipboard: true,
+    });
+    await starting;
+    await settle();
+    expect(
+      h.nativeCalls.filter((call) => call.method === "startRecording"),
+    ).toHaveLength(1);
+    expect(timers.armedDurations()).toEqual([200]);
+
+    start.resolve({ success: true });
+    await settle();
+    expect(timers.armedDurations()).toEqual([]);
+    await h.finishSession(session);
+  });
+
+  it("does not arm a gate after stop while preferences are pending", async () => {
+    const timers = new FakeTimers();
+    const preferences = deferred<{
+      muteDictationSounds: boolean;
+      muteSystemAudio: boolean;
+      preserveClipboard: boolean;
+    }>();
+    const start = deferred<{ success: boolean }>();
+    const h = makeLive({
+      startGateTimers: timers,
+      preferences: () => preferences.promise,
+      startRecording: () => start.promise,
+    });
+
+    const starting = h.lifecycle.startDictation();
+    await settle();
+    const session = h.lifecycle.getSnapshot().sessionId!;
+    h.lifecycle.captureStarted(session, { name: "Mic" });
+    await settle();
+    await h.finishSession(session);
+
+    preferences.resolve({
+      muteDictationSounds: false,
+      muteSystemAudio: true,
+      preserveClipboard: true,
+    });
+    await starting;
+    await settle();
+    expect(timers.armedDurations()).toEqual([]);
+    expect(
+      h.nativeCalls.filter((call) => call.method === "startRecording"),
+    ).toHaveLength(1);
+    expect(
+      h.nativeCalls.filter((call) => call.method === "stopRecording"),
+    ).toEqual([]);
+
+    start.resolve({ success: true });
+    await settle();
+    expect(
+      h.nativeCalls.filter((call) => call.method === "stopRecording"),
+    ).toEqual([
+      {
+        method: "stopRecording",
+        params: { wasMuted: true, muteSounds: false },
+      },
+    ]);
+  });
+
+  it("opens immediately for muted sounds and for a missing native bridge", async () => {
+    const mutedTimers = new FakeTimers();
+    const mutedStart = deferred<{ success: boolean }>();
+    const muted = makeLive({
+      startGateTimers: mutedTimers,
+      preferences: async () => ({
+        muteDictationSounds: true,
+        muteSystemAudio: false,
+        preserveClipboard: true,
+      }),
+      startRecording: () => mutedStart.promise,
+    });
+    const mutedSession = await muted.startToRecording();
+    expect(mutedTimers.armedDurations()).toEqual([]);
+    await muted.lifecycle.handleAudioChunk(
+      mutedSession,
+      muted.frames(0.4),
+      false,
+    );
+    expect(muted.chunks).toEqual([{ session: mutedSession, final: false }]);
+    await muted.lifecycle.stopDictation();
+    await muted.lifecycle.handleAudioChunk(
+      mutedSession,
+      muted.frames(0.4),
+      true,
+    );
+    mutedStart.resolve({ success: true });
+    await settle();
+
+    const noBridgeTimers = new FakeTimers();
+    const noBridgePreferences = deferred<{
+      muteDictationSounds: boolean;
+      muteSystemAudio: boolean;
+      preserveClipboard: boolean;
+    }>();
+    const noBridge = makeLive({
+      startGateTimers: noBridgeTimers,
+      preferences: () => noBridgePreferences.promise,
+      withoutNativeBridge: true,
+    });
+    const noBridgeStarting = noBridge.lifecycle.startDictation();
+    await settle();
+    const noBridgeSession = noBridge.lifecycle.getSnapshot().sessionId!;
+    noBridge.lifecycle.captureStarted(noBridgeSession, { name: "Mic" });
+    await settle();
+    expect(noBridgeTimers.armedDurations()).toEqual([]);
+    await noBridge.lifecycle.handleAudioChunk(
+      noBridgeSession,
+      noBridge.frames(0.4),
+      false,
+    );
+    expect(noBridge.chunks).toEqual([
+      { session: noBridgeSession, final: false },
+    ]);
+    noBridgePreferences.resolve({
+      muteDictationSounds: false,
+      muteSystemAudio: false,
+      preserveClipboard: true,
+    });
+    await noBridgeStarting;
+    await settle();
+    await noBridge.finishSession(noBridgeSession);
+  });
+
+  it("keeps gate timers session-scoped and joins late mute results", async () => {
+    const timers = new FakeTimers();
+    const starts = [
+      deferred<{ success: boolean }>(),
+      deferred<{ success: boolean }>(),
+    ];
+    let startIndex = 0;
+    const h = makeLive({
+      startGateTimers: timers,
       preferences: async () => ({
         muteDictationSounds: false,
         muteSystemAudio: true,
         preserveClipboard: true,
       }),
-      startRecording: () => start.promise,
+      startRecording: () => starts[startIndex++].promise,
     });
-    const session = await h.startToRecording();
-    // Stop while startRecording is still pending.
-    await h.lifecycle.stopDictation();
-    await h.lifecycle.handleAudioChunk(session, h.frames(0.4), true);
-    await settle();
-    expect(h.nativeCalls.filter((c) => c.method === "stopRecording")).toEqual(
-      [],
-    );
+    const firstSession = await h.startToRecording();
+    expect(timers.armedDurations()).toEqual([200]);
 
-    // The delayed start grants the mute: end() must join the pending begin
-    // and report wasMuted truthfully instead of guessing false.
-    start.resolve({ success: true });
+    await h.lifecycle.stopDictation();
+    expect(timers.armedDurations()).toEqual([]);
+    await h.lifecycle.handleAudioChunk(firstSession, h.frames(0.4), false);
+    expect(h.chunks).toEqual([]);
+    await h.lifecycle.handleAudioChunk(firstSession, h.frames(0.4), true);
+    await settle();
+    expect(
+      h.nativeCalls.filter((call) => call.method === "stopRecording"),
+    ).toEqual([]);
+
+    const secondSession = await h.startToRecording();
+    expect(secondSession).not.toBe(firstSession);
+    expect(timers.armedDurations()).toEqual([200]);
+    await h.lifecycle.handleAudioChunk(secondSession, h.frames(0.4), false);
+    expect(h.chunks).toEqual([{ session: firstSession, final: false }]);
+    timers.fire(200);
+    await settle();
+    await h.lifecycle.handleAudioChunk(secondSession, h.frames(0.4), false);
+    expect(h.chunks).toContainEqual({ session: secondSession, final: false });
+
+    await h.lifecycle.stopDictation();
+    await h.lifecycle.handleAudioChunk(secondSession, h.frames(0.4), true);
+    await settle();
+    expect(
+      h.nativeCalls.filter((call) => call.method === "stopRecording"),
+    ).toEqual([]);
+
+    starts[0].resolve({ success: true });
+    starts[1].resolve({ success: true });
     await settle();
     expect(h.nativeCalls.filter((c) => c.method === "stopRecording")).toEqual([
+      {
+        method: "stopRecording",
+        params: { wasMuted: true, muteSounds: false },
+      },
       {
         method: "stopRecording",
         params: { wasMuted: true, muteSounds: false },
