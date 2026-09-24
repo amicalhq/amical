@@ -11,15 +11,12 @@ import {
 } from "@/types/audio-capture";
 import { Mutex } from "async-mutex";
 import { audioCaptureDiagnostics } from "./audioCaptureDiagnostics";
-import {
-  createAudioCaptureGraph,
-  createOrResumeAudioContext,
-} from "./audioCaptureContext";
+import { createAudioCaptureSource } from "./audioCaptureContext";
+import { AudioCaptureContextLifetime } from "./audioCaptureContextLifetime";
 import {
   acquireMicrophoneStream,
   type AcquiredMicrophoneMetadata,
 } from "./audioCaptureDevice";
-import { computeIdleRecycleDelayMs } from "./audioCaptureRecycle";
 import { useAudioInputDeviceCache } from "./useAudioInputDeviceCache";
 import { monitorAudioContextRecovery } from "./audioContextRecovery";
 import {
@@ -120,21 +117,25 @@ export const useAudioCapture = ({
   const levelHistoryRef = useRef<number[]>(
     new Array(LEVEL_HISTORY_LEN).fill(0),
   );
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const contextLifetimeRef = useRef<AudioCaptureContextLifetime | null>(null);
+  if (!contextLifetimeRef.current) {
+    contextLifetimeRef.current = new AudioCaptureContextLifetime(
+      SAMPLE_RATE,
+      audioWorkletUrl,
+    );
+  }
+  const contextLifetime = contextLifetimeRef.current;
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const trackCleanupRef = useRef<(() => void) | null>(null);
   const contextRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const mutexRef = useRef(new Mutex());
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleRef = useRef(idle);
   const onCaptureStartedRef = useRef(onCaptureStarted);
   const onCaptureFailureRef = useRef(onCaptureFailure);
   const onCaptureTimingsRef = useRef(onCaptureTimings);
   const pendingWorkletFlushRef = useRef<WorkletFlushRequest | null>(null);
-  // performance.now() when the current AudioContext was constructed (for max-age).
-  const contextCreatedAtRef = useRef(0);
+  const captureAttemptStartedAtRef = useRef<number | null>(null);
   // Set true once the hook unmounts so deferred mutex bodies stop touching state.
   const disposedRef = useRef(false);
   // Set synchronously the instant a start is requested, so a just-fired idle
@@ -168,11 +169,8 @@ export const useAudioCapture = ({
   microphonePriorityRef.current = settings?.recording?.microphonePriority;
 
   const clearIdleTimer = useCallback(() => {
-    if (idleTimerRef.current) {
-      clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = null;
-    }
-  }, []);
+    contextLifetime.cancelIdleClose();
+  }, [contextLifetime]);
 
   // Compute one overall voice-band loudness (getByteFrequencyData already maps
   // [minDecibels, maxDecibels] -> 0..255 per bin, so this auto-windows), push it
@@ -218,32 +216,25 @@ export const useAudioCapture = ({
     contextRecoveryCleanupRef.current = null;
     pendingWorkletFlushRef.current?.finish();
     pendingWorkletFlushRef.current = null;
-    if (workletNodeRef.current) {
-      workletNodeRef.current.port.onmessage = null;
-    }
     trackCleanupRef.current?.();
     trackCleanupRef.current = null;
-    if (sourceRef.current && workletNodeRef.current) {
+    const workletNode = contextLifetime.workletNode;
+    if (sourceRef.current && workletNode) {
       try {
-        sourceRef.current.disconnect(workletNodeRef.current);
+        sourceRef.current.disconnect(workletNode);
       } catch {
         // Nodes may already be detached or on a closed context.
       }
     }
-    workletNodeRef.current?.disconnect();
     analyserRef.current?.disconnect();
     analyserRef.current = null;
     freqDataRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
-    if (audioContextRef.current) {
-      await audioContextRef.current.close().catch(() => {});
-    }
+    await contextLifetime.close();
     sourceRef.current = null;
-    workletNodeRef.current = null;
-    audioContextRef.current = null;
     streamRef.current = null;
     resetBars();
-  }, [resetBars]);
+  }, [resetBars, contextLifetime]);
 
   const startCapture = useCallback(
     async (
@@ -251,6 +242,7 @@ export const useAudioCapture = ({
       timings: AudioCaptureTimings,
     ) => {
       const captureSessionId = sessionId!;
+      const attemptStartedAt = Date.now();
       const microphonePriority = microphonePriorityRef.current;
       // StrictMode can remount and call us before the teardown effect's cleanup is
       // reverted, so clear disposed here. pendingStartRef is read by closeIdleContext.
@@ -259,6 +251,7 @@ export const useAudioCapture = ({
       await mutexRef.current
         .runExclusive(async () => {
           try {
+            captureAttemptStartedAtRef.current = attemptStartedAt;
             const overallStartTime = performance.now();
             console.log("AudioCapture: Starting audio capture");
 
@@ -314,21 +307,10 @@ export const useAudioCapture = ({
               return;
             }
 
-            const { audioContext, createdAt } =
-              await createOrResumeAudioContext({
-                currentAudioContext: audioContextRef.current,
-                sampleRate: SAMPLE_RATE,
-                audioWorkletUrl,
-                timings,
-                sessionId: captureSessionId,
-              });
-            if (audioContextRef.current !== audioContext) {
-              workletNodeRef.current = null;
-            }
-            audioContextRef.current = audioContext;
-            if (createdAt !== undefined) {
-              contextCreatedAtRef.current = createdAt;
-            }
+            const { audioContext, workletNode } = await contextLifetime.prepare(
+              timings,
+              captureSessionId,
+            );
 
             // Bail if disposed while resuming or loading the worklet module.
             if (disposedRef.current) {
@@ -336,15 +318,13 @@ export const useAudioCapture = ({
               return;
             }
 
-            const { source, workletNode } = createAudioCaptureGraph(
-              audioContextRef.current,
-              streamRef.current,
-              workletNodeRef.current,
+            const source = createAudioCaptureSource(
+              audioContext,
+              stream,
               captureSessionId,
               timings,
             );
             sourceRef.current = source;
-            workletNodeRef.current = workletNode;
             attachAudioWorkletFrameHandler({
               workletNode,
               captureConfig: {
@@ -398,13 +378,13 @@ export const useAudioCapture = ({
               type: "start",
               stereoDownmixEnabled,
             });
-            sourceRef.current.connect(workletNodeRef.current);
+            source.connect(workletNode);
             timings.startFirstFrameWait();
 
             // Tap the source with an analyser for the spectrum visualiser. It's a
             // passive branch (no downstream connection) and doesn't touch the
             // worklet capture path.
-            const analyser = audioContextRef.current.createAnalyser();
+            const analyser = audioContext.createAnalyser();
             analyser.fftSize = ANALYSER_FFT_SIZE;
             analyser.smoothingTimeConstant = ANALYSER_SMOOTHING;
             analyser.minDecibels = ANALYSER_MIN_DB;
@@ -456,6 +436,7 @@ export const useAudioCapture = ({
       deviceCache,
       utils,
       reportTimings,
+      contextLifetime,
     ],
   );
 
@@ -470,15 +451,15 @@ export const useAudioCapture = ({
   // the mutex so it can't race a concurrent start.
   const closeIdleContext = useCallback(async () => {
     await mutexRef.current.runExclusive(async () => {
-      if (!canRecycleWhileIdle()) {
+      if (!canRecycleWhileIdle() || !contextLifetime.isIdleExpired()) {
         return;
       }
-      if (audioContextRef.current) {
+      if (contextLifetime.audioContext) {
         await releaseAll();
         console.log("AudioCapture: AudioContext recycled while idle");
       }
     });
-  }, [releaseAll, canRecycleWhileIdle]);
+  }, [releaseAll, canRecycleWhileIdle, contextLifetime]);
 
   const scheduleIdleContextRecycle = useCallback(() => {
     clearIdleTimer();
@@ -486,28 +467,23 @@ export const useAudioCapture = ({
     if (
       disposedRef.current ||
       !canRecycleWhileIdle() ||
-      !audioContextRef.current
+      !contextLifetime.audioContext
     ) {
       return;
     }
 
-    const idleRecycleDelayMs = computeIdleRecycleDelayMs(
-      performance.now() - contextCreatedAtRef.current,
-    );
-
-    idleTimerRef.current = setTimeout(() => {
-      idleTimerRef.current = null;
+    contextLifetime.scheduleIdleClose(() => {
       closeIdleContext().catch((error) => {
         console.error("AudioCapture: Error recycling idle context:", error);
       });
-    }, idleRecycleDelayMs);
-  }, [clearIdleTimer, closeIdleContext, canRecycleWhileIdle]);
+    });
+  }, [clearIdleTimer, closeIdleContext, canRecycleWhileIdle, contextLifetime]);
 
   // Resolves true once the worklet's final buffer has been flushed (or there is
   // nothing to flush), false if the flush request failed or timed out — in which
   // case the caller must force a full release.
   const waitForWorkletFlush = useCallback(async (): Promise<boolean> => {
-    const workletNode = workletNodeRef.current;
+    const workletNode = contextLifetime.workletNode;
     if (!streamRef.current || !workletNode) {
       return true;
     }
@@ -524,7 +500,7 @@ export const useAudioCapture = ({
       pendingWorkletFlushRef.current = null;
     }
     return didFlush;
-  }, []);
+  }, [contextLifetime]);
 
   const stopCapture = useCallback(async () => {
     contextRecoveryCleanupRef.current?.();
@@ -564,14 +540,38 @@ export const useAudioCapture = ({
         freqDataRef.current = null;
         resetBars();
 
-        // Context/worklet recycling is scheduled only once the main recording
-        // state is idle, so the final flush can complete while stopping.
+        const startedAt = captureAttemptStartedAtRef.current;
+        captureAttemptStartedAtRef.current = null;
+        const shouldRecycle =
+          startedAt !== null && contextLifetime.finishAttempt(startedAt);
+        if (shouldRecycle && !disposedRef.current) {
+          await contextLifetime.close();
+          if (!disposedRef.current && !contextLifetime.isIdleExpired()) {
+            try {
+              await contextLifetime.prepare();
+            } catch (error) {
+              // Setup already reports its specific failure; the next capture can retry.
+              console.warn(
+                "AudioCapture: Could not prepare replacement context",
+                error,
+              );
+            }
+          }
+          if (disposedRef.current) await releaseAll();
+        }
+
         scheduleIdleContextRecycle();
 
         console.log("AudioCapture: Audio capture stopped");
       }
     });
-  }, [releaseAll, scheduleIdleContextRecycle, waitForWorkletFlush, resetBars]);
+  }, [
+    releaseAll,
+    scheduleIdleContextRecycle,
+    waitForWorkletFlush,
+    resetBars,
+    contextLifetime,
+  ]);
 
   // Start/stop based on enabled state
   useEffect(() => {
@@ -634,17 +634,29 @@ export const useAudioCapture = ({
     };
   }, [idle, clearIdleTimer, scheduleIdleContextRecycle]);
 
-  // Final teardown on unmount: mark disposed, cancel the idle timer, and release
-  // the AudioContext through the mutex so it runs strictly after any in-flight
-  // start/stopCapture rather than racing them (which could orphan a context or
-  // leave the mic live).
+  // Prepare at recorder mount without opening the mic. Keep this effect after
+  // the capture effect so unmount queues the final flush before graph release.
   useEffect(() => {
+    disposedRef.current = false;
+    void mutexRef.current.runExclusive(async () => {
+      if (disposedRef.current) return;
+      try {
+        await contextLifetime.prepare();
+      } catch (error) {
+        console.warn("AudioCapture: Could not prepare startup context", error);
+      }
+      if (disposedRef.current) {
+        await releaseAll();
+      } else {
+        scheduleIdleContextRecycle();
+      }
+    });
     return () => {
       disposedRef.current = true;
       clearIdleTimer();
       void mutexRef.current.runExclusive(() => releaseAll());
     };
-  }, [releaseAll, clearIdleTimer]);
+  }, [releaseAll, clearIdleTimer, contextLifetime, scheduleIdleContextRecycle]);
 
   return {
     audioLevels,

@@ -16,16 +16,18 @@ export const createOrResumeAudioContext = async ({
   currentAudioContext: AudioContext | null;
   sampleRate: number;
   audioWorkletUrl: string;
-  timings: AudioCaptureTimings;
+  timings?: AudioCaptureTimings;
   sessionId?: string;
 }): Promise<PreparedAudioContext> => {
   const audioContextStartTime = performance.now();
 
   if (currentAudioContext?.state === "suspended") {
     try {
-      await timings.measure("capture.audio-context-resume", () =>
-        currentAudioContext.resume(),
-      );
+      await (timings
+        ? timings.measure("capture.audio-context-resume", () =>
+            currentAudioContext.resume(),
+          )
+        : currentAudioContext.resume());
     } catch (error) {
       reportAudioContextFailure(
         error,
@@ -48,7 +50,7 @@ export const createOrResumeAudioContext = async ({
     return { audioContext: currentAudioContext };
   }
 
-  const finishCreate = timings.start("capture.audio-context-create");
+  const finishCreate = timings?.start("capture.audio-context-create");
   let audioContext: AudioContext;
   try {
     audioContext = new AudioContext({
@@ -59,8 +61,8 @@ export const createOrResumeAudioContext = async ({
     reportAudioContextFailure(error, "create", undefined, sessionId, timings);
     throw error;
   }
-  finishCreate();
-  const createdAt = performance.now();
+  finishCreate?.();
+  const createdAt = Date.now();
   const audioContextDuration = performance.now() - audioContextStartTime;
   console.log(
     `AudioCapture: AudioContext creation took ${audioContextDuration.toFixed(2)}ms`,
@@ -69,9 +71,11 @@ export const createOrResumeAudioContext = async ({
   let operation: "resume" | "worklet-load" = "resume";
   try {
     if (audioContext.state === "suspended") {
-      await timings.measure("capture.audio-context-resume", () =>
-        audioContext.resume(),
-      );
+      await (timings
+        ? timings.measure("capture.audio-context-resume", () =>
+            audioContext.resume(),
+          )
+        : audioContext.resume());
     }
     operation = "worklet-load";
     const workletStartTime = performance.now();
@@ -95,28 +99,23 @@ export const createOrResumeAudioContext = async ({
   return { audioContext, createdAt };
 };
 
-export const createAudioCaptureGraph = (
+export const createAudioCaptureWorklet = (
   audioContext: AudioContext,
-  stream: MediaStream,
-  existingWorkletNode: AudioWorkletNode | null,
   sessionId?: string,
   timings?: AudioCaptureTimings,
-): {
-  source: MediaStreamAudioSourceNode;
-  workletNode: AudioWorkletNode;
-} => {
+): AudioWorkletNode => {
   const nodeCreationStartTime = performance.now();
-  let source: MediaStreamAudioSourceNode;
   let workletNode: AudioWorkletNode;
   try {
-    source = audioContext.createMediaStreamSource(stream);
-    workletNode =
-      existingWorkletNode ??
-      new AudioWorkletNode(audioContext, "audio-recorder-processor", {
+    workletNode = new AudioWorkletNode(
+      audioContext,
+      "audio-recorder-processor",
+      {
         channelCountMode: "max",
         channelInterpretation: "discrete",
-      });
-    if (!existingWorkletNode) workletNode.connect(audioContext.destination);
+      },
+    );
+    workletNode.connect(audioContext.destination);
   } catch (error) {
     reportAudioContextFailure(
       error,
@@ -132,5 +131,25 @@ export const createAudioCaptureGraph = (
     `AudioCapture: Node creation took ${nodeCreationDuration.toFixed(2)}ms`,
   );
 
-  return { source, workletNode };
+  return workletNode;
+};
+
+export const createAudioCaptureSource = (
+  audioContext: AudioContext,
+  stream: MediaStream,
+  sessionId?: string,
+  timings?: AudioCaptureTimings,
+): MediaStreamAudioSourceNode => {
+  try {
+    return audioContext.createMediaStreamSource(stream);
+  } catch (error) {
+    reportAudioContextFailure(
+      error,
+      "graph-setup",
+      audioContext,
+      sessionId,
+      timings,
+    );
+    throw error;
+  }
 };

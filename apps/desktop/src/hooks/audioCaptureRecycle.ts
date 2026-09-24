@@ -1,22 +1,13 @@
-// Timing policy for recycling the warm AudioContext between dictations.
-// Kept in its own module so the (subtle) delay math can be unit-tested without
-// standing up the full React hook + Web Audio environment.
-
 const ONE_MINUTE_MS = 60_000;
 
-// Keep the running AudioContext and worklet warm between dictations for fast
-// restarts, then close them after this long with no new dictation.
-export const AUDIO_CONTEXT_IDLE_TIMEOUT_MS = 5 * ONE_MINUTE_MS;
+export const AUDIO_CONTEXT_IDLE_TIMEOUT_MS = 60 * ONE_MINUTE_MS;
+export const AUDIO_CONTEXT_RECYCLE_AGE_MS = 7 * ONE_MINUTE_MS;
+const MIN_RECORDING_ATTEMPT_MS = 5_000;
 
-// Recycle the AudioContext once it has been alive this long, so a long-lived
-// session doesn't ride one context across device changes / sleep-wake drift.
-export const AUDIO_CONTEXT_MAX_AGE_MS = 7 * ONE_MINUTE_MS;
-
-// Delay before recycling an idle, warm AudioContext: the idle window, but capped
-// so the context never outlives its max age. Clamped at 0 so an already-too-old
-// context recycles immediately instead of scheduling a negative timeout.
-export const computeIdleRecycleDelayMs = (contextAgeMs: number): number =>
-  Math.min(
-    AUDIO_CONTEXT_IDLE_TIMEOUT_MS,
-    Math.max(AUDIO_CONTEXT_MAX_AGE_MS - contextAgeMs, 0),
-  );
+/** Age recycling is evaluated after capture cleanup, never by an age timer. */
+export const shouldRecycleAudioContext = (
+  contextAgeMs: number,
+  attemptDurationMs: number,
+): boolean =>
+  contextAgeMs > AUDIO_CONTEXT_RECYCLE_AGE_MS &&
+  attemptDurationMs > MIN_RECORDING_ATTEMPT_MS;

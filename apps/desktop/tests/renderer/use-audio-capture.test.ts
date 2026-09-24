@@ -13,7 +13,7 @@ import { renderHook, act } from "@testing-library/react";
 // ── Module boundaries we don't want to pull into the test ──────────────────────
 // "@/trpc/react" is aliased to a stub in vitest.config (it would otherwise drag in
 // @trpc/react-query + electron IPC). Here we stub the worklet asset URL, the
-// diagnostics logger, and the recycle-delay math (tested in audio-capture-recycle).
+// diagnostics logger. Lifecycle timers use the actual production policy.
 vi.mock("@/assets/audio-recorder-processor.js?url", () => ({
   default: "test-worklet-url",
 }));
@@ -31,12 +31,6 @@ vi.mock("@/hooks/audioCaptureDiagnostics", () => ({
     registerTrack: vi.fn(() => vi.fn()),
   },
 }));
-// Recycle quickly so the idle timer fires within the test instead of after 5 min.
-vi.mock("@/hooks/audioCaptureRecycle", () => ({
-  AUDIO_CONTEXT_IDLE_TIMEOUT_MS: 5,
-  AUDIO_CONTEXT_MAX_AGE_MS: 10,
-  computeIdleRecycleDelayMs: () => 5,
-}));
 
 import {
   useAudioCapture,
@@ -45,6 +39,7 @@ import {
 import { api } from "@/trpc/react";
 import type { CaptureTimingsBatch } from "@/types/capture-timings";
 import { DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG } from "@/types/audio-capture";
+import { AUDIO_CONTEXT_IDLE_TIMEOUT_MS } from "@/hooks/audioCaptureRecycle";
 import { captureRendererException } from "@/renderer/lib/posthog";
 
 // ── Web Audio fakes ────────────────────────────────────────────────────────────
@@ -134,7 +129,7 @@ class FakeAudioContext extends EventTarget {
   static onCreate: ((context: FakeAudioContext) => void) | undefined;
   state: "running" | "suspended" | "closed" = "running";
   destination = {};
-  audioWorklet = { addModule: vi.fn(async () => undefined) };
+  audioWorklet = { addModule: vi.fn(async (): Promise<void> => undefined) };
   createMediaStreamSource = vi.fn(() => new FakeSourceNode());
   createAnalyser = vi.fn(() => new FakeAnalyserNode());
   resume = vi.fn(async () => {
@@ -242,6 +237,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   delete (globalThis as Record<string, unknown>).AudioContext;
   delete (globalThis as Record<string, unknown>).AudioWorkletNode;
@@ -251,6 +247,10 @@ afterEach(() => {
 // context setup + the flush microtask) settle.
 async function settle() {
   await act(async () => {
+    if (vi.isFakeTimers()) {
+      await vi.advanceTimersByTimeAsync(0);
+      return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
@@ -262,7 +262,7 @@ interface AudioCaptureHookProps {
   sessionId: string | null;
 }
 
-function mountHook() {
+function mountHook(reactStrictMode = false) {
   const onAudioChunk = vi.fn();
   const onCaptureStarted =
     vi.fn<NonNullable<UseAudioCaptureParams["onCaptureStarted"]>>();
@@ -284,7 +284,7 @@ function mountHook() {
         enabled,
         idle,
       }),
-    { initialProps },
+    { initialProps, reactStrictMode },
   );
   return {
     onAudioChunk,
@@ -296,6 +296,109 @@ function mountHook() {
 }
 
 describe("useAudioCapture lifecycle", () => {
+  it("prepares the running context and connected worklet without opening the microphone", async () => {
+    const { rerender } = mountHook();
+    await settle();
+    expect(audioContexts).toHaveLength(1);
+    expect(audioContexts[0].state).toBe("running");
+    expect(audioContexts[0].audioWorklet.addModule).toHaveBeenCalledOnce();
+    expect(workletNodes[0].connect).toHaveBeenCalledExactlyOnceWith(
+      audioContexts[0].destination,
+    );
+    expect(workletNodes[0].messages).toEqual([]);
+    expect(getUserMedia).not.toHaveBeenCalled();
+
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(audioContexts).toHaveLength(1);
+    expect(workletNodes).toHaveLength(1);
+    expect(getUserMedia).toHaveBeenCalledOnce();
+  });
+
+  it("shares pending startup preparation with the first dictation", async () => {
+    vi.useFakeTimers();
+    const loading = Promise.withResolvers<void>();
+    FakeAudioContext.onCreate = (context) => {
+      context.audioWorklet.addModule.mockReturnValueOnce(loading.promise);
+    };
+    const { rerender, onCaptureStarted } = mountHook();
+    await settle();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(audioContexts).toHaveLength(1);
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(onCaptureStarted).not.toHaveBeenCalled();
+
+    // Waiting for preparation belongs to the elapsed recording attempt.
+    await act(async () => vi.advanceTimersByTimeAsync(8 * 60_000));
+    loading.resolve();
+    await settle();
+    expect(audioContexts).toHaveLength(1);
+    expect(workletNodes).toHaveLength(1);
+    expect(onCaptureStarted).toHaveBeenCalledOnce();
+    rerender({ enabled: false, idle: true, sessionId: null });
+    await settle();
+    expect(audioContexts).toHaveLength(2);
+    expect(audioContexts[0].state).toBe("closed");
+  });
+
+  it("reports a prewarm failure without failing a session and retries at capture", async () => {
+    const failure = new Error("Could not prepare processor");
+    FakeAudioContext.onCreate = (context) => {
+      context.audioWorklet.addModule.mockRejectedValueOnce(failure);
+    };
+    const { rerender, onCaptureFailure, onCaptureStarted } = mountHook();
+    await settle();
+    expect(captureRendererException).toHaveBeenCalledExactlyOnceWith(
+      failure,
+      expect.objectContaining({
+        operation: "worklet-load",
+        session_id: undefined,
+      }),
+    );
+    expect(audioContexts[0].state).toBe("closed");
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(onCaptureFailure).not.toHaveBeenCalled();
+
+    FakeAudioContext.onCreate = undefined;
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(audioContexts).toHaveLength(2);
+    expect(audioContexts[1].state).toBe("running");
+    expect(onCaptureStarted).toHaveBeenCalledOnce();
+    expect(onCaptureStarted.mock.calls[0][2]?.phases).toContainEqual(
+      expect.objectContaining({ name: "capture.audio-context-create" }),
+    );
+    expect(onCaptureStarted.mock.calls[0][2]?.audioContext).toBeUndefined();
+    expect(onCaptureFailure).not.toHaveBeenCalled();
+  });
+
+  it("keeps one prepared graph after StrictMode effect replay and closes it on unmount", async () => {
+    const { unmount } = mountHook(true);
+    await settle();
+    expect(
+      audioContexts.filter((context) => context.state === "running"),
+    ).toHaveLength(1);
+    expect(
+      workletNodes.filter(
+        (worklet) => worklet.disconnect.mock.calls.length === 0,
+      ),
+    ).toHaveLength(1);
+    expect(getUserMedia).not.toHaveBeenCalled();
+
+    unmount();
+    await settle();
+    expect(audioContexts.every((context) => context.state === "closed")).toBe(
+      true,
+    );
+    expect(
+      workletNodes.every(
+        (worklet) => worklet.disconnect.mock.calls.length === 1,
+      ),
+    ).toBe(true);
+    expect(captureRendererException).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])(
     "refreshes before every capture when enabled (ranked input: %s)",
     async (ranked) => {
@@ -744,14 +847,13 @@ describe("useAudioCapture lifecycle", () => {
     expect(onCaptureFailure).toHaveBeenCalledOnce();
   });
 
-  it("batches cold and warm startup and first-frame phases for their own session", async () => {
+  it("keeps prewarm timing out of capture batches and reports first-frame phases per session", async () => {
     const { rerender, onCaptureStarted, onCaptureTimings } = mountHook();
-    rerender({ enabled: true, idle: false, sessionId: "cold" });
+    rerender({ enabled: true, idle: false, sessionId: "first" });
     await settle();
     const startup = onCaptureStarted.mock.calls[0][2];
     expect(startup?.phases.map((phase) => phase.name)).toEqual([
       "capture.get-user-media",
-      "capture.audio-context-create",
     ]);
 
     // An empty final frame must not claim that real PCM arrived.
@@ -767,7 +869,7 @@ describe("useAudioCapture lifecycle", () => {
       });
     });
     expect(onCaptureTimings).toHaveBeenCalledWith(
-      "cold",
+      "first",
       expect.objectContaining({
         phases: [
           expect.objectContaining({
@@ -780,7 +882,11 @@ describe("useAudioCapture lifecycle", () => {
 
     rerender({ enabled: true, idle: false, sessionId: "warm" });
     await settle();
-    expect(onCaptureTimings).toHaveBeenCalledWith("cold", { phases: [] }, true);
+    expect(onCaptureTimings).toHaveBeenCalledWith(
+      "first",
+      { phases: [] },
+      true,
+    );
     const warm = onCaptureStarted.mock.calls[1][2];
     expect(warm?.phases.map((phase) => phase.name)).toEqual([
       "capture.get-user-media",
@@ -864,7 +970,8 @@ describe("useAudioCapture lifecycle", () => {
     } as never);
     await settle();
     expect(getUserMedia).not.toHaveBeenCalled();
-    expect(workletNodes).toHaveLength(0);
+    expect(workletNodes).toHaveLength(1);
+    expect(audioContexts[0].state).toBe("closed");
     expect(onCaptureTimings).toHaveBeenCalledWith(
       "session-1",
       { phases: [] },
@@ -872,7 +979,7 @@ describe("useAudioCapture lifecycle", () => {
     );
   });
 
-  it("reports startup timings and releases capture when unmounted during worklet loading", async () => {
+  it("closes pending prewarm after unmount without opening the microphone", async () => {
     const pendingModule = Promise.withResolvers<undefined>();
     (globalThis as Record<string, unknown>).AudioContext = class extends (
       FakeAudioContext
@@ -889,12 +996,9 @@ describe("useAudioCapture lifecycle", () => {
     await settle();
 
     expect(context.close).toHaveBeenCalledOnce();
-    expect(streams[0].track.stop).toHaveBeenCalled();
+    expect(getUserMedia).not.toHaveBeenCalled();
     const batch = onCaptureTimings.mock.calls[0][1] as CaptureTimingsBatch;
-    expect(batch.phases.map((phase) => phase.name)).toEqual([
-      "capture.get-user-media",
-      "capture.audio-context-create",
-    ]);
+    expect(batch.phases).toEqual([]);
   });
 
   it("falls back to first-channel capture if the config IPC read fails", async () => {
@@ -965,7 +1069,8 @@ describe("useAudioCapture lifecycle", () => {
       },
       { phases: [] },
     );
-    expect(audioContexts).toHaveLength(0);
+    expect(audioContexts).toHaveLength(1);
+    expect(audioContexts[0].state).toBe("closed");
   });
 
   it("I-55 ignores a capture failure from a replaced session", async () => {
@@ -1204,21 +1309,190 @@ describe("useAudioCapture lifecycle", () => {
     expect(sources[1].connect).toHaveBeenCalledWith(workletNodes[0]);
   });
 
-  it("recycles (closes) the warm context once idle for the recycle delay", async () => {
+  it("closes after one hour idle and creates a new context on the next dictation", async () => {
+    vi.useFakeTimers();
     const { rerender } = mountHook();
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
-    // Stop and go idle -> idle effect schedules the (mocked-short) recycle timer.
+    // The idle window starts after the recording's cleanup.
     rerender({ enabled: false, idle: true, sessionId: null });
     await settle();
-    // Wait past the 5ms mocked recycle delay.
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await vi.advanceTimersByTimeAsync(AUDIO_CONTEXT_IDLE_TIMEOUT_MS - 1);
     });
-
+    expect(audioContexts[0].close).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
     expect(audioContexts[0].close).toHaveBeenCalled();
     expect(audioContexts[0].state).toBe("closed");
     expect(workletNodes[0].disconnect).toHaveBeenCalledOnce();
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+    expect(audioContexts).toHaveLength(2);
+    expect(workletNodes).toHaveLength(2);
+  });
+
+  it.each([
+    { idleMinutes: 8, attemptMs: 5_000, replaced: false },
+    { idleMinutes: 1, attemptMs: 5_001, replaced: false },
+    { idleMinutes: 8, attemptMs: 5_001, replaced: true },
+  ])(
+    "recycles only after qualifying cleanup: $idleMinutes idle minutes, $attemptMs ms attempt",
+    async ({ idleMinutes, attemptMs, replaced }) => {
+      vi.useFakeTimers();
+      const { rerender } = mountHook();
+      await settle();
+      await act(async () => vi.advanceTimersByTimeAsync(idleMinutes * 60_000));
+      // Age alone does not trigger replacement while idle.
+      expect(audioContexts).toHaveLength(1);
+      expect(audioContexts[0].close).not.toHaveBeenCalled();
+      rerender({ enabled: true, idle: false, sessionId: "session-1" });
+      await settle();
+      await act(async () => vi.advanceTimersByTimeAsync(attemptMs));
+      expect(audioContexts[0].close).not.toHaveBeenCalled();
+
+      rerender({ enabled: false, idle: true, sessionId: null });
+      await settle();
+      expect(streams[0].track.stop).toHaveBeenCalledOnce();
+      expect(audioContexts).toHaveLength(replaced ? 2 : 1);
+      expect(audioContexts[0].state).toBe(replaced ? "closed" : "running");
+      expect(audioContexts.at(-1)?.state).toBe("running");
+      expect(getUserMedia).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("flushes and replaces a qualifying context before starting the next capture", async () => {
+    vi.useFakeTimers();
+    const { rerender, onAudioChunk, onCaptureStarted } = mountHook();
+    await settle();
+    await act(async () => vi.advanceTimersByTimeAsync(8 * 60_000));
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    await act(async () => vi.advanceTimersByTimeAsync(5_001));
+    const oldWorklet = workletNodes[0];
+    vi.spyOn(oldWorklet.port, "postMessage").mockImplementationOnce(() => {});
+    const replacementLoading = Promise.withResolvers<void>();
+    FakeAudioContext.onCreate = (context) => {
+      context.audioWorklet.addModule.mockReturnValueOnce(
+        replacementLoading.promise,
+      );
+    };
+
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+    expect(audioContexts[0].close).not.toHaveBeenCalled();
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    await act(async () => {
+      oldWorklet.port.onmessage?.({
+        data: {
+          type: "audioFrame",
+          frame: new Float32Array([0.25]),
+          isFinal: true,
+        },
+      });
+    });
+    await settle();
+    expect(onAudioChunk).toHaveBeenCalledWith(
+      "session-1",
+      expect.any(ArrayBuffer),
+      0,
+      true,
+      undefined,
+    );
+    expect(streams[0].track.stop).toHaveBeenCalledOnce();
+    expect(audioContexts[0].state).toBe("closed");
+    expect(audioContexts).toHaveLength(2);
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(onCaptureStarted).toHaveBeenCalledOnce();
+
+    replacementLoading.resolve();
+    await settle();
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(onCaptureStarted).toHaveBeenCalledTimes(2);
+    expect(sources[1].connect).toHaveBeenCalledWith(workletNodes[1]);
+    expect(oldWorklet.port.onmessage).toBeNull();
+  });
+
+  it("reports completed recovery before replacement preparation can delay the final batch", async () => {
+    vi.useFakeTimers();
+    const { rerender, onCaptureTimings } = mountHook();
+    await settle();
+    await act(async () => vi.advanceTimersByTimeAsync(8 * 60_000));
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    await act(async () => {
+      workletNodes[0].port.onmessage?.({
+        data: { type: "audioFrame", frame: new Float32Array([0.25]) },
+      });
+      audioContexts[0].setState("suspended");
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(5_001));
+    const loading = Promise.withResolvers<void>();
+    FakeAudioContext.onCreate = (context) => {
+      context.audioWorklet.addModule.mockReturnValueOnce(loading.promise);
+    };
+    rerender({ enabled: false, idle: true, sessionId: null });
+    await settle();
+    expect(audioContexts).toHaveLength(2);
+    expect(onCaptureTimings).toHaveBeenLastCalledWith(
+      "session-1",
+      expect.objectContaining({
+        audioContext: expect.objectContaining({
+          recoveryAttemptCount: 1,
+          recoverySuccessCount: 1,
+        }),
+      }),
+      false,
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(16_000));
+    expect(onCaptureTimings.mock.lastCall?.[2]).toBe(false);
+    loading.resolve();
+    await settle();
+    expect(onCaptureTimings.mock.lastCall?.[2]).toBe(true);
+  });
+
+  it("leaves the context closed if the idle deadline expires while replacement is closing it", async () => {
+    vi.useFakeTimers();
+    const { rerender } = mountHook();
+    await settle();
+    await act(async () => vi.advanceTimersByTimeAsync(8 * 60_000));
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    await act(async () => vi.advanceTimersByTimeAsync(5_001));
+    const closing = Promise.withResolvers<void>();
+    audioContexts[0].close.mockImplementationOnce(async () => {
+      audioContexts[0].setState("closed");
+      await closing.promise;
+    });
+    rerender({ enabled: false, idle: true, sessionId: null });
+    await settle();
+    expect(audioContexts[0].close).toHaveBeenCalledOnce();
+    await act(async () =>
+      vi.advanceTimersByTimeAsync(AUDIO_CONTEXT_IDLE_TIMEOUT_MS),
+    );
+    closing.resolve();
+    await settle();
+    expect(audioContexts).toHaveLength(1);
+    expect(audioContexts[0].state).toBe("closed");
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(captureRendererException).not.toHaveBeenCalled();
+  });
+
+  it("restarts the full idle hour after a short recording on an old context", async () => {
+    vi.useFakeTimers();
+    const { rerender } = mountHook();
+    await settle();
+    await act(async () => vi.advanceTimersByTimeAsync(59 * 60_000));
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    rerender({ enabled: false, idle: true, sessionId: null });
+    await settle();
+    await act(async () =>
+      vi.advanceTimersByTimeAsync(AUDIO_CONTEXT_IDLE_TIMEOUT_MS - 1),
+    );
+    expect(audioContexts).toHaveLength(1);
+    expect(audioContexts[0].close).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(audioContexts[0].close).toHaveBeenCalledOnce();
   });
 
   it("recovers an active context suspension and reports the outcome", async () => {
@@ -1325,10 +1599,12 @@ describe("useAudioCapture lifecycle", () => {
 
   it("reports context construction failure and releases the microphone", async () => {
     const failure = new Error("Audio service unavailable");
+    const { rerender, onCaptureFailure } = mountHook();
+    await settle();
+    audioContexts[0].state = "closed";
     FakeAudioContext.onCreate = () => {
       throw failure;
     };
-    const { rerender, onCaptureFailure } = mountHook();
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
     expect(captureRendererException).toHaveBeenCalledOnce();
@@ -1371,10 +1647,12 @@ describe("useAudioCapture lifecycle", () => {
 
   it("reports worklet loading failure and releases the microphone and context", async () => {
     const failure = new Error("Could not load processor");
+    const { rerender, onCaptureFailure } = mountHook();
+    await settle();
+    audioContexts[0].state = "closed";
     FakeAudioContext.onCreate = (context) => {
       context.audioWorklet.addModule.mockRejectedValueOnce(failure);
     };
-    const { rerender, onCaptureFailure } = mountHook();
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
     expect(captureRendererException).toHaveBeenCalledOnce();
@@ -1390,7 +1668,7 @@ describe("useAudioCapture lifecycle", () => {
       failureOperation: "worklet-load",
       failureState: "running",
     });
-    expect(audioContexts[0].close).toHaveBeenCalledOnce();
+    expect(audioContexts[1].close).toHaveBeenCalledOnce();
     expect(streams[0].track.stop).toHaveBeenCalledOnce();
   });
 
