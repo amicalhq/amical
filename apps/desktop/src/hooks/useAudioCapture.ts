@@ -21,6 +21,7 @@ import {
 } from "./audioCaptureDevice";
 import { computeIdleRecycleDelayMs } from "./audioCaptureRecycle";
 import { useAudioInputDeviceCache } from "./useAudioInputDeviceCache";
+import { monitorAudioContextRecovery } from "./audioContextRecovery";
 import {
   attachAudioWorkletFrameHandler,
   createWorkletFlushRequest,
@@ -124,6 +125,7 @@ export const useAudioCapture = ({
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const trackCleanupRef = useRef<(() => void) | null>(null);
+  const contextRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const mutexRef = useRef(new Mutex());
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleRef = useRef(idle);
@@ -151,11 +153,10 @@ export const useAudioCapture = ({
       timings: AudioCaptureTimings,
       complete: boolean,
     ) => {
-      onCaptureTimingsRef.current?.(
-        captureSessionId,
-        timings.takeBatch(),
-        complete,
-      );
+      const batch = timings.takeBatch();
+      if (complete || batch.phases.length > 0 || batch.audioContext) {
+        onCaptureTimingsRef.current?.(captureSessionId, batch, complete);
+      }
     },
     [],
   );
@@ -213,6 +214,8 @@ export const useAudioCapture = ({
   // Fully release every audio resource (mic stream, nodes, context). The caller
   // must hold the mutex. Safe to call with any subset already torn down.
   const releaseAll = useCallback(async () => {
+    contextRecoveryCleanupRef.current?.();
+    contextRecoveryCleanupRef.current = null;
     pendingWorkletFlushRef.current?.finish();
     pendingWorkletFlushRef.current = null;
     if (workletNodeRef.current) {
@@ -243,7 +246,10 @@ export const useAudioCapture = ({
   }, [resetBars]);
 
   const startCapture = useCallback(
-    async (onEnded: () => void, timings: AudioCaptureTimings) => {
+    async (
+      onFailure: (error: unknown) => void,
+      timings: AudioCaptureTimings,
+    ) => {
       const captureSessionId = sessionId!;
       const microphonePriority = microphonePriorityRef.current;
       // StrictMode can remount and call us before the teardown effect's cleanup is
@@ -291,6 +297,10 @@ export const useAudioCapture = ({
             trackCleanupRef.current?.();
             const removeTrackDiagnostics =
               audioCaptureDiagnostics.registerTrack(audioTrack);
+            const onEnded = () =>
+              onFailure(
+                new Error("Microphone capture track ended unexpectedly"),
+              );
             audioTrack.addEventListener("ended", onEnded);
             trackCleanupRef.current = () => {
               audioTrack.removeEventListener("ended", onEnded);
@@ -310,6 +320,7 @@ export const useAudioCapture = ({
                 sampleRate: SAMPLE_RATE,
                 audioWorkletUrl,
                 timings,
+                sessionId: captureSessionId,
               });
             if (audioContextRef.current !== audioContext) {
               workletNodeRef.current = null;
@@ -329,6 +340,8 @@ export const useAudioCapture = ({
               audioContextRef.current,
               streamRef.current,
               workletNodeRef.current,
+              captureSessionId,
+              timings,
             );
             sourceRef.current = source;
             workletNodeRef.current = workletNode;
@@ -371,6 +384,13 @@ export const useAudioCapture = ({
               finishPendingFlush: (didFlush) =>
                 pendingWorkletFlushRef.current?.finish(didFlush),
             });
+
+            contextRecoveryCleanupRef.current = monitorAudioContextRecovery(
+              audioContext,
+              captureSessionId,
+              onFailure,
+              timings,
+            );
 
             // Start this session before connecting its input. The processor
             // stays inactive after the previous session's final flush.
@@ -507,7 +527,11 @@ export const useAudioCapture = ({
   }, []);
 
   const stopCapture = useCallback(async () => {
+    contextRecoveryCleanupRef.current?.();
+    contextRecoveryCleanupRef.current = null;
     await mutexRef.current.runExclusive(async () => {
+      contextRecoveryCleanupRef.current?.();
+      contextRecoveryCleanupRef.current = null;
       console.log("AudioCapture: Stopping audio capture");
       try {
         // Flush while still connected. The processor stops accepting input
@@ -557,13 +581,15 @@ export const useAudioCapture = ({
 
     // Retire both startup errors and track-loss reports before teardown.
     let isCurrentAttempt = true;
+    let failureReported = false;
     // A collector belongs to this effect's capture attempt until it stops.
     // A later session cannot steal its pending phases.
     const timings = new AudioCaptureTimings();
     const reportFailure = (error: unknown) => {
-      if (!isCurrentAttempt) {
+      if (!isCurrentAttempt || failureReported) {
         return;
       }
+      failureReported = true;
 
       const reportCaptureFailure = onCaptureFailureRef.current;
       if (reportCaptureFailure) {
@@ -576,9 +602,7 @@ export const useAudioCapture = ({
         );
       }
     };
-    startCapture(() => {
-      reportFailure(new Error("Microphone capture track ended unexpectedly"));
-    }, timings).catch((error) => {
+    startCapture(reportFailure, timings).catch((error) => {
       console.error("AudioCapture: Failed to start:", error);
       reportFailure(error);
     });
@@ -592,6 +616,8 @@ export const useAudioCapture = ({
         .finally(() => {
           reportTimings(sessionId, timings, true);
         });
+      // Publish incidents before optional graph replacement delays completion.
+      reportTimings(sessionId, timings, false);
     };
   }, [enabled, sessionId, startCapture, stopCapture, reportTimings]);
 

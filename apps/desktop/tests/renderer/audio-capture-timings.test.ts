@@ -8,6 +8,34 @@ afterEach(() => {
 });
 
 describe("capture timings", () => {
+  it("keeps cumulative recovery snapshots without mutating earlier batches", () => {
+    const timings = new AudioCaptureTimings();
+    timings.recordAudioContextRecovery("started");
+    const pending = timings.takeBatch();
+    timings.recordAudioContextRecovery("succeeded", 80);
+    timings.recordAudioContextRecovery("started");
+    timings.recordAudioContextRecovery("failed", 25);
+    timings.recordAudioContextFailure("recover", "suspended");
+    const complete = timings.takeBatch();
+
+    expect(pending.audioContext).toEqual({
+      recoveryAttemptCount: 1,
+      recoverySuccessCount: 0,
+      recoveryFailureCount: 0,
+      recoveryDurationMs: 0,
+    });
+    expect(complete.audioContext).toEqual({
+      recoveryAttemptCount: 2,
+      recoverySuccessCount: 1,
+      recoveryFailureCount: 1,
+      recoveryDurationMs: 105,
+      failureOperation: "recover",
+      failureState: "suspended",
+    });
+    expect(timings.takeBatch()).toEqual(complete);
+    expect(new AudioCaptureTimings().takeBatch()).toEqual({ phases: [] });
+  });
+
   it.each([false, true])(
     "preserves a worklet load failure after cleanup; close failure=%s",
     async (closeFails) => {

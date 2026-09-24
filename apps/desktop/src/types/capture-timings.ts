@@ -10,6 +10,28 @@ export const CapturePhaseNameSchema = z.enum([
 
 export type CapturePhaseName = z.infer<typeof CapturePhaseNameSchema>;
 
+export const AudioContextOperationSchema = z.enum([
+  "create",
+  "worklet-load",
+  "graph-setup",
+  "resume",
+  "recover",
+  "unexpected-close",
+]);
+
+export type AudioContextOperation = z.infer<typeof AudioContextOperationSchema>;
+
+export const AudioContextTelemetrySchema = z.object({
+  recoveryAttemptCount: z.number().int().nonnegative(),
+  recoverySuccessCount: z.number().int().nonnegative(),
+  recoveryFailureCount: z.number().int().nonnegative(),
+  recoveryDurationMs: z.number().finite().nonnegative(),
+  failureOperation: AudioContextOperationSchema.optional(),
+  failureState: z.string().optional(),
+});
+
+export type AudioContextTelemetry = z.infer<typeof AudioContextTelemetrySchema>;
+
 export const CaptureTimingsSchema = z.object({
   phases: z
     .array(
@@ -20,6 +42,7 @@ export const CaptureTimingsSchema = z.object({
       }),
     )
     .max(CapturePhaseNameSchema.options.length),
+  audioContext: AudioContextTelemetrySchema.optional(),
 });
 
 export type CaptureTimingsBatch = z.infer<typeof CaptureTimingsSchema>;

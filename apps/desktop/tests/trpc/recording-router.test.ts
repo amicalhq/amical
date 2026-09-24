@@ -3,6 +3,10 @@ import { powerMonitor } from "electron";
 import type { RecordingState } from "../../src/types/recording";
 import { recordingRouter } from "../../src/trpc/routers/recording";
 import * as trace from "../../src/main/telemetry/dictation-trace";
+import {
+  CaptureTimingsSchema,
+  type CaptureTimingsBatch,
+} from "../../src/types/capture-timings";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -63,6 +67,12 @@ describe("recordingRouter capture lifecycle", () => {
         durationMs: 80,
       },
     ],
+    audioContext: {
+      recoveryAttemptCount: 1,
+      recoverySuccessCount: 1,
+      recoveryFailureCount: 0,
+      recoveryDurationMs: 80,
+    },
   };
 
   it("records before readiness and settles capture timings only after the complete batch", async () => {
@@ -71,6 +81,9 @@ describe("recordingRouter capture lifecycle", () => {
       .mockImplementation(() => {});
     const settle = vi
       .spyOn(trace, "settleObligation")
+      .mockImplementation(() => {});
+    const contextSummary = vi
+      .spyOn(trace, "recordAudioContextTelemetry")
       .mockImplementation(() => {});
     const captureStarted = vi.fn();
     const caller = recordingRouter.createCaller({
@@ -83,13 +96,46 @@ describe("recordingRouter capture lifecycle", () => {
     expect(record.mock.invocationCallOrder[0]).toBeLessThan(
       captureStarted.mock.invocationCallOrder[0],
     );
+    expect(contextSummary).toHaveBeenCalledWith("one", timings.audioContext);
+    expect(contextSummary.mock.invocationCallOrder[0]).toBeLessThan(
+      captureStarted.mock.invocationCallOrder[0],
+    );
     await caller.captureTimings({ sessionId: "one", timings, complete: false });
     expect(settle).not.toHaveBeenCalled();
+    expect(contextSummary).toHaveBeenCalledTimes(2);
     await caller.captureTimings({ sessionId: "one", timings, complete: true });
     expect(record.mock.invocationCallOrder.at(-1)).toBeLessThan(
       settle.mock.invocationCallOrder[0],
     );
     expect(settle).toHaveBeenCalledWith("one", "capture.timings");
+    expect(contextSummary).toHaveBeenCalledTimes(3);
+    expect(contextSummary.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      settle.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("validates context summary counters, durations, and operation names", () => {
+    expect(CaptureTimingsSchema.safeParse(timings).success).toBe(true);
+    for (const invalid of [
+      { recoveryAttemptCount: -1 },
+      { recoveryAttemptCount: 0.5 },
+      { recoverySuccessCount: -1 },
+      { recoverySuccessCount: Infinity },
+      { recoveryFailureCount: 0.5 },
+      { recoveryFailureCount: NaN },
+      { recoveryDurationMs: -1 },
+      { recoveryDurationMs: Infinity },
+      { recoveryDurationMs: NaN },
+      { failureOperation: "unknown-operation" },
+      { failureState: 123 },
+    ]) {
+      expect(
+        CaptureTimingsSchema.safeParse({
+          ...timings,
+          audioContext: { ...timings.audioContext, ...invalid },
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("rejects unknown phases, nonfinite times, and oversized timing batches", async () => {
@@ -116,16 +162,26 @@ describe("recordingRouter capture lifecycle", () => {
     const record = vi
       .spyOn(trace, "recordCapturePhases")
       .mockImplementation(() => {});
+    const contextSummary = vi
+      .spyOn(trace, "recordAudioContextTelemetry")
+      .mockImplementation(() => {});
     const captureFailed = vi.fn();
     const caller = recordingRouter.createCaller({
       services: {
         recordingLifecycle: { captureFailed },
       },
     } as never);
-    const completed = {
+    const completed: CaptureTimingsBatch = {
       phases: [
         { ...timings.phases[0], name: "capture.enumerate-devices" as const },
       ],
+      audioContext: {
+        ...timings.audioContext,
+        recoverySuccessCount: 0,
+        recoveryFailureCount: 1,
+        failureOperation: "recover",
+        failureState: "suspended",
+      },
     };
     await caller.captureFailed({
       sessionId: "failed",
@@ -134,6 +190,13 @@ describe("recordingRouter capture lifecycle", () => {
     });
     expect(record).toHaveBeenCalledWith("failed", completed.phases);
     expect(record.mock.invocationCallOrder[0]).toBeLessThan(
+      captureFailed.mock.invocationCallOrder[0],
+    );
+    expect(contextSummary).toHaveBeenCalledWith(
+      "failed",
+      completed.audioContext,
+    );
+    expect(contextSummary.mock.invocationCallOrder[0]).toBeLessThan(
       captureFailed.mock.invocationCallOrder[0],
     );
   });

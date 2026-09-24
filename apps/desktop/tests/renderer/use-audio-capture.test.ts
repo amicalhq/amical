@@ -17,6 +17,9 @@ import { renderHook, act } from "@testing-library/react";
 vi.mock("@/assets/audio-recorder-processor.js?url", () => ({
   default: "test-worklet-url",
 }));
+vi.mock("@/renderer/lib/posthog", () => ({
+  captureRendererException: vi.fn(),
+}));
 vi.mock("@/hooks/audioCaptureDiagnostics", () => ({
   audioCaptureDiagnostics: {
     logEnumerateDevicesTiming: vi.fn(),
@@ -42,6 +45,7 @@ import {
 import { api } from "@/trpc/react";
 import type { CaptureTimingsBatch } from "@/types/capture-timings";
 import { DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG } from "@/types/audio-capture";
+import { captureRendererException } from "@/renderer/lib/posthog";
 
 // ── Web Audio fakes ────────────────────────────────────────────────────────────
 interface FakeTrack extends EventTarget {
@@ -126,23 +130,30 @@ class FakeWorkletNode {
   }
 }
 
-class FakeAudioContext {
+class FakeAudioContext extends EventTarget {
+  static onCreate: ((context: FakeAudioContext) => void) | undefined;
   state: "running" | "suspended" | "closed" = "running";
   destination = {};
   audioWorklet = { addModule: vi.fn(async () => undefined) };
   createMediaStreamSource = vi.fn(() => new FakeSourceNode());
   createAnalyser = vi.fn(() => new FakeAnalyserNode());
   resume = vi.fn(async () => {
-    this.state = "running";
+    this.setState("running");
   });
   suspend = vi.fn(async () => {
     this.state = "suspended";
   });
   close = vi.fn(async () => {
-    this.state = "closed";
+    this.setState("closed");
   });
+  setState(state: "running" | "suspended" | "closed") {
+    this.state = state;
+    this.dispatchEvent(new Event("statechange"));
+  }
   constructor(public options: unknown) {
+    super();
     audioContexts.push(this);
+    FakeAudioContext.onCreate?.(this);
   }
 }
 
@@ -207,6 +218,8 @@ const requestedDeviceIds = () =>
   });
 
 beforeEach(() => {
+  FakeAudioContext.onCreate = undefined;
+  vi.mocked(captureRendererException).mockClear();
   audioContexts = [];
   workletNodes = [];
   sources = [];
@@ -1208,6 +1221,191 @@ describe("useAudioCapture lifecycle", () => {
     expect(workletNodes[0].disconnect).toHaveBeenCalledOnce();
   });
 
+  it("recovers an active context suspension and reports the outcome", async () => {
+    const { rerender, onCaptureFailure, onCaptureTimings } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+
+    await act(async () => audioContexts[0].setState("suspended"));
+    expect(audioContexts[0].resume).toHaveBeenCalledOnce();
+    expect(audioContexts[0].state).toBe("running");
+    expect(onCaptureFailure).not.toHaveBeenCalled();
+    rerender({ enabled: false, idle: true, sessionId: null });
+    await settle();
+    expect(onCaptureTimings).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        audioContext: {
+          recoveryAttemptCount: 1,
+          recoverySuccessCount: 1,
+          recoveryFailureCount: 0,
+          recoveryDurationMs: expect.any(Number),
+        },
+      }),
+      true,
+    );
+  });
+
+  it("reports a rejected active resume through the current session failure path", async () => {
+    const { rerender, onCaptureFailure } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    const error = new Error("Audio device unavailable");
+    audioContexts[0].resume.mockRejectedValueOnce(error);
+
+    await act(async () => audioContexts[0].setState("suspended"));
+    expect(onCaptureFailure).toHaveBeenCalledOnce();
+    expect(onCaptureFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        message: error.message,
+      }),
+      expect.anything(),
+    );
+    expect(captureRendererException).toHaveBeenCalledOnce();
+    expect(onCaptureFailure.mock.calls[0][1].audioContext).toEqual({
+      recoveryAttemptCount: 1,
+      recoverySuccessCount: 0,
+      recoveryFailureCount: 1,
+      recoveryDurationMs: expect.any(Number),
+      failureOperation: "recover",
+      failureState: "suspended",
+    });
+
+    rerender({ enabled: false, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(streams[0].track.stop).toHaveBeenCalled();
+  });
+
+  it("does not apply a late resume failure to a later recording", async () => {
+    const { rerender, onCaptureFailure, onCaptureTimings } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    const recovery = Promise.withResolvers<void>();
+    audioContexts[0].resume.mockReturnValueOnce(recovery.promise);
+    await act(async () => audioContexts[0].setState("suspended"));
+
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+    await act(async () => recovery.reject(new Error("Old recovery failed")));
+    expect(onCaptureFailure).not.toHaveBeenCalled();
+    expect(captureRendererException).not.toHaveBeenCalled();
+    expect(onCaptureTimings.mock.calls[0][0]).toBe("session-1");
+    expect(onCaptureTimings.mock.calls[0][1].audioContext).toEqual({
+      recoveryAttemptCount: 1,
+      recoverySuccessCount: 0,
+      recoveryFailureCount: 0,
+      recoveryDurationMs: 0,
+    });
+    rerender({ enabled: false, idle: true, sessionId: null });
+    await settle();
+    expect(onCaptureTimings).toHaveBeenLastCalledWith(
+      "session-2",
+      { phases: [] },
+      true,
+    );
+  });
+
+  it("reports unexpected closure but ignores intentional teardown", async () => {
+    const { rerender, onCaptureFailure, unmount } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    await act(async () => audioContexts[0].setState("closed"));
+    await act(async () => {
+      streams[0].track.dispatchEvent(new Event("ended"));
+    });
+    expect(onCaptureFailure).toHaveBeenCalledOnce();
+    expect(captureRendererException).toHaveBeenCalledOnce();
+
+    unmount();
+    await settle();
+    expect(onCaptureFailure).toHaveBeenCalledOnce();
+    expect(captureRendererException).toHaveBeenCalledOnce();
+  });
+
+  it("reports context construction failure and releases the microphone", async () => {
+    const failure = new Error("Audio service unavailable");
+    FakeAudioContext.onCreate = () => {
+      throw failure;
+    };
+    const { rerender, onCaptureFailure } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(captureRendererException).toHaveBeenCalledOnce();
+    expect(captureRendererException).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({ operation: "create", session_id: "session-1" }),
+    );
+    expect(onCaptureFailure).toHaveBeenCalledOnce();
+    expect(onCaptureFailure.mock.calls[0][1].audioContext).toMatchObject({
+      failureOperation: "create",
+      failureState: undefined,
+    });
+    expect(streams[0].track.stop).toHaveBeenCalledOnce();
+  });
+
+  it("reports a startup resume failure and retires its context", async () => {
+    const { rerender, onCaptureFailure } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    rerender({ enabled: false, idle: false, sessionId: "session-1" });
+    await settle();
+    const failure = new Error("Could not resume audio device");
+    audioContexts[0].state = "suspended";
+    audioContexts[0].resume.mockRejectedValueOnce(failure);
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+    expect(captureRendererException).toHaveBeenCalledOnce();
+    expect(captureRendererException).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({ operation: "resume", session_id: "session-2" }),
+    );
+    expect(onCaptureFailure).toHaveBeenCalledOnce();
+    expect(onCaptureFailure.mock.calls[0][1].audioContext).toMatchObject({
+      failureOperation: "resume",
+      failureState: "suspended",
+    });
+    expect(audioContexts[0].close).toHaveBeenCalledOnce();
+    expect(streams[1].track.stop).toHaveBeenCalledOnce();
+  });
+
+  it("reports worklet loading failure and releases the microphone and context", async () => {
+    const failure = new Error("Could not load processor");
+    FakeAudioContext.onCreate = (context) => {
+      context.audioWorklet.addModule.mockRejectedValueOnce(failure);
+    };
+    const { rerender, onCaptureFailure } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(captureRendererException).toHaveBeenCalledOnce();
+    expect(captureRendererException).toHaveBeenCalledWith(
+      failure,
+      expect.objectContaining({
+        operation: "worklet-load",
+        session_id: "session-1",
+      }),
+    );
+    expect(onCaptureFailure).toHaveBeenCalledOnce();
+    expect(onCaptureFailure.mock.calls[0][1].audioContext).toMatchObject({
+      failureOperation: "worklet-load",
+      failureState: "running",
+    });
+    expect(audioContexts[0].close).toHaveBeenCalledOnce();
+    expect(streams[0].track.stop).toHaveBeenCalledOnce();
+  });
+
+  it("resumes a newly created context if it initially starts suspended", async () => {
+    FakeAudioContext.onCreate = (context) => {
+      context.state = "suspended";
+    };
+    const { rerender } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(audioContexts[0].resume).toHaveBeenCalledOnce();
+    expect(audioContexts[0].state).toBe("running");
+    expect(captureRendererException).not.toHaveBeenCalled();
+  });
+
   it("releases the mic and context on unmount", async () => {
     const { rerender, unmount } = mountHook();
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
@@ -1220,5 +1418,6 @@ describe("useAudioCapture lifecycle", () => {
     expect(track.stop).toHaveBeenCalled();
     expect(audioContexts[0].close).toHaveBeenCalled();
     expect(workletNodes[0].disconnect).toHaveBeenCalledOnce();
+    expect(captureRendererException).not.toHaveBeenCalled();
   });
 });

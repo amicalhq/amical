@@ -1,6 +1,9 @@
 import { Cause, Exit, Option } from "effect";
 import type * as Tracer from "effect/Tracer";
-import type { CaptureTimingsBatch } from "../../types/capture-timings";
+import type {
+  AudioContextTelemetry,
+  CaptureTimingsBatch,
+} from "../../types/capture-timings";
 import { setSpanEndSink } from "../runtime/telemetry-runtime";
 import { logger } from "../logger";
 import { codeOf, tagOf } from "../../types/errors";
@@ -124,6 +127,7 @@ interface SessionTrace {
   defect: boolean;
   chunks: ChunkAggregate | null;
   captureInfo: Record<string, unknown> | null;
+  audioContext: AudioContextTelemetry | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
   flushReason: "settled" | "grace" | null;
   slowSpanCount: number;
@@ -173,6 +177,7 @@ export function openSessionTrace(
     defect: false,
     chunks: null,
     captureInfo: null,
+    audioContext: null,
     graceTimer: null,
     flushReason: null,
     slowSpanCount: 0,
@@ -360,6 +365,19 @@ export function recordCapturePhases(
       process: "renderer",
     });
   }
+}
+
+/** Renderer batches carry cumulative snapshots, including repeated summaries. */
+export function recordAudioContextTelemetry(
+  sessionId: string,
+  audioContext: AudioContextTelemetry,
+): void {
+  const trace = sessions.get(sessionId);
+  if (!trace) {
+    dropLate(sessionId, "capture:audio-context");
+    return;
+  }
+  trace.audioContext = { ...audioContext };
 }
 
 /**
@@ -579,6 +597,24 @@ function flush(trace: SessionTrace): void {
     payload.audio_track_channel_count = trace.captureInfo.trackChannelCount;
     payload.audio_stereo_downmix_enabled =
       trace.captureInfo.stereoDownmixEnabled;
+  }
+  if (trace.audioContext) {
+    const audioContext = trace.audioContext;
+    payload.audio_context_recovery_attempt_count =
+      audioContext.recoveryAttemptCount;
+    payload.audio_context_recovery_success_count =
+      audioContext.recoverySuccessCount;
+    payload.audio_context_recovery_failure_count =
+      audioContext.recoveryFailureCount;
+    payload.audio_context_recovery_duration_ms = roundMs(
+      audioContext.recoveryDurationMs,
+    );
+    if (audioContext.failureOperation !== undefined) {
+      payload.audio_context_failure_operation = audioContext.failureOperation;
+    }
+    if (audioContext.failureState !== undefined) {
+      payload.audio_context_failure_state = audioContext.failureState;
+    }
   }
   for (const record of trace.records) {
     if (record.name === "lifecycle.ambiance-config") {

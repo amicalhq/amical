@@ -64,6 +64,33 @@ describe("renderer PostHog", () => {
 
   afterEach(cleanup);
 
+  it("captures renderer exceptions only after initialization", async () => {
+    const { initializePostHog, captureRendererException } = await import(
+      "../../src/renderer/lib/posthog"
+    );
+    const error = new Error("context unavailable");
+    const properties = { error_context: "audio_context_failure" };
+    captureRendererException(error, properties);
+    expect(mocks.captureException).not.toHaveBeenCalled();
+
+    initializePostHog(
+      {
+        apiKey: "phc_test",
+        host: "https://posthog.test",
+        machineId: "machine-1",
+        enabled: true,
+        feedbackSurveyId: "",
+        commonProperties: {},
+      },
+      "widget",
+    );
+    captureRendererException(error, properties);
+    expect(mocks.captureException).toHaveBeenCalledExactlyOnceWith(
+      error,
+      properties,
+    );
+  });
+
   it("uses the main identity and common properties for renderer exceptions", async () => {
     const { initializePostHog, captureRendererException } = await import(
       "../../src/renderer/lib/posthog"

@@ -13,10 +13,12 @@ import {
   recordPhase,
   tracePhase,
   recordCapturePhases,
+  recordAudioContextTelemetry,
   settleObligation,
 } from "../../src/main/telemetry/dictation-trace";
 import { runPromise } from "../../src/main/runtime/telemetry-runtime";
 import { NetworkFailure } from "../../src/types/errors";
+import type { AudioContextTelemetry } from "../../src/types/capture-timings";
 
 const flushed: Array<Record<string, unknown>> = [];
 
@@ -43,6 +45,85 @@ afterEach(() => {
 });
 
 describe("dictation trace", () => {
+  const recovered: AudioContextTelemetry = {
+    recoveryAttemptCount: 1,
+    recoverySuccessCount: 1,
+    recoveryFailureCount: 0,
+    recoveryDurationMs: 125.125,
+  };
+
+  it("emits the latest cumulative recovery summary once without changing success", () => {
+    install();
+    openSessionTrace("recovered", {});
+    expectObligation("recovered", "capture.timings");
+    recordAudioContextTelemetry("recovered", {
+      ...recovered,
+      recoverySuccessCount: 0,
+      recoveryDurationMs: 0,
+    });
+    recordAudioContextTelemetry("recovered", recovered);
+    closeSessionTrace("recovered", { disposition: "success" });
+    expect(flushed).toHaveLength(0);
+    recordAudioContextTelemetry("recovered", recovered);
+    settleObligation("recovered", "capture.timings");
+    expect(flushed).toHaveLength(1);
+    expect(flushed[0]).toMatchObject({
+      disposition: "success",
+      audio_context_recovery_attempt_count: 1,
+      audio_context_recovery_success_count: 1,
+      audio_context_recovery_failure_count: 0,
+      audio_context_recovery_duration_ms: 125.125,
+      trace_spans: [],
+      trace_points: [],
+    });
+    expect(flushed[0]).not.toHaveProperty("failed_stage");
+    expect(flushed[0]).not.toHaveProperty("error_code");
+    expect(flushed[0]).not.toHaveProperty("audio_context_failure_operation");
+    expect(flushed[0]).not.toHaveProperty("audio_context_failure_state");
+  });
+
+  it("preserves context failure details alongside the existing terminal cause", () => {
+    install();
+    openSessionTrace("context-failure", {});
+    recordAudioContextTelemetry("context-failure", {
+      ...recovered,
+      recoveryAttemptCount: 2,
+      recoveryFailureCount: 1,
+      recoveryDurationMs: 210.5,
+      failureOperation: "recover",
+      failureState: "suspended",
+    });
+    closeSessionTrace("context-failure", {
+      disposition: "failure",
+      failedStage: "capture",
+      errorCode: "MICROPHONE_CAPTURE_FAILED",
+    });
+    expect(flushed).toHaveLength(1);
+    expect(flushed[0]).toMatchObject({
+      disposition: "failure",
+      failed_stage: "capture",
+      error_code: "MICROPHONE_CAPTURE_FAILED",
+      audio_context_recovery_attempt_count: 2,
+      audio_context_recovery_success_count: 1,
+      audio_context_recovery_failure_count: 1,
+      audio_context_recovery_duration_ms: 210.5,
+      audio_context_failure_operation: "recover",
+      audio_context_failure_state: "suspended",
+    });
+  });
+
+  it("omits context properties for clean sessions and drops reports after flush", () => {
+    install();
+    openSessionTrace("clean", {});
+    closeSessionTrace("clean", { disposition: "success" });
+    recordAudioContextTelemetry("clean", recovered);
+    settleObligation("clean", "capture.timings");
+    expect(flushed).toHaveLength(1);
+    expect(
+      Object.keys(flushed[0]).filter((key) => key.startsWith("audio_context_")),
+    ).toEqual([]);
+  });
+
   it("reports the latest observed capture format on the v2 event without leaking arbitrary fields", () => {
     install();
     openSessionTrace("channels", {});

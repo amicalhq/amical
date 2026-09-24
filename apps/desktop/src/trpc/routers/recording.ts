@@ -26,6 +26,7 @@ import {
   type CaptureTimingsBatch,
 } from "../../types/capture-timings";
 import {
+  recordAudioContextTelemetry,
   recordCapturePhases,
   settleObligation,
 } from "../../main/telemetry/dictation-trace";
@@ -36,6 +37,9 @@ function recordCaptureTimings(
 ): void {
   if (timings) {
     recordCapturePhases(sessionId, timings.phases);
+    if (timings.audioContext) {
+      recordAudioContextTelemetry(sessionId, timings.audioContext);
+    }
   }
 }
 
