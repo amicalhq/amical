@@ -4,8 +4,8 @@
 
 const ONE_MINUTE_MS = 60_000;
 
-// Keep the (suspended) AudioContext warm between dictations for fast restarts,
-// then release the hardware context after this long with no new dictation.
+// Keep the running AudioContext and worklet warm between dictations for fast
+// restarts, then close them after this long with no new dictation.
 export const AUDIO_CONTEXT_IDLE_TIMEOUT_MS = 5 * ONE_MINUTE_MS;
 
 // Recycle the AudioContext once it has been alive this long, so a long-lived

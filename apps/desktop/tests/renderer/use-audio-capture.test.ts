@@ -58,9 +58,12 @@ let workletNodes: FakeWorkletNode[] = [];
 let sources: FakeSourceNode[] = [];
 let analysers: FakeAnalyserNode[] = [];
 let streams: FakeStream[] = [];
+let graphEvents: string[] = [];
 
 class FakeSourceNode {
-  connect = vi.fn();
+  connect = vi.fn((node: unknown) => {
+    if (node instanceof FakeWorkletNode) graphEvents.push("source-connect");
+  });
   disconnect = vi.fn();
   constructor() {
     sources.push(this);
@@ -84,9 +87,15 @@ class FakeAnalyserNode {
 }
 
 class FakeWorkletNode {
+  connect = vi.fn();
+  disconnect = vi.fn();
+  messages: Array<{ type: string; stereoDownmixEnabled?: boolean }> = [];
   port: {
     onmessage: ((event: { data: unknown }) => void) | null;
-    postMessage: (msg: { type: string }) => void;
+    postMessage: (msg: {
+      type: string;
+      stereoDownmixEnabled?: boolean;
+    }) => void;
   };
   constructor(
     public context: FakeAudioContext,
@@ -96,9 +105,10 @@ class FakeWorkletNode {
     workletNodes.push(this);
     this.port = {
       onmessage: null,
-      // Simulate the real worklet: on flush, echo back a final audioFrame so the
-      // renderer's waitForWorkletFlush resolves and stopCapture can suspend.
+      // Simulate the real worklet's final frame on flush.
       postMessage: (msg) => {
+        this.messages.push(msg);
+        if (msg?.type === "start") graphEvents.push("start");
         if (msg?.type === "flush") {
           queueMicrotask(() =>
             this.port.onmessage?.({
@@ -117,6 +127,7 @@ class FakeWorkletNode {
 
 class FakeAudioContext {
   state: "running" | "suspended" | "closed" = "running";
+  destination = {};
   audioWorklet = { addModule: vi.fn(async () => undefined) };
   createMediaStreamSource = vi.fn(() => new FakeSourceNode());
   createAnalyser = vi.fn(() => new FakeAnalyserNode());
@@ -200,6 +211,7 @@ beforeEach(() => {
   sources = [];
   analysers = [];
   streams = [];
+  graphEvents = [];
   getUserMedia = vi.fn(async () => makeStream());
   enumerateDevices = vi.fn(async () => []);
   mediaDevices = Object.assign(new EventTarget(), {
@@ -222,7 +234,7 @@ afterEach(() => {
 });
 
 // Let the effect-driven async start/stop bodies (mutex + getUserMedia/addModule/
-// resume/suspend + the flush microtask) settle.
+// context setup + the flush microtask) settle.
 async function settle() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -628,7 +640,6 @@ describe("useAudioCapture lifecycle", () => {
     const warm = onCaptureStarted.mock.calls[1][2];
     expect(warm?.phases.map((phase) => phase.name)).toEqual([
       "capture.get-user-media",
-      "capture.audio-context-resume",
     ]);
   });
 
@@ -643,7 +654,10 @@ describe("useAudioCapture lifecycle", () => {
     expect(workletNodes[0].options).toEqual({
       channelCountMode: "max",
       channelInterpretation: "discrete",
-      processorOptions: { stereoDownmixEnabled: true },
+    });
+    expect(workletNodes[0].messages).toContainEqual({
+      type: "start",
+      stereoDownmixEnabled: true,
     });
     expect(getUserMedia).toHaveBeenCalledWith({
       audio: {
@@ -665,7 +679,9 @@ describe("useAudioCapture lifecycle", () => {
     await settle();
     rerender({ enabled: true, idle: false, sessionId: "session-2" });
     await settle();
-    expect(workletNodes[1].options.processorOptions).toEqual({
+    expect(workletNodes).toHaveLength(1);
+    expect(workletNodes[0].messages.at(-1)).toEqual({
+      type: "start",
       stereoDownmixEnabled: false,
     });
   });
@@ -686,6 +702,7 @@ describe("useAudioCapture lifecycle", () => {
     );
     expect(streams[0].track.stop).toHaveBeenCalled();
     expect(audioContexts[0].state).toBe("closed");
+    expect(workletNodes[0].disconnect).toHaveBeenCalledOnce();
   });
 
   it("does not open the mic after unmount while waiting for config", async () => {
@@ -743,7 +760,8 @@ describe("useAudioCapture lifecycle", () => {
     const { rerender } = mountHook();
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
-    expect(workletNodes[0].options.processorOptions).toEqual({
+    expect(workletNodes[0].messages).toContainEqual({
+      type: "start",
       stereoDownmixEnabled: false,
     });
   });
@@ -836,8 +854,13 @@ describe("useAudioCapture lifecycle", () => {
     expect(audioContexts).toHaveLength(1);
     expect(audioContexts[0].audioWorklet.addModule).toHaveBeenCalledOnce();
     expect(workletNodes).toHaveLength(1);
+    expect(workletNodes[0].connect).toHaveBeenCalledOnce();
+    expect(workletNodes[0].connect).toHaveBeenCalledWith(
+      audioContexts[0].destination,
+    );
     // source connected to the worklet node
     expect(sources[0].connect).toHaveBeenCalledWith(workletNodes[0]);
+    expect(graphEvents).toEqual(["start", "source-connect"]);
     // and tapped by an analyser for the waveform visualiser
     expect(analysers).toHaveLength(1);
     expect(sources[0].connect).toHaveBeenCalledWith(analysers[0]);
@@ -888,33 +911,103 @@ describe("useAudioCapture lifecycle", () => {
     );
   });
 
-  it("keeps the AudioContext warm across dictations but creates a fresh worklet node each time", async () => {
+  it("keeps one running AudioContext and worklet across dictations", async () => {
     const { rerender } = mountHook();
 
     // First dictation.
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
-    // Stop WITHOUT going idle (transient), so the context is suspended, not recycled.
+    // Stop without going idle, so the running context and worklet are retained.
     rerender({ enabled: false, idle: false, sessionId: "session-1" });
     await settle();
 
-    expect(audioContexts[0].suspend).toHaveBeenCalled();
-    expect(audioContexts[0].state).toBe("suspended");
-    // The source is fully disconnected on stop, so its worklet + analyser-tap
-    // edges don't accumulate on the retained warm context.
+    expect(audioContexts[0].suspend).not.toHaveBeenCalled();
+    expect(audioContexts[0].state).toBe("running");
     expect(sources[0].disconnect).toHaveBeenCalledWith();
+    expect(analysers[0].disconnect).toHaveBeenCalledOnce();
+    expect(workletNodes[0].disconnect).not.toHaveBeenCalled();
+    expect(workletNodes[0].messages.map((message) => message.type)).toEqual([
+      "start",
+      "flush",
+    ]);
 
-    // Second dictation reuses the same (warm) context.
+    // Second dictation reuses the same context and worklet.
     rerender({ enabled: true, idle: false, sessionId: "session-2" });
     await settle();
 
-    // Warm reuse: no new AudioContext, no second addModule, context resumed.
+    // Warm reuse: no new AudioContext, module load, or worklet node.
     expect(audioContexts).toHaveLength(1);
     expect(audioContexts[0].audioWorklet.addModule).toHaveBeenCalledOnce();
-    expect(audioContexts[0].resume).toHaveBeenCalled();
-    // Fresh worklet node + analyser per dictation (no stale buffer can survive).
-    expect(workletNodes).toHaveLength(2);
+    expect(audioContexts[0].resume).not.toHaveBeenCalled();
+    expect(workletNodes).toHaveLength(1);
+    expect(workletNodes[0].connect).toHaveBeenCalledOnce();
+    expect(workletNodes[0].messages.map((message) => message.type)).toEqual([
+      "start",
+      "flush",
+      "start",
+    ]);
+    expect(sources).toHaveLength(2);
     expect(analysers).toHaveLength(2);
+    expect(graphEvents).toEqual([
+      "start",
+      "source-connect",
+      "start",
+      "source-connect",
+    ]);
+  });
+
+  it("waits for the previous session's delayed final frame before reusing its worklet", async () => {
+    const { rerender, onAudioChunk, onCaptureStarted } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    const worklet = workletNodes[0];
+    const postMessage = vi
+      .spyOn(worklet.port, "postMessage")
+      .mockImplementationOnce(() => {});
+
+    // Queue the next capture while stop is still waiting for the old worklet.
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: "flush" });
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(onCaptureStarted).toHaveBeenCalledOnce();
+    expect(streams[0].track.stop).not.toHaveBeenCalled();
+
+    await act(async () => {
+      worklet.port.onmessage?.({
+        data: {
+          type: "audioFrame",
+          frame: new Float32Array([0.25]),
+          isFinal: true,
+        },
+      });
+    });
+    await settle();
+    expect(onAudioChunk).toHaveBeenNthCalledWith(
+      1,
+      "session-1",
+      expect.any(ArrayBuffer),
+      0,
+      true,
+      undefined,
+    );
+    expect(streams[0].track.stop).toHaveBeenCalledOnce();
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(workletNodes).toEqual([worklet]);
+
+    await act(async () => {
+      worklet.port.onmessage?.({
+        data: { type: "audioFrame", frame: new Float32Array([0.5]) },
+      });
+    });
+    expect(onAudioChunk).toHaveBeenNthCalledWith(
+      2,
+      "session-2",
+      expect.any(ArrayBuffer),
+      0,
+      false,
+      undefined,
+    );
   });
 
   it("stops the mic track on stop while keeping the context for reuse", async () => {
@@ -928,6 +1021,43 @@ describe("useAudioCapture lifecycle", () => {
 
     expect(track.stop).toHaveBeenCalled();
     expect(audioContexts[0].close).not.toHaveBeenCalled(); // kept warm
+  });
+
+  it("replaces a context and worklet that closed between dictations", async () => {
+    const { rerender } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    rerender({ enabled: false, idle: false, sessionId: "session-1" });
+    await settle();
+
+    audioContexts[0].state = "closed";
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+
+    expect(audioContexts).toHaveLength(2);
+    expect(workletNodes).toHaveLength(2);
+    expect(workletNodes[1].context).toBe(audioContexts[1]);
+    expect(workletNodes[1].connect).toHaveBeenCalledWith(
+      audioContexts[1].destination,
+    );
+  });
+
+  it("resumes a suspended context with its existing worklet", async () => {
+    const { rerender } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    rerender({ enabled: false, idle: false, sessionId: "session-1" });
+    await settle();
+
+    audioContexts[0].state = "suspended";
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+
+    expect(audioContexts).toHaveLength(1);
+    expect(audioContexts[0].resume).toHaveBeenCalledOnce();
+    expect(workletNodes).toHaveLength(1);
+    expect(workletNodes[0].connect).toHaveBeenCalledOnce();
+    expect(sources[1].connect).toHaveBeenCalledWith(workletNodes[0]);
   });
 
   it("recycles (closes) the warm context once idle for the recycle delay", async () => {
@@ -944,6 +1074,7 @@ describe("useAudioCapture lifecycle", () => {
 
     expect(audioContexts[0].close).toHaveBeenCalled();
     expect(audioContexts[0].state).toBe("closed");
+    expect(workletNodes[0].disconnect).toHaveBeenCalledOnce();
   });
 
   it("releases the mic and context on unmount", async () => {
@@ -957,5 +1088,6 @@ describe("useAudioCapture lifecycle", () => {
 
     expect(track.stop).toHaveBeenCalled();
     expect(audioContexts[0].close).toHaveBeenCalled();
+    expect(workletNodes[0].disconnect).toHaveBeenCalledOnce();
   });
 });

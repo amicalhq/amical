@@ -29,7 +29,7 @@ export const createOrResumeAudioContext = async ({
     return { audioContext: currentAudioContext };
   }
 
-  if (currentAudioContext) {
+  if (currentAudioContext && currentAudioContext.state !== "closed") {
     console.log("AudioCapture: AudioContext already running");
     return { audioContext: currentAudioContext };
   }
@@ -64,22 +64,20 @@ export const createOrResumeAudioContext = async ({
 export const createAudioCaptureGraph = (
   audioContext: AudioContext,
   stream: MediaStream,
-  stereoDownmixEnabled: boolean,
+  existingWorkletNode: AudioWorkletNode | null,
 ): {
   source: MediaStreamAudioSourceNode;
   workletNode: AudioWorkletNode;
 } => {
   const nodeCreationStartTime = performance.now();
   const source = audioContext.createMediaStreamSource(stream);
-  const workletNode = new AudioWorkletNode(
-    audioContext,
-    "audio-recorder-processor",
-    {
+  const workletNode =
+    existingWorkletNode ??
+    new AudioWorkletNode(audioContext, "audio-recorder-processor", {
       channelCountMode: "max",
       channelInterpretation: "discrete",
-      processorOptions: { stereoDownmixEnabled },
-    },
-  );
+    });
+  if (!existingWorkletNode) workletNode.connect(audioContext.destination);
   const nodeCreationDuration = performance.now() - nodeCreationStartTime;
   console.log(
     `AudioCapture: Node creation took ${nodeCreationDuration.toFixed(2)}ms`,

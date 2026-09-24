@@ -10,7 +10,11 @@ interface PostedFrame {
 interface Processor {
   port: {
     postMessage: (msg: PostedFrame) => void;
-    onmessage: ((event: { data: { type: string } }) => void) | null;
+    onmessage:
+      | ((event: {
+          data: { type: string; stereoDownmixEnabled?: boolean };
+        }) => void)
+      | null;
   };
   process: (
     inputs: Float32Array[][],
@@ -22,8 +26,7 @@ interface Processor {
 // The worklet module references AudioWorkletProcessor / registerProcessor at load
 // time and does not export its class. Define the globals first, then capture the
 // registered class via a mocked registerProcessor.
-type ProcessorOptions = { processorOptions: { stereoDownmixEnabled: boolean } };
-let ProcessorClass: new (options?: ProcessorOptions) => Processor;
+let ProcessorClass: new () => Processor;
 
 beforeAll(async () => {
   (globalThis as Record<string, unknown>).AudioWorkletProcessor = class {
@@ -43,12 +46,15 @@ beforeAll(async () => {
 });
 
 function makeProcessor(stereoDownmixEnabled = true) {
-  const inst = new ProcessorClass({
-    processorOptions: { stereoDownmixEnabled },
-  });
+  const inst = new ProcessorClass();
   const posted: PostedFrame[] = [];
   inst.port.postMessage = (msg) => posted.push(msg);
+  start(inst, stereoDownmixEnabled);
   return { inst, posted };
+}
+
+function start(inst: Processor, stereoDownmixEnabled = true): void {
+  inst.port.onmessage?.({ data: { type: "start", stereoDownmixEnabled } });
 }
 
 // Ascending ramp so frame boundaries / ordering are easy to assert. Values stay
@@ -176,27 +182,41 @@ describe("audio-recorder-processor worklet", () => {
     expect(posted[0].frame).toHaveLength(0);
   });
 
-  it("does not bleed audio across dictations: post-flush input is not prepended with stale samples", () => {
+  it("stays inactive after flush and starts the next dictation with an empty buffer", () => {
     const { inst, posted } = makeProcessor();
     feed(inst, ramp(400, 1)); // values 1..400
     flush(inst); // drains the 400
     posted.length = 0;
 
-    feed(inst, ramp(100, 9000)); // a later utterance on the same instance
+    feed(inst, ramp(100, 5000)); // no post-flush audio may enter the next session
+    expect(posted).toHaveLength(0);
+    start(inst);
+    feed(inst, ramp(100, 9000));
     flush(inst);
     expect(posted).toHaveLength(1);
-    expect(posted[0].frame).toHaveLength(100); // would be 500 if it bled
+    expect(posted[0].frame).toHaveLength(100);
     expect(posted[0].frame[0]).toBe(9000); // starts with new audio, no stale 1..400
   });
 
-  it("a fresh processor instance starts empty (the per-dictation-node guarantee)", () => {
-    const a = makeProcessor();
-    feed(a.inst, ramp(400)); // never flushed; left buffered on instance A
+  it("start resets an unflushed partial frame and updates downmix for the next session", () => {
+    const { inst, posted } = makeProcessor(true);
+    feed(inst, ramp(400));
+    start(inst, false);
+    const left = new Float32Array(512).fill(0.25);
+    inst.process([[left, new Float32Array(512).fill(0.75)]], [], {});
+    expect(posted).toHaveLength(1);
+    expect(posted[0].frame).toEqual(left);
+  });
 
-    // The hook creates a brand-new node per dictation; instance B must be empty.
-    const b = makeProcessor();
-    flush(b.inst);
-    expect(b.posted[0].frame).toHaveLength(0);
+  it("does not record before its first start message", () => {
+    const inst = new ProcessorClass();
+    const posted: PostedFrame[] = [];
+    inst.port.postMessage = (msg) => posted.push(msg);
+    feed(inst, ramp(512));
+    expect(posted).toHaveLength(0);
+    start(inst);
+    feed(inst, ramp(512));
+    expect(posted).toHaveLength(1);
   });
 
   it("ignores empty/absent input and keeps the node alive (process returns true)", () => {

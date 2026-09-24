@@ -1,16 +1,22 @@
 class AudioRecorderProcessor extends AudioWorkletProcessor {
-  constructor(options) {
+  constructor() {
     super();
     this.frameSize = 512; // 32ms at 16kHz
     this.sampleRate = 16000;
     this.buffer = [];
-    this.stereoDownmixEnabled =
-      options?.processorOptions?.stereoDownmixEnabled === true;
+    this.stereoDownmixEnabled = false;
     this.inputChannelCount = 0;
+    this.recording = false;
 
     // Listen for control messages
     this.port.onmessage = (event) => {
-      if (event.data.type === "flush") {
+      if (event.data.type === "start") {
+        this.buffer = [];
+        this.inputChannelCount = 0;
+        this.stereoDownmixEnabled = event.data.stereoDownmixEnabled === true;
+        this.recording = true;
+      } else if (event.data.type === "flush") {
+        this.recording = false;
         this.flushBuffer();
       }
     };
@@ -30,6 +36,7 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs, outputs, parameters) {
+    if (!this.recording) return true;
     const input = inputs[0];
     if (!input || !input[0]) return true;
 

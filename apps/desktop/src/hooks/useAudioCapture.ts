@@ -226,6 +226,7 @@ export const useAudioCapture = ({
         // Nodes may already be detached or on a closed context.
       }
     }
+    workletNodeRef.current?.disconnect();
     analyserRef.current?.disconnect();
     analyserRef.current = null;
     freqDataRef.current = null;
@@ -255,7 +256,7 @@ export const useAudioCapture = ({
             console.log("AudioCapture: Starting audio capture");
 
             // A new dictation started — cancel any pending idle teardown so the
-            // warm AudioContext is resumed rather than closed out from under us.
+            // warm AudioContext can be reused without being closed during startup.
             clearIdleTimer();
 
             // Read main's current cached config for each dictation. Do not
@@ -305,6 +306,9 @@ export const useAudioCapture = ({
                 audioWorkletUrl,
                 timings,
               });
+            if (audioContextRef.current !== audioContext) {
+              workletNodeRef.current = null;
+            }
             audioContextRef.current = audioContext;
             if (createdAt !== undefined) {
               contextCreatedAtRef.current = createdAt;
@@ -319,7 +323,7 @@ export const useAudioCapture = ({
             const { source, workletNode } = createAudioCaptureGraph(
               audioContextRef.current,
               streamRef.current,
-              stereoDownmixEnabled,
+              workletNodeRef.current,
             );
             sourceRef.current = source;
             workletNodeRef.current = workletNode;
@@ -363,7 +367,12 @@ export const useAudioCapture = ({
                 pendingWorkletFlushRef.current?.finish(didFlush),
             });
 
-            // Connect audio graph
+            // Start this session before connecting its input. The processor
+            // stays inactive after the previous session's final flush.
+            workletNode.port.postMessage({
+              type: "start",
+              stereoDownmixEnabled,
+            });
             sourceRef.current.connect(workletNodeRef.current);
             timings.startFirstFrameWait();
 
@@ -471,10 +480,10 @@ export const useAudioCapture = ({
 
   // Resolves true once the worklet's final buffer has been flushed (or there is
   // nothing to flush), false if the flush request failed or timed out — in which
-  // case the caller must force a full release rather than just suspend.
+  // case the caller must force a full release.
   const waitForWorkletFlush = useCallback(async (): Promise<boolean> => {
     const workletNode = workletNodeRef.current;
-    if (!workletNode) {
+    if (!streamRef.current || !workletNode) {
       return true;
     }
 
@@ -496,18 +505,11 @@ export const useAudioCapture = ({
     await mutexRef.current.runExclusive(async () => {
       console.log("AudioCapture: Stopping audio capture");
       try {
-        // Flush while still connected so the worklet remains pulled by the
-        // render graph. Any post-flush samples are harmless because this node is
-        // per-dictation and is dropped before the next recording.
+        // Flush while still connected. The processor stops accepting input
+        // before it sends its final frame.
         const didFlush = await waitForWorkletFlush();
         if (!didFlush) {
           await releaseAll();
-          return;
-        }
-        // Suspend (not close) so the next dictation can resume it. The source's
-        // edges are dropped in the finally, so every stop path cleans them up.
-        if (audioContextRef.current?.state === "running") {
-          await audioContextRef.current.suspend().catch(() => {});
         }
       } catch (error) {
         console.error("AudioCapture: Error during stop:", error);
@@ -517,9 +519,8 @@ export const useAudioCapture = ({
         trackCleanupRef.current?.();
         trackCleanupRef.current = null;
         streamRef.current?.getTracks().forEach((track) => track.stop());
-        // Keep the suspended AudioContext for reuse; drop per-dictation nodes and
-        // stream. Fully disconnect the source first so its worklet + analyser-tap
-        // edges don't leave stopped nodes attached to the retained context.
+        // Drop this dictation's input and analyser. Keep the worklet connected
+        // to the destination so it is ready for the next input.
         if (sourceRef.current) {
           try {
             sourceRef.current.disconnect();
@@ -527,8 +528,8 @@ export const useAudioCapture = ({
             // Already detached or on a closed context.
           }
         }
+        analyserRef.current?.disconnect();
         sourceRef.current = null;
-        workletNodeRef.current = null;
         streamRef.current = null;
         analyserRef.current = null;
         freqDataRef.current = null;
