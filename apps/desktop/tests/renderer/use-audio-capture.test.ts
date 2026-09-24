@@ -41,6 +41,7 @@ import {
 } from "@/hooks/useAudioCapture";
 import { api } from "@/trpc/react";
 import type { CaptureTimingsBatch } from "@/types/capture-timings";
+import { DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG } from "@/types/audio-capture";
 
 // ── Web Audio fakes ────────────────────────────────────────────────────────────
 interface FakeTrack extends EventTarget {
@@ -282,6 +283,136 @@ function mountHook() {
 }
 
 describe("useAudioCapture lifecycle", () => {
+  it.each([false, true])(
+    "refreshes before every capture when enabled (ranked input: %s)",
+    async (ranked) => {
+      if (ranked) setPriority("mic-b", "mic-a");
+      const endpoint = api.useUtils().client.remoteConfig.get;
+      const config = await endpoint.query();
+      vi.spyOn(endpoint, "query").mockResolvedValue({
+        ...config,
+        flags: {
+          ...config.flags,
+          [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: true,
+        },
+      });
+      let now = 0;
+      vi.spyOn(performance, "now").mockImplementation(() => now);
+      enumerateDevices.mockResolvedValueOnce([inputDevice("mic-a")]);
+      const pending = Promise.withResolvers<MediaDeviceInfo[]>();
+      enumerateDevices.mockReturnValueOnce(pending.promise);
+      enumerateDevices.mockResolvedValue([inputDevice("mic-a")]);
+      const { rerender, onCaptureStarted } = mountHook();
+      await settle();
+
+      rerender({ enabled: true, idle: false, sessionId: "session-1" });
+      await settle();
+      expect(enumerateDevices).toHaveBeenCalledTimes(2);
+      expect(getUserMedia).not.toHaveBeenCalled();
+      now = 100;
+      pending.resolve([inputDevice("mic-a"), inputDevice("mic-b")]);
+      await settle();
+      expect(requestedDeviceIds()).toEqual([ranked ? "mic-b" : "default"]);
+      expect(onCaptureStarted.mock.calls[0][2]?.phases).toContainEqual(
+        expect.objectContaining({
+          name: "capture.enumerate-devices",
+          durationMs: 100,
+        }),
+      );
+
+      rerender({ enabled: false, idle: false, sessionId: "session-1" });
+      await settle();
+      rerender({ enabled: true, idle: false, sessionId: "session-2" });
+      await settle();
+      expect(enumerateDevices).toHaveBeenCalledTimes(3);
+      expect(requestedDeviceIds()).toEqual(
+        ranked ? ["mic-b", "mic-a"] : ["default", "default"],
+      );
+    },
+  );
+
+  it("applies the refresh flag on the next capture and returns to cached starts when disabled", async () => {
+    setPriority("mic-b", "mic-a");
+    const endpoint = api.useUtils().client.remoteConfig.get;
+    const config = await endpoint.query();
+    const query = vi.spyOn(endpoint, "query").mockResolvedValue({
+      ...config,
+      flags: {
+        ...config.flags,
+        [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: false,
+      },
+    });
+    enumerateDevices.mockResolvedValueOnce([inputDevice("mic-a")]);
+    enumerateDevices.mockResolvedValue([inputDevice("mic-b")]);
+    const { rerender } = mountHook();
+    await settle();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(enumerateDevices).toHaveBeenCalledOnce();
+
+    query.mockResolvedValue({
+      ...config,
+      flags: {
+        ...config.flags,
+        [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: true,
+      },
+    });
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(enumerateDevices).toHaveBeenCalledOnce();
+    expect(streams[0].track.stop).not.toHaveBeenCalled();
+
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+    expect(enumerateDevices).toHaveBeenCalledTimes(2);
+    expect(requestedDeviceIds()).toEqual(["mic-a", "mic-b"]);
+
+    query.mockResolvedValue({
+      ...config,
+      flags: {
+        ...config.flags,
+        [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: false,
+      },
+    });
+    rerender({ enabled: true, idle: false, sessionId: "session-3" });
+    await settle();
+    expect(enumerateDevices).toHaveBeenCalledTimes(2);
+    expect(requestedDeviceIds()).toEqual(["mic-a", "mic-b", "mic-b"]);
+  });
+
+  it("falls back to default without repeating a failed startup refresh", async () => {
+    setPriority("mic-a");
+    const endpoint = api.useUtils().client.remoteConfig.get;
+    const config = await endpoint.query();
+    vi.spyOn(endpoint, "query").mockResolvedValue({
+      ...config,
+      flags: {
+        ...config.flags,
+        [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: true,
+      },
+    });
+    enumerateDevices.mockResolvedValueOnce([inputDevice("mic-a")]);
+    enumerateDevices.mockRejectedValue(new Error("enumeration unavailable"));
+    let enumerationsAtOpen = 0;
+    getUserMedia.mockImplementation(async () => {
+      enumerationsAtOpen = enumerateDevices.mock.calls.length;
+      return makeStream();
+    });
+    const { rerender, onCaptureStarted } = mountHook();
+    await settle();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(requestedDeviceIds()).toEqual(["default"]);
+    expect(onCaptureStarted).toHaveBeenCalledOnce();
+    // One initial snapshot, then the forced refresh and its readiness retry.
+    expect(enumerationsAtOpen).toBe(3);
+    expect(
+      onCaptureStarted.mock.calls[0][2]?.phases.filter(
+        (phase) => phase.name === "capture.enumerate-devices",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("starts on the default device without waiting for initial enumeration", async () => {
     const pending = Promise.withResolvers<MediaDeviceInfo[]>();
     enumerateDevices.mockReturnValueOnce(pending.promise);

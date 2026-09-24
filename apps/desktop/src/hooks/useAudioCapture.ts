@@ -5,6 +5,7 @@ import type { CaptureFailure } from "@/types/recording";
 import type { CaptureTimingsBatch } from "@/types/capture-timings";
 import { AudioCaptureTimings } from "./audioCaptureTimings";
 import {
+  DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG,
   DESKTOP_STEREO_MIC_DOWNMIX_FLAG,
   type AudioCaptureInfo,
 } from "@/types/audio-capture";
@@ -259,8 +260,8 @@ export const useAudioCapture = ({
             // warm AudioContext can be reused without being closed during startup.
             clearIdleTimer();
 
-            // Read main's current cached config for each dictation. Do not
-            // switch channel handling partway through an utterance.
+            // Read main's cached config once per dictation so capture options
+            // stay fixed throughout the utterance.
             const remoteConfig = await utils.client.remoteConfig.get
               .query()
               .catch((error) => {
@@ -278,6 +279,10 @@ export const useAudioCapture = ({
               await acquireMicrophoneStream({
                 microphonePriority,
                 deviceCache,
+                refreshDeviceCache:
+                  remoteConfig?.flags[
+                    DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG
+                  ] === true,
                 sampleRate: SAMPLE_RATE,
                 timings,
               });

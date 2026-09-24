@@ -21,7 +21,10 @@ import {
 import type { SettingsService } from "../../src/services/settings-service";
 import type { TelemetryService } from "../../src/services/telemetry-service";
 import { logger } from "../../src/main/logger";
-import { DESKTOP_STEREO_MIC_DOWNMIX_FLAG } from "../../src/types/audio-capture";
+import {
+  DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG,
+  DESKTOP_STEREO_MIC_DOWNMIX_FLAG,
+} from "../../src/types/audio-capture";
 
 describe("RemoteConfigService", () => {
   type PersistedRemoteConfig = Awaited<
@@ -303,6 +306,7 @@ describe("RemoteConfigService", () => {
         flags: {
           [DESKTOP_BACKGROUND_UPDATES_FLAG]: true,
           [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: true,
+          [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: false,
         },
       },
     });
@@ -332,6 +336,42 @@ describe("RemoteConfigService", () => {
     expect(service.getConfig().flags[DESKTOP_STEREO_MIC_DOWNMIX_FLAG]).toBe(
       true,
     );
+  });
+
+  it("defaults device refresh to false and accepts a remote override", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const { service } = await createService();
+    await service.refresh();
+    expect(
+      service.getConfig().flags[DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG],
+    ).toBe(false);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          version: 1,
+          flags: { [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: true },
+        }),
+      }),
+    );
+    await service.refresh();
+    expect(
+      service.getConfig().flags[DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG],
+    ).toBe(true);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: 1 }),
+      }),
+    );
+    await service.refresh();
+    expect(
+      service.getConfig().flags[DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG],
+    ).toBe(false);
   });
 
   it("preserves an explicit false flag from the server", async () => {

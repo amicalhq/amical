@@ -9,6 +9,7 @@ import {
 export interface AcquireMicrophoneStreamOptions {
   microphonePriority: MicrophonePriorityEntry[] | undefined;
   deviceCache: AudioInputDeviceCache;
+  refreshDeviceCache: boolean;
   sampleRate: number;
   timings: AudioCaptureTimings;
 }
@@ -103,6 +104,7 @@ export interface AcquiredMicrophoneStream {
 export const acquireMicrophoneStream = async ({
   microphonePriority,
   deviceCache,
+  refreshDeviceCache,
   sampleRate,
   timings,
 }: AcquireMicrophoneStreamOptions): Promise<AcquiredMicrophoneStream> => {
@@ -113,6 +115,15 @@ export const acquireMicrophoneStream = async ({
     noiseSuppression: false,
     autoGainControl: false,
   };
+
+  const refreshDevices = () =>
+    timings.measure("capture.enumerate-devices", async () => {
+      await deviceCache.refresh();
+      return deviceCache.ready();
+    });
+
+  // Remote safeguard for devices that miss change notifications.
+  const refreshedDevices = refreshDeviceCache ? await refreshDevices() : null;
 
   const selectPreferredDevice = (audioInputDevices: MediaDeviceInfo[]) => {
     const activeDeviceId = resolveActiveMicrophone(
@@ -136,7 +147,7 @@ export const acquireMicrophoneStream = async ({
 
   let preferredDevice: MediaDeviceInfo | undefined;
   if (microphonePriority?.length) {
-    const cached = deviceCache.current();
+    const cached = refreshedDevices ?? deviceCache.current();
     const devices =
       cached ??
       (await timings.measure("capture.enumerate-devices", () =>
@@ -183,13 +194,7 @@ export const acquireMicrophoneStream = async ({
       throw error;
     }
     const failedDeviceId = preferredDevice.deviceId;
-    const refreshed = await timings.measure(
-      "capture.enumerate-devices",
-      async () => {
-        await deviceCache.refresh();
-        return deviceCache.ready();
-      },
-    );
+    const refreshed = await refreshDevices();
     const devices = refreshed.filter(
       (device) => device.deviceId !== failedDeviceId,
     );
