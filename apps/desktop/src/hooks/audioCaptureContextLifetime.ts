@@ -97,7 +97,9 @@ export class AudioCaptureContextLifetime {
     this.idleTimer = setTimeout(
       () => {
         this.idleTimer = null;
-        onExpired();
+        // The timer is monotonic; the deadline is wall-clock. Wait out any lag.
+        if (this.isIdleExpired()) onExpired();
+        else this.scheduleIdleClose(onExpired);
       },
       Math.max(0, this.idleDeadlineMs - Date.now()),
     );

@@ -140,6 +140,17 @@ describe("AudioCaptureContextLifetime", () => {
     expect(expired).toHaveBeenCalledOnce();
   });
 
+  it("waits out the deadline when the wall clock lags the timer", async () => {
+    await lifetime.prepare();
+    const expired = vi.fn();
+    lifetime.scheduleIdleClose(expired);
+    vi.setSystemTime(Date.now() - 5);
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(expired).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5);
+    expect(expired).toHaveBeenCalledOnce();
+  });
+
   it("resets the deadline after cleanup and preserves it across replacement", async () => {
     await lifetime.prepare();
     const startedAt = Date.now();
