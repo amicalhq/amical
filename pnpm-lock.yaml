@@ -19,6 +19,11 @@ patchedDependencies:
     hash: 71ea5e1231ceccf304e7d6918c0d7e152e0fed8a2fddf4c249d89fe0aac817ea
     path: patches/macos-alias@0.2.12.patch
 
+patchedDependencies:
+  appdmg@0.6.6:
+    hash: fed756979040c4154849025dbcebeb287af08ef4790b4ac34c837a0533c9a21e
+    path: patches/appdmg@0.6.6.patch
+
 importers:
 
   .:
@@ -11553,7 +11558,7 @@ snapshots:
       normalize-path: 3.0.0
       picomatch: 2.3.1
 
-  appdmg@0.6.6:
+  appdmg@0.6.6(patch_hash=fed756979040c4154849025dbcebeb287af08ef4790b4ac34c837a0533c9a21e):
     dependencies:
       async: 1.5.2
       ds-store: 0.1.6
@@ -12433,7 +12438,7 @@ snapshots:
       debug: 4.4.3
       minimist: 1.2.8
     optionalDependencies:
-      appdmg: 0.6.6
+      appdmg: 0.6.6(patch_hash=fed756979040c4154849025dbcebeb287af08ef4790b4ac34c837a0533c9a21e)
     transitivePeerDependencies:
       - supports-color
     optional: true
