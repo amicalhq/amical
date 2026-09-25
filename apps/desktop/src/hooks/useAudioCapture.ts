@@ -544,6 +544,10 @@ export const useAudioCapture = ({
         captureAttemptStartedAtRef.current = null;
         const shouldRecycle =
           startedAt !== null && contextLifetime.finishAttempt(startedAt);
+        if (startedAt !== null && !disposedRef.current) {
+          // Refresh for the next dictation without delaying cleanup or graph replacement.
+          void deviceCache.refresh();
+        }
         if (shouldRecycle && !disposedRef.current) {
           await contextLifetime.close();
           if (!disposedRef.current && !contextLifetime.isIdleExpired()) {
@@ -571,6 +575,7 @@ export const useAudioCapture = ({
     waitForWorkletFlush,
     resetBars,
     contextLifetime,
+    deviceCache,
   ]);
 
   // Start/stop based on enabled state

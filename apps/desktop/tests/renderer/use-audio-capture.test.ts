@@ -438,9 +438,10 @@ describe("useAudioCapture lifecycle", () => {
 
       rerender({ enabled: false, idle: false, sessionId: "session-1" });
       await settle();
+      expect(enumerateDevices).toHaveBeenCalledTimes(3);
       rerender({ enabled: true, idle: false, sessionId: "session-2" });
       await settle();
-      expect(enumerateDevices).toHaveBeenCalledTimes(3);
+      expect(enumerateDevices).toHaveBeenCalledTimes(4);
       expect(requestedDeviceIds()).toEqual(
         ranked ? ["mic-b", "mic-a"] : ["default", "default"],
       );
@@ -480,7 +481,7 @@ describe("useAudioCapture lifecycle", () => {
 
     rerender({ enabled: true, idle: false, sessionId: "session-2" });
     await settle();
-    expect(enumerateDevices).toHaveBeenCalledTimes(2);
+    expect(enumerateDevices).toHaveBeenCalledTimes(3);
     expect(requestedDeviceIds()).toEqual(["mic-a", "mic-b"]);
 
     query.mockResolvedValue({
@@ -492,7 +493,7 @@ describe("useAudioCapture lifecycle", () => {
     });
     rerender({ enabled: true, idle: false, sessionId: "session-3" });
     await settle();
-    expect(enumerateDevices).toHaveBeenCalledTimes(2);
+    expect(enumerateDevices).toHaveBeenCalledTimes(4);
     expect(requestedDeviceIds()).toEqual(["mic-a", "mic-b", "mic-b"]);
   });
 
@@ -542,7 +543,7 @@ describe("useAudioCapture lifecycle", () => {
     unmount();
   });
 
-  it("uses one recorder snapshot across ranked starts and applies changed preferences", async () => {
+  it("uses cached devices at ranked starts and applies changed preferences", async () => {
     const settingsQuery = setPriority("mic-a", "mic-b");
     enumerateDevices.mockResolvedValue([
       inputDevice("mic-a"),
@@ -558,6 +559,7 @@ describe("useAudioCapture lifecycle", () => {
 
     rerender({ enabled: false, idle: false, sessionId: "session-1" });
     await settle();
+    expect(enumerateDevices).toHaveBeenCalledTimes(2);
     settingsQuery.mockReturnValue({
       data: {
         recording: {
@@ -572,7 +574,7 @@ describe("useAudioCapture lifecycle", () => {
     await settle();
 
     expect(requestedDeviceIds()).toEqual(["mic-a", "mic-b"]);
-    expect(enumerateDevices).toHaveBeenCalledOnce();
+    expect(enumerateDevices).toHaveBeenCalledTimes(2);
     expect(onCaptureStarted.mock.calls[1][0]).toEqual(
       expect.objectContaining({
         deviceId: "mic-b",
@@ -618,6 +620,7 @@ describe("useAudioCapture lifecycle", () => {
       await settle();
       expect(requestedDeviceIds()).toEqual(["mic-a"]);
       if (!active) {
+        enumerateDevices.mockResolvedValueOnce([inputDevice("mic-a")]);
         rerender({ enabled: false, idle: true, sessionId: "session-1" });
         await settle();
       }
@@ -626,7 +629,7 @@ describe("useAudioCapture lifecycle", () => {
       expect(onResume).toBeDefined();
       onResume?.(null);
       await settle();
-      expect(enumerateDevices).toHaveBeenCalledTimes(2);
+      expect(enumerateDevices).toHaveBeenCalledTimes(active ? 2 : 3);
       expect(getUserMedia).toHaveBeenCalledOnce();
       expect(streams[0].track.stop).toHaveBeenCalledTimes(active ? 0 : 1);
       if (active) {
@@ -637,7 +640,7 @@ describe("useAudioCapture lifecycle", () => {
       rerender({ enabled: true, idle: false, sessionId: "session-2" });
       await settle();
       expect(requestedDeviceIds()).toEqual(["mic-a", "mic-b"]);
-      expect(enumerateDevices).toHaveBeenCalledTimes(2);
+      expect(enumerateDevices).toHaveBeenCalledTimes(3);
     },
   );
 
@@ -674,25 +677,24 @@ describe("useAudioCapture lifecycle", () => {
       await settle();
       try {
         expect(requestedDeviceIds()).toEqual(["mic-b"]);
+        rerender({ enabled: false, idle: false, sessionId: "session-1" });
+        await settle();
       } finally {
         if (outcome === "resolve") older.resolve([inputDevice("mic-a")]);
         else older.reject(new Error("obsolete enumeration failed"));
         await settle();
       }
 
-      rerender({ enabled: false, idle: false, sessionId: "session-1" });
-      await settle();
       rerender({ enabled: true, idle: false, sessionId: "session-2" });
       await settle();
       expect(requestedDeviceIds()).toEqual(["mic-b", "mic-b"]);
-      expect(enumerateDevices).toHaveBeenCalledTimes(2);
+      expect(enumerateDevices).toHaveBeenCalledTimes(3);
     },
   );
 
   it("retries a failed devicechange refresh at the next ranked capture", async () => {
     setPriority("mic-b", "mic-a");
     enumerateDevices.mockResolvedValueOnce([inputDevice("mic-a")]);
-    enumerateDevices.mockRejectedValueOnce(new Error("enumeration failed"));
     enumerateDevices.mockResolvedValue([
       inputDevice("mic-a"),
       inputDevice("mic-b"),
@@ -705,12 +707,13 @@ describe("useAudioCapture lifecycle", () => {
 
     rerender({ enabled: false, idle: false, sessionId: "session-1" });
     await settle();
+    enumerateDevices.mockRejectedValueOnce(new Error("enumeration failed"));
     mediaDevices.dispatchEvent(new Event("devicechange"));
     await settle();
     rerender({ enabled: true, idle: false, sessionId: "session-2" });
     await settle();
     expect(requestedDeviceIds()).toEqual(["mic-a", "mic-b"]);
-    expect(enumerateDevices).toHaveBeenCalledTimes(3);
+    expect(enumerateDevices).toHaveBeenCalledTimes(4);
   });
 
   it("waits for a cold ranked snapshot", async () => {
@@ -735,19 +738,21 @@ describe("useAudioCapture lifecycle", () => {
     await settle();
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
+    expect(enumerateDevices).toHaveBeenCalledTimes(2);
     rerender({ enabled: false, idle: false, sessionId: "session-1" });
     await settle();
     rerender({ enabled: true, idle: false, sessionId: "session-2" });
     await settle();
 
     expect(requestedDeviceIds()).toEqual(["default", "mic-a"]);
-    expect(enumerateDevices).toHaveBeenCalledTimes(2);
+    expect(enumerateDevices).toHaveBeenCalledTimes(3);
   });
 
   it("retries a failed post-permission refresh before the next ranked capture", async () => {
     setPriority("mic-a");
     enumerateDevices.mockResolvedValueOnce([]);
     enumerateDevices.mockRejectedValueOnce(new Error("enumeration failed"));
+    enumerateDevices.mockRejectedValueOnce(new Error("stop refresh failed"));
     enumerateDevices.mockResolvedValue([inputDevice("mic-a")]);
     const { rerender } = mountHook();
     await settle();
@@ -761,10 +766,10 @@ describe("useAudioCapture lifecycle", () => {
     }
 
     expect(requestedDeviceIds()).toEqual(["default", "mic-a", "mic-a"]);
-    expect(enumerateDevices).toHaveBeenCalledTimes(3);
+    expect(enumerateDevices).toHaveBeenCalledTimes(5);
   });
 
-  it("does not refresh on every capture when labels stay blank", async () => {
+  it("does not repeat the permission refresh when labels stay blank", async () => {
     setPriority("mic-a");
     enumerateDevices.mockResolvedValue([
       {
@@ -782,7 +787,8 @@ describe("useAudioCapture lifecycle", () => {
     }
 
     expect(requestedDeviceIds()).toEqual(["mic-a", "mic-a"]);
-    expect(enumerateDevices).toHaveBeenCalledTimes(2);
+    // Initial snapshot, one permission refresh, and one refresh after each stop.
+    expect(enumerateDevices).toHaveBeenCalledTimes(4);
   });
 
   it("reselects once after a stale exact device fails", async () => {
@@ -1272,6 +1278,57 @@ describe("useAudioCapture lifecycle", () => {
     expect(audioContexts[0].close).not.toHaveBeenCalled(); // kept warm
   });
 
+  it.each([false, true])(
+    "refreshes devices after cleanup without holding up stop (ranked input: %s)",
+    async (ranked) => {
+      if (ranked) setPriority("mic-b", "mic-a");
+      enumerateDevices.mockResolvedValue([inputDevice("mic-a")]);
+      const { rerender, onCaptureStarted, onCaptureTimings } = mountHook();
+      await settle();
+      rerender({ enabled: true, idle: false, sessionId: "session-1" });
+      await settle();
+      const pending = Promise.withResolvers<MediaDeviceInfo[]>();
+      enumerateDevices.mockReturnValueOnce(pending.promise);
+
+      rerender({ enabled: false, idle: true, sessionId: null });
+      await settle();
+      expect(enumerateDevices).toHaveBeenCalledTimes(2);
+      expect(enumerateDevices.mock.invocationCallOrder[1]).toBeGreaterThan(
+        streams[0].track.stop.mock.invocationCallOrder[0],
+      );
+      expect(enumerateDevices.mock.invocationCallOrder[1]).toBeGreaterThan(
+        sources[0].disconnect.mock.invocationCallOrder[0],
+      );
+      expect(onCaptureTimings).toHaveBeenLastCalledWith(
+        "session-1",
+        { phases: [] },
+        true,
+      );
+      expect(audioContexts[0].close).not.toHaveBeenCalled();
+
+      let now = 0;
+      vi.spyOn(performance, "now").mockImplementation(() => now);
+      rerender({ enabled: true, idle: false, sessionId: "session-2" });
+      await settle();
+      expect(getUserMedia).toHaveBeenCalledTimes(ranked ? 1 : 2);
+      now = 100;
+      pending.resolve([inputDevice("mic-b")]);
+      await settle();
+
+      expect(requestedDeviceIds()).toEqual(
+        ranked ? ["mic-a", "mic-b"] : ["default", "default"],
+      );
+      expect(enumerateDevices).toHaveBeenCalledTimes(2);
+      expect(audioContexts).toHaveLength(1);
+      expect(workletNodes).toHaveLength(1);
+      expect(
+        onCaptureStarted.mock.calls[1][2]?.phases.filter(
+          (phase) => phase.name === "capture.enumerate-devices",
+        ),
+      ).toEqual(ranked ? [expect.objectContaining({ durationMs: 100 })] : []);
+    },
+  );
+
   it("replaces a context and worklet that closed between dictations", async () => {
     const { rerender } = mountHook();
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
@@ -1689,6 +1746,7 @@ describe("useAudioCapture lifecycle", () => {
     rerender({ enabled: true, idle: false, sessionId: "session-1" });
     await settle();
     const track = streams[0].track;
+    const enumerations = enumerateDevices.mock.calls.length;
 
     unmount();
     await settle();
@@ -1697,5 +1755,6 @@ describe("useAudioCapture lifecycle", () => {
     expect(audioContexts[0].close).toHaveBeenCalled();
     expect(workletNodes[0].disconnect).toHaveBeenCalledOnce();
     expect(captureRendererException).not.toHaveBeenCalled();
+    expect(enumerateDevices).toHaveBeenCalledTimes(enumerations);
   });
 });
