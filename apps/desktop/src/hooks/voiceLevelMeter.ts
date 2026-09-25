@@ -4,7 +4,9 @@ export const VOICE_HIGH_HZ = 1900;
 // 10·log10(2 / 0.3046) converts their summed power to dBFS. This holds only
 // for unsmoothed bins (smoothingTimeConstant = 0).
 export const BLACKMAN_POWER_DB = 8.17;
-// One 32 ms window at 16 kHz, the length of one worklet frame.
+// The rate the meter is tuned for: FFT_SIZE is a 32 ms window here, the
+// length of one worklet frame.
+export const VOICE_LEVEL_SAMPLE_RATE = 16_000;
 const FFT_SIZE = 512;
 // Typical room noise in the voice band; the floor adapts from here.
 const FLOOR_PRIOR_DB = -56;
@@ -58,9 +60,9 @@ export function createVoiceLevelMeter(sampleRate: number) {
 export type VoiceLevelTap = ReturnType<typeof createVoiceLevelTap>;
 
 /**
- * A passive analyser branch on `source` that feeds `measure`. The caller reads
- * it once per worklet frame; each read measures the analyser's latest window,
- * so the frame acts only as a clock.
+ * A passive analyser branch on `source` that feeds `measure`. Each read
+ * measures the analyser's latest window; the caller's read cadence (worklet
+ * frames, animation frames) only sets `dtSeconds`.
  */
 export function createVoiceLevelTap(
   audioContext: BaseAudioContext,

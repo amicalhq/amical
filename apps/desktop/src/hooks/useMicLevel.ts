@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  VOICE_LEVEL_SAMPLE_RATE,
+  createVoiceLevelMeter,
+  createVoiceLevelTap,
+  type VoiceLevelMeter,
+} from "./voiceLevelMeter";
 
 /**
  * Open a microphone stream for `deviceId` while `enabled` is true and report a
- * smoothed input level in the range 0..1. Used to preview the live audio level
- * of the device the user is configuring. The stream and AudioContext are torn
- * down whenever the device changes or the hook is disabled/unmounted.
+ * smoothed voice level in the range 0..1, measured like the recording widget.
+ * Used to preview the live audio level of the device the user is configuring.
+ * The stream and AudioContext are torn down whenever the device changes or the
+ * hook is disabled/unmounted.
  *
  * `deviceId` accepts the same values as the recording pipeline, including the
  * `"default"` sentinel for the system-default microphone.
@@ -16,6 +23,11 @@ export function useMicLevel(
   const [level, setLevel] = useState(0);
   // Smoothed level kept in a ref so the rAF loop doesn't depend on state.
   const smoothedRef = useRef(0);
+  // One meter per preview, so the learned room-noise floor survives reopening
+  // the preview or switching devices.
+  const meterRef = useRef<VoiceLevelMeter | null>(null);
+  meterRef.current ??= createVoiceLevelMeter(VOICE_LEVEL_SAMPLE_RATE);
+  const measureLevel = meterRef.current;
 
   useEffect(() => {
     if (!enabled || !deviceId || !navigator.mediaDevices) {
@@ -44,30 +56,22 @@ export function useMicLevel(
           return;
         }
 
-        audioContext = new AudioContext();
+        // Meter at the widget's analysis rate, so the window and bins match.
+        audioContext = new AudioContext({
+          sampleRate: VOICE_LEVEL_SAMPLE_RATE,
+        });
         if (audioContext.state === "suspended") {
           await audioContext.resume();
         }
         const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 1024;
-        analyser.smoothingTimeConstant = 0;
-        source.connect(analyser);
-        const samples = new Float32Array(analyser.fftSize);
+        const tap = createVoiceLevelTap(audioContext, source, measureLevel);
+        let lastMs = performance.now();
 
-        const tick = () => {
-          analyser.getFloatTimeDomainData(samples);
-          let sum = 0;
-          for (let i = 0; i < samples.length; i++) {
-            sum += samples[i] * samples[i];
-          }
-          const rms = Math.sqrt(sum / samples.length);
-          // Speech RMS sits low, and a linear gain barely moves the meter unless
-          // you shout. Map to a perceptual dB scale instead (like a real level
-          // meter): ~[-52 dB, -14 dB] -> [0, 1], so normal talking fills most of
-          // the bar and ambient noise stays near the floor.
-          const db = 20 * Math.log10(rms || 1e-7);
-          const target = Math.min(1, Math.max(0, (db + 52) / 38));
+        const tick = (nowMs: number) => {
+          const target = tap.read(
+            Math.min(0.1, Math.max(0, nowMs - lastMs) / 1000),
+          );
+          lastMs = nowMs;
           // Fast attack, slow decay so the meter feels responsive but readable.
           const prev = smoothedRef.current;
           smoothedRef.current =
@@ -93,7 +97,7 @@ export function useMicLevel(
       audioContext?.close().catch(() => {});
       setLevel(0);
     };
-  }, [deviceId, enabled]);
+  }, [deviceId, enabled, measureLevel]);
 
   return level;
 }
