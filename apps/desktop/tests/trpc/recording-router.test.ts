@@ -138,7 +138,7 @@ describe("recordingRouter capture lifecycle", () => {
     }
   });
 
-  it("rejects unknown phases, nonfinite times, and oversized timing batches", async () => {
+  it("rejects unknown phases and nonfinite times", async () => {
     const caller = recordingRouter.createCaller({ services: {} } as never);
     for (const invalid of [
       {
@@ -146,7 +146,6 @@ describe("recordingRouter capture lifecycle", () => {
         phases: [{ ...timings.phases[0], name: "arbitrary.span" }],
       },
       { ...timings, phases: [{ ...timings.phases[0], durationMs: Infinity }] },
-      { ...timings, phases: Array(12).fill(timings.phases[0]) },
     ]) {
       await expect(
         caller.captureTimings({

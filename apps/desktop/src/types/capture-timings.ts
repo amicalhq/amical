@@ -33,15 +33,13 @@ export const AudioContextTelemetrySchema = z.object({
 export type AudioContextTelemetry = z.infer<typeof AudioContextTelemetrySchema>;
 
 export const CaptureTimingsSchema = z.object({
-  phases: z
-    .array(
-      z.object({
-        name: CapturePhaseNameSchema,
-        startedAtMs: z.number().finite().nonnegative(),
-        durationMs: z.number().finite().nonnegative(),
-      }),
-    )
-    .max(CapturePhaseNameSchema.options.length),
+  phases: z.array(
+    z.object({
+      name: CapturePhaseNameSchema,
+      startedAtMs: z.number().finite().nonnegative(),
+      durationMs: z.number().finite().nonnegative(),
+    }),
+  ),
   audioContext: AudioContextTelemetrySchema.optional(),
 });
 
