@@ -57,7 +57,7 @@ beforeEach(() => {
   mocks.sendAudioChunk.mockResolvedValue(undefined);
   mocks.stateUpdates.mockReset();
   mocks.useAudioCapture.mockReset();
-  mocks.useAudioCapture.mockReturnValue({ audioLevels: [] });
+  mocks.useAudioCapture.mockReturnValue({ audioLevelRef: { current: 0 } });
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
     value: { sendAudioChunk: mocks.sendAudioChunk },

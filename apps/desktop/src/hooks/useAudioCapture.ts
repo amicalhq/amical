@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useCallback, type RefObject } from "react";
 import audioWorkletUrl from "@/assets/audio-recorder-processor.js?url";
 import { api } from "@/trpc/react";
 import type { CaptureFailure } from "@/types/recording";
@@ -20,6 +20,12 @@ import {
 import { useAudioInputDeviceCache } from "./useAudioInputDeviceCache";
 import { monitorAudioContextRecovery } from "./audioContextRecovery";
 import {
+  createVoiceLevelMeter,
+  createVoiceLevelTap,
+  type VoiceLevelMeter,
+  type VoiceLevelTap,
+} from "./voiceLevelMeter";
+import {
   attachAudioWorkletFrameHandler,
   createWorkletFlushRequest,
   type WorkletFlushRequest,
@@ -27,23 +33,6 @@ import {
 
 const SAMPLE_RATE = 16000;
 const AUDIO_WORKLET_FLUSH_TIMEOUT_MS = 1_000;
-
-// Scrolling level history. One overall loudness value per frame is pushed into
-// a history buffer, and each bar reads a different time-lag of it, so a loud
-// moment enters at bar 0 and ripples across the row (all bars move; the wave
-// "carries over"). A fixed-frequency spectrum can't do that — bands are pinned
-// in place and voice energy is lopsided toward the low ones.
-const WAVEFORM_BAR_SLOTS = 6;
-const BAR_STRIDE = 3; // frames of lag between adjacent bars (~96ms @ 31fps)
-const LEVEL_HISTORY_LEN = (WAVEFORM_BAR_SLOTS - 1) * BAR_STRIDE + 1;
-const LEVEL_GAIN = 2.2; // lift averaged band energy into a usable 0..1 range
-const VOICE_BIN_LOW = 2; // ~125 Hz
-const VOICE_BIN_HIGH = 30; // ~1.9 kHz (speech-dominant band)
-const ANALYSER_FFT_SIZE = 256; // 128 bins @ ~62.5 Hz each at 16 kHz
-const ANALYSER_SMOOTHING = 0.3; // light so syllables stay sharp enough to travel
-const ANALYSER_MIN_DB = -70; // bottom of the byte range (quiet)
-const ANALYSER_MAX_DB = -30; // top of the byte range (loud)
-const EMPTY_BARS: number[] = new Array(WAVEFORM_BAR_SLOTS).fill(0);
 
 const normalizeCaptureFailure = (
   error: unknown,
@@ -95,8 +84,8 @@ export interface UseAudioCaptureParams {
 }
 
 export interface UseAudioCaptureOutput {
-  /** Per-bar levels (0..1): a scrolling history of mic loudness, newest first. */
-  audioLevels: number[];
+  /** Latest voice level (0..1), updated per audio frame without re-rendering. */
+  audioLevelRef: RefObject<number>;
 }
 
 export const useAudioCapture = ({
@@ -109,14 +98,13 @@ export const useAudioCapture = ({
   idle,
 }: UseAudioCaptureParams): UseAudioCaptureOutput => {
   const utils = api.useUtils();
-  const [audioLevels, setAudioLevels] = useState<number[]>(EMPTY_BARS);
-  // Analyser tap, reused byte buffer, and the rolling level history — kept in
-  // refs so the frame handler doesn't depend on state.
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const freqDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
-  const levelHistoryRef = useRef<number[]>(
-    new Array(LEVEL_HISTORY_LEN).fill(0),
-  );
+  const audioLevelRef = useRef(0);
+  const levelTapRef = useRef<VoiceLevelTap | null>(null);
+  // One meter per recorder, so the learned room-noise floor carries into the
+  // next dictation.
+  const levelMeterRef = useRef<VoiceLevelMeter | null>(null);
+  levelMeterRef.current ??= createVoiceLevelMeter(SAMPLE_RATE);
+  const measureLevel = levelMeterRef.current;
   const contextLifetimeRef = useRef<AudioCaptureContextLifetime | null>(null);
   if (!contextLifetimeRef.current) {
     contextLifetimeRef.current = new AudioCaptureContextLifetime(
@@ -172,43 +160,6 @@ export const useAudioCapture = ({
     contextLifetime.cancelIdleClose();
   }, [contextLifetime]);
 
-  // Compute one overall voice-band loudness (getByteFrequencyData already maps
-  // [minDecibels, maxDecibels] -> 0..255 per bin, so this auto-windows), push it
-  // into the history, then read each bar at a different lag so a loud moment
-  // ripples from bar 0 across the row.
-  const updateBars = useCallback(() => {
-    const analyser = analyserRef.current;
-    const data = freqDataRef.current;
-    if (!analyser || !data) return;
-    analyser.getByteFrequencyData(data);
-    let sum = 0;
-    for (let k = VOICE_BIN_LOW; k < VOICE_BIN_HIGH; k++) {
-      sum += data[k];
-    }
-    const level = Math.min(
-      1,
-      (sum / (VOICE_BIN_HIGH - VOICE_BIN_LOW) / 255) * LEVEL_GAIN,
-    );
-
-    const hist = levelHistoryRef.current;
-    hist.unshift(level);
-    hist.length = LEVEL_HISTORY_LEN; // drop the oldest, keep fixed length
-    const bars = new Array<number>(WAVEFORM_BAR_SLOTS);
-    for (let b = 0; b < WAVEFORM_BAR_SLOTS; b++) {
-      bars[b] = hist[b * BAR_STRIDE];
-    }
-    if (!disposedRef.current) {
-      setAudioLevels(bars);
-    }
-  }, []);
-
-  const resetBars = useCallback(() => {
-    levelHistoryRef.current = new Array(LEVEL_HISTORY_LEN).fill(0);
-    if (!disposedRef.current) {
-      setAudioLevels(EMPTY_BARS);
-    }
-  }, []);
-
   // Fully release every audio resource (mic stream, nodes, context). The caller
   // must hold the mutex. Safe to call with any subset already torn down.
   const releaseAll = useCallback(async () => {
@@ -226,15 +177,14 @@ export const useAudioCapture = ({
         // Nodes may already be detached or on a closed context.
       }
     }
-    analyserRef.current?.disconnect();
-    analyserRef.current = null;
-    freqDataRef.current = null;
+    levelTapRef.current?.disconnect();
+    levelTapRef.current = null;
+    audioLevelRef.current = 0;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     await contextLifetime.close();
     sourceRef.current = null;
     streamRef.current = null;
-    resetBars();
-  }, [resetBars, contextLifetime]);
+  }, [contextLifetime]);
 
   const startCapture = useCallback(
     async (
@@ -346,10 +296,15 @@ export const useAudioCapture = ({
                 captureInfo,
               ) => {
                 try {
-                  updateBars();
+                  const tap = levelTapRef.current;
+                  if (tap) {
+                    audioLevelRef.current = tap.read(
+                      arrayBuffer.byteLength / 4 / SAMPLE_RATE,
+                    );
+                  }
                 } catch (error) {
                   console.error(
-                    "AudioCapture: Failed to update waveform bars:",
+                    "AudioCapture: Failed to update audio level:",
                     error,
                   );
                 }
@@ -381,17 +336,13 @@ export const useAudioCapture = ({
             source.connect(workletNode);
             timings.startFirstFrameWait();
 
-            // Tap the source with an analyser for the spectrum visualiser. It's a
-            // passive branch (no downstream connection) and doesn't touch the
-            // worklet capture path.
-            const analyser = audioContext.createAnalyser();
-            analyser.fftSize = ANALYSER_FFT_SIZE;
-            analyser.smoothingTimeConstant = ANALYSER_SMOOTHING;
-            analyser.minDecibels = ANALYSER_MIN_DB;
-            analyser.maxDecibels = ANALYSER_MAX_DB;
-            sourceRef.current.connect(analyser);
-            analyserRef.current = analyser;
-            freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
+            // Measure the waveform level on a passive analyser branch; it
+            // doesn't touch the worklet capture path.
+            levelTapRef.current = createVoiceLevelTap(
+              audioContext,
+              source,
+              measureLevel,
+            );
 
             // Recording readiness requires the capture graph to be connected.
             const reportCaptureStarted = onCaptureStartedRef.current;
@@ -431,12 +382,12 @@ export const useAudioCapture = ({
       onAudioChunk,
       releaseAll,
       clearIdleTimer,
-      updateBars,
       sessionId,
       deviceCache,
       utils,
       reportTimings,
       contextLifetime,
+      measureLevel,
     ],
   );
 
@@ -533,12 +484,11 @@ export const useAudioCapture = ({
             // Already detached or on a closed context.
           }
         }
-        analyserRef.current?.disconnect();
+        levelTapRef.current?.disconnect();
+        levelTapRef.current = null;
+        audioLevelRef.current = 0;
         sourceRef.current = null;
         streamRef.current = null;
-        analyserRef.current = null;
-        freqDataRef.current = null;
-        resetBars();
 
         const startedAt = captureAttemptStartedAtRef.current;
         captureAttemptStartedAtRef.current = null;
@@ -573,7 +523,6 @@ export const useAudioCapture = ({
     releaseAll,
     scheduleIdleContextRecycle,
     waitForWorkletFlush,
-    resetBars,
     contextLifetime,
     deviceCache,
   ]);
@@ -664,6 +613,6 @@ export const useAudioCapture = ({
   }, [releaseAll, clearIdleTimer, contextLifetime, scheduleIdleContextRecycle]);
 
   return {
-    audioLevels,
+    audioLevelRef,
   };
 };

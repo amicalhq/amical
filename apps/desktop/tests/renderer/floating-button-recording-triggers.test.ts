@@ -5,8 +5,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { RecordingStatus } from "@/hooks/useRecording";
 
-vi.mock("@/components/Waveform", () => ({
-  Waveform: () => null,
+vi.mock("@/components/RippleWaveform", () => ({
+  RippleWaveform: () => null,
 }));
 
 vi.mock("@/hooks/useFeatureFlag", () => ({
@@ -73,7 +73,7 @@ describe("FloatingButton recording triggers", () => {
       render(
         React.createElement(FloatingButton, {
           recordingStatus,
-          audioLevels: [],
+          audioLevelRef: { current: 0 },
           startRecording,
           stopRecording,
           dismissRecording,

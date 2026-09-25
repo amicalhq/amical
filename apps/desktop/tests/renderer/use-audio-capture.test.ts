@@ -40,6 +40,11 @@ import { api } from "@/trpc/react";
 import type { CaptureTimingsBatch } from "@/types/capture-timings";
 import { DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG } from "@/types/audio-capture";
 import { AUDIO_CONTEXT_IDLE_TIMEOUT_MS } from "@/hooks/audioCaptureRecycle";
+import {
+  BLACKMAN_POWER_DB,
+  VOICE_HIGH_HZ,
+  VOICE_LOW_HZ,
+} from "@/hooks/voiceLevelMeter";
 import { captureRendererException } from "@/renderer/lib/posthog";
 
 // ── Web Audio fakes ────────────────────────────────────────────────────────────
@@ -73,11 +78,9 @@ class FakeSourceNode {
 class FakeAnalyserNode {
   fftSize = 0;
   smoothingTimeConstant = 0;
-  minDecibels = 0;
-  maxDecibels = 0;
   connect = vi.fn();
   disconnect = vi.fn();
-  getByteFrequencyData = vi.fn();
+  getFloatFrequencyData = vi.fn();
   get frequencyBinCount() {
     return this.fftSize / 2;
   }
@@ -1756,5 +1759,47 @@ describe("useAudioCapture lifecycle", () => {
     expect(workletNodes[0].disconnect).toHaveBeenCalledOnce();
     expect(captureRendererException).not.toHaveBeenCalled();
     expect(enumerateDevices).toHaveBeenCalledTimes(enumerations);
+  });
+
+  it("measures the voice level per frame, clears it on stop, and keeps the room floor", async () => {
+    const binHz = 16_000 / 512;
+    const voiceBins =
+      Math.round(VOICE_HIGH_HZ / binHz) - Math.round(VOICE_LOW_HZ / binHz);
+    // Every analyser read returns a voice band at `db` dBFS.
+    const setBand = (analyser: FakeAnalyserNode, db: number) =>
+      analyser.getFloatFrequencyData.mockImplementation((bins: Float32Array) =>
+        bins.fill(db - BLACKMAN_POWER_DB - 10 * Math.log10(voiceBins)),
+      );
+    const sendFrames = (count: number) =>
+      act(async () => {
+        for (let i = 0; i < count; i++) {
+          workletNodes[0].port.onmessage?.({
+            data: { type: "audioFrame", frame: new Float32Array(512) },
+          });
+        }
+      });
+    const { rerender, result } = mountHook();
+    await settle();
+
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    setBand(analysers[0], -44); // steady fan noise
+    await sendFrames(1);
+    expect(result.current.audioLevelRef.current).toBeGreaterThan(0.2);
+    await sendFrames(320); // about 10 s: the floor learns the room
+    expect(result.current.audioLevelRef.current).toBe(0);
+    setBand(analysers[0], -20);
+    await sendFrames(1);
+    expect(result.current.audioLevelRef.current).toBeGreaterThan(0.5);
+
+    rerender({ enabled: false, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(result.current.audioLevelRef.current).toBe(0);
+
+    rerender({ enabled: true, idle: false, sessionId: "session-2" });
+    await settle();
+    setBand(analysers[1], -44);
+    await sendFrames(1);
+    expect(result.current.audioLevelRef.current).toBe(0);
   });
 });

@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, type RefObject } from "react";
 import { NotebookPen, Check, X, Pencil } from "lucide-react";
-import { Waveform } from "@/components/Waveform";
+import { RippleWaveform } from "@/components/RippleWaveform";
 import type { RecordingStatus } from "@/hooks/useRecording";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { api } from "@/trpc/react";
@@ -8,7 +8,6 @@ import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 import { setPassThroughReason } from "../../../pass-through";
 import { useTranslation } from "react-i18next";
 
-const NUM_WAVEFORM_BARS = 6; // Fewer bars to make room for stop button
 const DEBOUNCE_DELAY = 100; // milliseconds
 
 // Stop = commit: finish + transcribe + paste
@@ -66,27 +65,9 @@ const ProcessingIndicator: React.FC<{ isDraft?: boolean }> = ({ isDraft }) => (
   </div>
 );
 
-// Separate component for the waveform visualization
-const WaveformVisualization: React.FC<{
-  isRecording: boolean;
-  audioLevels: number[];
-}> = ({ isRecording, audioLevels }) => (
-  <>
-    {Array.from({ length: NUM_WAVEFORM_BARS }).map((_, index) => (
-      <Waveform
-        key={index}
-        isRecording={isRecording}
-        level={audioLevels[index] ?? 0}
-        baseHeight={70}
-        silentHeight={20}
-      />
-    ))}
-  </>
-);
-
 interface FloatingButtonProps {
   recordingStatus: RecordingStatus;
-  audioLevels: number[];
+  audioLevelRef: RefObject<number>;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   dismissRecording: () => Promise<void>;
@@ -94,7 +75,7 @@ interface FloatingButtonProps {
 
 export const FloatingButton: React.FC<FloatingButtonProps> = ({
   recordingStatus,
-  audioLevels,
+  audioLevelRef,
   startRecording,
   stopRecording,
   dismissRecording,
@@ -247,11 +228,8 @@ export const FloatingButton: React.FC<FloatingButtonProps> = ({
           <div className="h-full items-center flex ml-[5px]">
             <DismissButton onClick={handleDismissClick} />
           </div>
-          <div className="justify-center items-center flex flex-1 gap-1 min-w-0">
-            <WaveformVisualization
-              isRecording={isRecording}
-              audioLevels={audioLevels}
-            />
+          <div className="justify-center items-center flex flex-1 min-w-0">
+            <RippleWaveform levelRef={audioLevelRef} isRecording />
           </div>
           <div className="h-full items-center flex mr-[5px]">
             <StopButton onClick={handleStopClick} />
@@ -269,10 +247,7 @@ export const FloatingButton: React.FC<FloatingButtonProps> = ({
           onClick={handleButtonClick}
         >
           {isDraft && <DraftPen />}
-          <WaveformVisualization
-            isRecording={isRecording}
-            audioLevels={audioLevels}
-          />
+          <RippleWaveform levelRef={audioLevelRef} isRecording={isRecording} />
         </button>
 
         {showNotesAction && (
