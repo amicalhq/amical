@@ -36,7 +36,7 @@ jobs:
             runner: windows-2022
           - os: windows
             arch: arm64
-            runner: windows-11-arm
+            runner: windows-11-vs2026-arm
 
     steps:
       - name: Checkout code

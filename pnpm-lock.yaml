@@ -615,8 +615,8 @@ importers:
   packages/whisper-wrapper:
     dependencies:
       cmake-js:
-        specifier: ^7.3.1
-        version: 7.3.1
+        specifier: ^7.4.0
+        version: 7.4.0
       minimatch:
         specifier: 10.0.3
         version: 10.0.3
@@ -4101,8 +4101,8 @@ packages:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
 
-  cmake-js@7.3.1:
-    resolution: {integrity: sha512-aJtHDrTFl8qovjSSqXT9aC2jdGfmP8JQsPtjdLAXFfH1BF4/ImZ27Jx0R61TFg8Apc3pl6e2yBKMveAeRXx2Rw==}
+  cmake-js@7.4.0:
+    resolution: {integrity: sha512-Lw0JxEHrmk+qNj1n9W9d4IvkDdYTBn7l2BW6XmtLj7WPpIo2shvxUy+YokfjMxAAOELNonQwX3stkPhM5xSC2Q==}
     engines: {node: '>= 14.15.0'}
     hasBin: true
 
@@ -12025,7 +12025,7 @@ snapshots:
 
   clsx@2.1.1: {}
 
-  cmake-js@7.3.1:
+  cmake-js@7.4.0:
     dependencies:
       axios: 1.11.0(debug@4.4.1)
       debug: 4.4.1
