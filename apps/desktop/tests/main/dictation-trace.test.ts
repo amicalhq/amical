@@ -14,6 +14,7 @@ import {
   tracePhase,
   recordCapturePhases,
   recordAudioContextTelemetry,
+  recordCaptureErrorName,
   settleObligation,
 } from "../../src/main/telemetry/dictation-trace";
 import { runPromise } from "../../src/main/runtime/telemetry-runtime";
@@ -93,6 +94,7 @@ describe("dictation trace", () => {
       failureOperation: "recover",
       failureState: "suspended",
     });
+    recordCaptureErrorName("context-failure", "AudioContextResumeError");
     closeSessionTrace("context-failure", {
       disposition: "failure",
       failedStage: "capture",
@@ -109,6 +111,7 @@ describe("dictation trace", () => {
       audio_context_recovery_duration_ms: 210.5,
       audio_context_failure_operation: "recover",
       audio_context_failure_state: "suspended",
+      capture_error_name: "AudioContextResumeError",
     });
   });
 
@@ -122,6 +125,7 @@ describe("dictation trace", () => {
     expect(
       Object.keys(flushed[0]).filter((key) => key.startsWith("audio_context_")),
     ).toEqual([]);
+    expect(flushed[0]).not.toHaveProperty("capture_error_name");
   });
 
   it("reports the latest observed capture format on the v2 event without leaking arbitrary fields", () => {

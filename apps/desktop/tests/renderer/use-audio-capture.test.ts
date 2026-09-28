@@ -1657,6 +1657,41 @@ describe("useAudioCapture lifecycle", () => {
     expect(captureRendererException).toHaveBeenCalledOnce();
   });
 
+  it("names a microphone track that ends during capture", async () => {
+    const { rerender, onCaptureFailure } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    await act(async () => {
+      streams[0].track.dispatchEvent(new Event("ended"));
+    });
+    expect(onCaptureFailure).toHaveBeenCalledWith(
+      {
+        sessionId: "session-1",
+        name: "TrackEndedError",
+        message: "Microphone capture track ended unexpectedly",
+      },
+      expect.anything(),
+    );
+  });
+
+  it("names a microphone stream without an audio track", async () => {
+    getUserMedia.mockImplementationOnce(async () => ({
+      ...makeStream(),
+      getAudioTracks: () => [],
+    }));
+    const { rerender, onCaptureFailure } = mountHook();
+    rerender({ enabled: true, idle: false, sessionId: "session-1" });
+    await settle();
+    expect(onCaptureFailure).toHaveBeenCalledWith(
+      {
+        sessionId: "session-1",
+        name: "NoAudioTrackError",
+        message: "No audio tracks available from microphone",
+      },
+      expect.anything(),
+    );
+  });
+
   it("reports context construction failure and releases the microphone", async () => {
     const failure = new Error("Audio service unavailable");
     const { rerender, onCaptureFailure } = mountHook();

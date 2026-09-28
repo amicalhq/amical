@@ -27,6 +27,7 @@ import {
 } from "../../types/capture-timings";
 import {
   recordAudioContextTelemetry,
+  recordCaptureErrorName,
   recordCapturePhases,
   settleObligation,
 } from "../../main/telemetry/dictation-trace";
@@ -126,6 +127,7 @@ export const recordingRouter = createRouter({
     )
     .mutation(({ ctx, input }) => {
       recordCaptureTimings(input.sessionId, input.timings);
+      if (input.name) recordCaptureErrorName(input.sessionId, input.name);
       requireLifecycle(ctx).captureFailed(input.sessionId, input);
     }),
 

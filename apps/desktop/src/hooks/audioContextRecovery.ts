@@ -41,7 +41,10 @@ export function monitorAudioContextRecovery(
     if (!active || failed) return;
     if (audioContext.state === "closed") {
       fail(
-        new Error("AudioContext closed unexpectedly during capture"),
+        Object.assign(
+          new Error("AudioContext closed unexpectedly during capture"),
+          { name: "AudioContextClosedError" },
+        ),
         "unexpected-close",
       );
       return;
@@ -57,7 +60,10 @@ export function monitorAudioContextRecovery(
         await audioContext.resume();
         if (!active || failed) return;
         if (audioContext.state !== "running") {
-          throw new Error("AudioContext did not resume during capture");
+          throw Object.assign(
+            new Error("AudioContext did not resume during capture"),
+            { name: "AudioContextResumeError" },
+          );
         }
         reportAudioContextRecovery(
           audioContext,

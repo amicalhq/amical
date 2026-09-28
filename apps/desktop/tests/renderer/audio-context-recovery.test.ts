@@ -157,7 +157,9 @@ describe("active AudioContext recovery", () => {
     context.changeState("suspended");
     await Promise.resolve();
     expect(onFailure).toHaveBeenCalledExactlyOnceWith(
-      new Error("AudioContext did not resume during capture"),
+      Object.assign(new Error("AudioContext did not resume during capture"), {
+        name: "AudioContextResumeError",
+      }),
     );
     expect(reportAudioContextFailure).toHaveBeenCalledOnce();
     stop();
@@ -176,7 +178,10 @@ describe("active AudioContext recovery", () => {
     context.changeState("closed");
     expect(context.resume).not.toHaveBeenCalled();
     expect(reportAudioContextFailure).toHaveBeenCalledExactlyOnceWith(
-      new Error("AudioContext closed unexpectedly during capture"),
+      Object.assign(
+        new Error("AudioContext closed unexpectedly during capture"),
+        { name: "AudioContextClosedError" },
+      ),
       "unexpected-close",
       context,
       "session-1",

@@ -164,6 +164,9 @@ describe("recordingRouter capture lifecycle", () => {
     const contextSummary = vi
       .spyOn(trace, "recordAudioContextTelemetry")
       .mockImplementation(() => {});
+    const errorName = vi
+      .spyOn(trace, "recordCaptureErrorName")
+      .mockImplementation(() => {});
     const captureFailed = vi.fn();
     const caller = recordingRouter.createCaller({
       services: {
@@ -184,9 +187,14 @@ describe("recordingRouter capture lifecycle", () => {
     };
     await caller.captureFailed({
       sessionId: "failed",
+      name: "NotAllowedError",
       message: "permission denied",
       timings: completed,
     });
+    expect(errorName).toHaveBeenCalledWith("failed", "NotAllowedError");
+    expect(errorName.mock.invocationCallOrder[0]).toBeLessThan(
+      captureFailed.mock.invocationCallOrder[0],
+    );
     expect(record).toHaveBeenCalledWith("failed", completed.phases);
     expect(record.mock.invocationCallOrder[0]).toBeLessThan(
       captureFailed.mock.invocationCallOrder[0],

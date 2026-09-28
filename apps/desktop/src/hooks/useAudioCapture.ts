@@ -242,7 +242,10 @@ export const useAudioCapture = ({
               audioCaptureDiagnostics.registerTrack(audioTrack);
             const onEnded = () =>
               onFailure(
-                new Error("Microphone capture track ended unexpectedly"),
+                Object.assign(
+                  new Error("Microphone capture track ended unexpectedly"),
+                  { name: "TrackEndedError" },
+                ),
               );
             audioTrack.addEventListener("ended", onEnded);
             trackCleanupRef.current = () => {

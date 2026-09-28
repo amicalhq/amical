@@ -160,6 +160,9 @@ function makeHarness(options?: {
 
 afterEach(() => {
   vi.useRealTimers();
+  // Harnesses mint the same session ids; a trace left open by one test
+  // would otherwise absorb the next test's session.
+  _resetDictationTraceForTests();
 });
 
 beforeEach(() => {
@@ -218,41 +221,37 @@ describe("recording lifecycle runtime", () => {
         flushedTraces.push(properties);
       },
     });
-    try {
-      const h = makeHarness();
-      const session = await h.startToRecording();
-      h.timers.fire(TUNING.pressWindowMs);
-      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false, {
-        inputChannelCount: 2,
-        trackChannelCount: 2,
-        stereoDownmixEnabled: true,
-      });
-      await settle();
-      h.lifecycle.setPttLevel(false);
-      await settle();
-      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
-      await settle();
-      expect(h.pastes).toEqual(["hello world"]);
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false, {
+      inputChannelCount: 2,
+      trackChannelCount: 2,
+      stereoDownmixEnabled: true,
+    });
+    await settle();
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+    expect(h.pastes).toEqual(["hello world"]);
 
-      settleObligation(session, "capture.timings");
-      expect(flushedTraces).toHaveLength(1);
-      const trace = flushedTraces[0];
-      expect(trace.session_id).toBe(session);
-      expect(typeof trace.disposition).toBe("string");
-      expect(trace.flush_reason).toBe("settled");
-      expect(trace.recording_live_offset_ms).toBeTypeOf("number");
-      expect(trace.recorder_spinup_duration_ms).toBeTypeOf("number");
-      expect(trace.recorder_close_duration_ms).toBeTypeOf("number");
-      expect(trace.paste_duration_ms).toBeTypeOf("number");
-      expect(trace.pasted_offset_ms).toBeTypeOf("number");
-      expect(trace.storage_duration_ms).toBeTypeOf("number");
-      expect(trace.session_duration_ms).toBeTypeOf("number");
-      expect(trace.audio_input_channel_count).toBe(2);
-      expect(trace.audio_track_channel_count).toBe(2);
-      expect(trace.audio_stereo_downmix_enabled).toBe(true);
-    } finally {
-      _resetDictationTraceForTests();
-    }
+    settleObligation(session, "capture.timings");
+    expect(flushedTraces).toHaveLength(1);
+    const trace = flushedTraces[0];
+    expect(trace.session_id).toBe(session);
+    expect(typeof trace.disposition).toBe("string");
+    expect(trace.flush_reason).toBe("settled");
+    expect(trace.recording_live_offset_ms).toBeTypeOf("number");
+    expect(trace.recorder_spinup_duration_ms).toBeTypeOf("number");
+    expect(trace.recorder_close_duration_ms).toBeTypeOf("number");
+    expect(trace.paste_duration_ms).toBeTypeOf("number");
+    expect(trace.pasted_offset_ms).toBeTypeOf("number");
+    expect(trace.storage_duration_ms).toBeTypeOf("number");
+    expect(trace.session_duration_ms).toBeTypeOf("number");
+    expect(trace.audio_input_channel_count).toBe(2);
+    expect(trace.audio_track_channel_count).toBe(2);
+    expect(trace.audio_stereo_downmix_enabled).toBe(true);
   });
 
   it("a refused paste settles the trace without paste keys and without grace", async () => {
@@ -262,28 +261,24 @@ describe("recording lifecycle runtime", () => {
         flushedTraces.push(properties);
       },
     });
-    try {
-      const h = makeHarness({ pasteConfirms: false });
-      const session = await h.startToRecording();
-      h.timers.fire(TUNING.pressWindowMs);
-      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
-      await settle();
-      h.lifecycle.setPttLevel(false);
-      await settle();
-      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
-      await settle();
-      // The helper answered { success: false }: the paste was dispatched but
-      // never landed — both paste keys must be omitted, never faked, and the
-      // settle must not leave the trace waiting out the grace window.
-      settleObligation(session, "capture.timings");
-      expect(flushedTraces).toHaveLength(1);
-      expect(flushedTraces[0].session_id).toBe(session);
-      expect(flushedTraces[0].flush_reason).toBe("settled");
-      expect(flushedTraces[0].paste_duration_ms).toBeUndefined();
-      expect(flushedTraces[0].pasted_offset_ms).toBeUndefined();
-    } finally {
-      _resetDictationTraceForTests();
-    }
+    const h = makeHarness({ pasteConfirms: false });
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    await settle();
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+    // The helper answered { success: false }: the paste was dispatched but
+    // never landed — both paste keys must be omitted, never faked, and the
+    // settle must not leave the trace waiting out the grace window.
+    settleObligation(session, "capture.timings");
+    expect(flushedTraces).toHaveLength(1);
+    expect(flushedTraces[0].session_id).toBe(session);
+    expect(flushedTraces[0].flush_reason).toBe("settled");
+    expect(flushedTraces[0].paste_duration_ms).toBeUndefined();
+    expect(flushedTraces[0].pasted_offset_ms).toBeUndefined();
   });
 
   it("keeps canceled startup timings until renderer cleanup reports", async () => {
@@ -293,32 +288,28 @@ describe("recording lifecycle runtime", () => {
         flushed.push(payload);
       },
     });
-    try {
-      const h = makeHarness();
-      h.lifecycle.setPttLevel(true);
-      await settle();
-      const session = h.lifecycle.getSnapshot().sessionId!;
-      expect(h.lifecycle.getSnapshot().projection.publicState).toBe("starting");
-      await h.lifecycle.dismiss();
-      await settle();
-      expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
-      expect(flushed).toHaveLength(0);
-      recordCapturePhases(session, [
-        {
-          name: "capture.get-user-media",
-          startedAtMs: Date.now(),
-          durationMs: 120,
-        },
-      ]);
-      settleObligation(session, "capture.timings");
-      expect(flushed).toHaveLength(1);
-      expect(flushed[0]).toMatchObject({
-        capture_get_user_media_duration_ms: 120,
-        flush_reason: "settled",
-      });
-    } finally {
-      _resetDictationTraceForTests();
-    }
+    const h = makeHarness();
+    h.lifecycle.setPttLevel(true);
+    await settle();
+    const session = h.lifecycle.getSnapshot().sessionId!;
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("starting");
+    await h.lifecycle.dismiss();
+    await settle();
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(flushed).toHaveLength(0);
+    recordCapturePhases(session, [
+      {
+        name: "capture.get-user-media",
+        startedAtMs: Date.now(),
+        durationMs: 120,
+      },
+    ]);
+    settleObligation(session, "capture.timings");
+    expect(flushed).toHaveLength(1);
+    expect(flushed[0]).toMatchObject({
+      capture_get_user_media_duration_ms: 120,
+      flush_reason: "settled",
+    });
   });
 
   it("a quick tap cancels: discard, no transcription result, no paste", async () => {

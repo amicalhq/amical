@@ -205,7 +205,10 @@ export const acquireMicrophoneStream = async ({
   const audioTrack = stream.getAudioTracks()[0];
   if (!audioTrack) {
     stream.getTracks().forEach((track) => track.stop());
-    throw new Error("No audio tracks available from microphone");
+    throw Object.assign(
+      new Error("No audio tracks available from microphone"),
+      { name: "NoAudioTrackError" },
+    );
   }
 
   deviceCache.afterPermission();

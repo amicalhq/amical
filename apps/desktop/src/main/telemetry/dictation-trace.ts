@@ -128,6 +128,7 @@ interface SessionTrace {
   chunks: ChunkAggregate | null;
   captureInfo: Record<string, unknown> | null;
   audioContext: AudioContextTelemetry | null;
+  captureErrorName: string | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
   flushReason: "settled" | "grace" | null;
   slowSpanCount: number;
@@ -178,6 +179,7 @@ export function openSessionTrace(
     chunks: null,
     captureInfo: null,
     audioContext: null,
+    captureErrorName: null,
     graceTimer: null,
     flushReason: null,
     slowSpanCount: 0,
@@ -378,6 +380,17 @@ export function recordAudioContextTelemetry(
     return;
   }
   trace.audioContext = { ...audioContext };
+}
+
+/** The renderer's capture failure name (e.g. NotAllowedError). Recorded
+ * whether or not the failure ended the session. */
+export function recordCaptureErrorName(sessionId: string, name: string): void {
+  const trace = sessions.get(sessionId);
+  if (!trace) {
+    dropLate(sessionId, "capture:error-name");
+    return;
+  }
+  trace.captureErrorName = name;
 }
 
 /**
@@ -615,6 +628,9 @@ function flush(trace: SessionTrace): void {
     if (audioContext.failureState !== undefined) {
       payload.audio_context_failure_state = audioContext.failureState;
     }
+  }
+  if (trace.captureErrorName !== null) {
+    payload.capture_error_name = trace.captureErrorName;
   }
   for (const record of trace.records) {
     if (record.name === "lifecycle.ambiance-config") {
