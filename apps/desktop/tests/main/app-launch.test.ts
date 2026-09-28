@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   handleActivate: vi.fn(),
   handleSecondInstance: vi.fn(),
   handleDeepLink: vi.fn(),
+  cleanup: vi.fn(),
 }));
 
 vi.mock("../../src/main/core/app-manager", () => ({
@@ -13,7 +14,7 @@ vi.mock("../../src/main/core/app-manager", () => ({
     handleActivate = mocks.handleActivate;
     handleSecondInstance = mocks.handleSecondInstance;
     handleDeepLink = mocks.handleDeepLink;
-    cleanup = vi.fn();
+    cleanup = mocks.cleanup;
   },
 }));
 vi.mock("../../src/main/managers/service-manager", () => ({
@@ -64,9 +65,16 @@ async function launch(wasOpenedAtLogin = false) {
   const secondInstance = listeners.find(
     ([event]) => event === "second-instance",
   )![1];
+  const willQuit = listeners.find(([event]) => event === "will-quit")![1];
   return {
+    app,
     activate: () => activate({}, false),
     secondInstance: (args: string[]) => secondInstance({}, args, ""),
+    willQuit: () => {
+      const event = { preventDefault: vi.fn() };
+      willQuit(event);
+      return event;
+    },
     finish: async () => {
       complete();
       await new Promise((resolve) => setImmediate(resolve));
@@ -161,4 +169,50 @@ describe("launch visibility", () => {
       expect(mocks.handleDeepLink).toHaveBeenCalledExactlyOnceWith(url);
     },
   );
+});
+
+describe("quit cleanup", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("holds every quit request, runs cleanup once, then exits", async () => {
+    const boot = await launch();
+    const cleanup = Promise.withResolvers<void>();
+    mocks.cleanup.mockReturnValue(cleanup.promise);
+
+    const first = boot.willQuit();
+    const repeated = boot.willQuit();
+    expect(first.preventDefault).toHaveBeenCalledOnce();
+    expect(repeated.preventDefault).toHaveBeenCalledOnce();
+    expect(mocks.cleanup).toHaveBeenCalledOnce();
+
+    cleanup.resolve();
+    await vi.waitFor(() =>
+      expect(boot.app.exit).toHaveBeenCalledExactlyOnceWith(0),
+    );
+  });
+
+  it("exits after the timeout when cleanup hangs", async () => {
+    const boot = await launch();
+    mocks.cleanup.mockReturnValue(new Promise<void>(() => {}));
+    vi.useFakeTimers();
+
+    boot.willQuit();
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(boot.app.exit).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(boot.app.exit).toHaveBeenCalledExactlyOnceWith(0);
+  });
+
+  it("exits when cleanup fails", async () => {
+    const boot = await launch();
+    mocks.cleanup.mockRejectedValue(new Error("release failed"));
+
+    boot.willQuit();
+    await vi.waitFor(() =>
+      expect(boot.app.exit).toHaveBeenCalledExactlyOnceWith(0),
+    );
+  });
 });

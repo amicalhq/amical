@@ -169,7 +169,38 @@ app.whenReady().then(async () => {
     app.quit();
   }
 });
-app.on("will-quit", () => appManager.cleanup());
+// Electron does not wait for async will-quit work: once the handler returns,
+// the process exits and cuts off cleanup (service releases, the final
+// telemetry send). Hold the quit, run cleanup once with a bounded wait, then
+// exit. app.exit() keeps a pending app.relaunch().
+const QUIT_CLEANUP_TIMEOUT_MS = 3000;
+let quitCleanupStarted = false;
+app.on("will-quit", async (event) => {
+  // Also hold a repeated quit request so it cannot cut the running cleanup
+  // short; the exit below ends the process.
+  event.preventDefault();
+  if (quitCleanupStarted) return;
+  quitCleanupStarted = true;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      appManager.cleanup(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          logger.main.warn("Quit cleanup timed out, exiting anyway", {
+            timeoutMs: QUIT_CLEANUP_TIMEOUT_MS,
+          });
+          resolve();
+        }, QUIT_CLEANUP_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    logger.main.error("Quit cleanup failed", { error });
+  } finally {
+    clearTimeout(timer);
+    app.exit(0);
+  }
+});
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
