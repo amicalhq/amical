@@ -861,7 +861,7 @@
         "invalidKeyCombination": "Combinación de teclas no válida",
         "alreadyAssigned": "El atajo ya está asignado",
         "conflictsWithSystem": "{{shortcut}} entra en conflicto con un atajo del sistema",
-        "addModifier": "Agrega una tecla modificadora como Cmd, Ctrl o Fn",
+        "addModifier": "Agrega una tecla modificadora como {{mod1}}, {{mod2}} o {{mod3}}",
         "duplicateModifierPairs": "No se pueden usar las teclas {{modifier}} izquierda y derecha juntas",
         "overlapsWithPushToTalk": "Esto se superpone con tu atajo de Pulsar para hablar y puede causar problemas"
       },

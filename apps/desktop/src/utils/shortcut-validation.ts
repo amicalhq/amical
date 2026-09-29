@@ -4,7 +4,8 @@
  */
 
 import type { ParseKeys } from "i18next";
-import { getKeyFromKeycode } from "./keycode-map";
+import { formatShortcut } from "./keycode-map";
+import { MAC_KEYCODES, WINDOWS_KEYCODES } from "./keycodes";
 import {
   MAC_MODIFIER_KEYCODES,
   WINDOWS_MODIFIER_KEYCODES,
@@ -52,6 +53,21 @@ export interface I18nMessage {
 // Maximum number of keys allowed in a shortcut
 const MAX_KEY_COMBINATION_LENGTH = 4;
 
+// Modifier names for messages, as Apple and Microsoft write them in prose:
+// "Command", not "Cmd" or "command"; "Windows", not "Win".
+const MAC_MODIFIER_NAMES: Record<number, string> = {
+  [MAC_KEYCODES.CMD]: "Command",
+  [MAC_KEYCODES.CTRL]: "Control",
+  [MAC_KEYCODES.ALT]: "Option",
+  [MAC_KEYCODES.SHIFT]: "Shift",
+};
+const WINDOWS_MODIFIER_NAMES: Record<number, string> = {
+  [WINDOWS_KEYCODES.CTRL]: "Ctrl",
+  [WINDOWS_KEYCODES.ALT]: "Alt",
+  [WINDOWS_KEYCODES.SHIFT]: "Shift",
+  [WINDOWS_KEYCODES.WIN]: "Windows",
+};
+
 /**
  * Helper function to compare two sorted arrays
  */
@@ -65,10 +81,6 @@ function arraysEqual(a: number[], b: number[]): boolean {
  */
 function normalizeKeys(keys: number[]): number[] {
   return [...keys].sort((a, b) => a - b);
-}
-
-function keycodesToDisplayNames(keys: number[]): string[] {
-  return keys.map((keycode) => getKeyFromKeycode(keycode) ?? `Key${keycode}`);
 }
 
 /**
@@ -134,12 +146,11 @@ export function checkReservedShortcut(
   for (const reservedShortcut of reserved) {
     const normalizedReserved = normalizeKeys(reservedShortcut);
     if (arraysEqual(normalizedKeys, normalizedReserved)) {
-      const displayShortcut = keycodesToDisplayNames(keys).join("+");
       return {
         valid: false,
         error: {
           key: "settings.shortcuts.validation.conflictsWithSystem",
-          params: { shortcut: displayShortcut },
+          params: { shortcut: formatShortcut(keys) },
         },
       };
     }
@@ -173,15 +184,22 @@ export function checkAlphanumericOnly(
   }
 
   // All keys are alphanumeric - need a modifier
+  const [mod1, mod2, mod3] =
+    platform === "darwin"
+      ? ["Command", "Control", "Fn"]
+      : ["Ctrl", "Alt", "Windows"];
   return {
     valid: false,
-    error: { key: "settings.shortcuts.validation.addModifier" },
+    error: {
+      key: "settings.shortcuts.validation.addModifier",
+      params: { mod1, mod2, mod3 },
+    },
   };
 }
 
 /**
- * Check for duplicate left/right modifier pairs (Windows only)
- * macOS can't distinguish left/right modifiers via its event system
+ * Check that a shortcut does not use both the left and right key of one
+ * modifier
  */
 export function checkDuplicateModifierPairs(
   keys: number[],
@@ -189,15 +207,16 @@ export function checkDuplicateModifierPairs(
 ): ValidationResult {
   const modifierPairs =
     platform === "darwin" ? MAC_MODIFIER_PAIRS : WINDOWS_MODIFIER_PAIRS;
+  const modifierNames =
+    platform === "darwin" ? MAC_MODIFIER_NAMES : WINDOWS_MODIFIER_NAMES;
 
   for (const [left, right] of modifierPairs) {
     if (keys.includes(left) && keys.includes(right)) {
-      const baseName = getKeyFromKeycode(left) ?? "modifier";
       return {
         valid: false,
         error: {
           key: "settings.shortcuts.validation.duplicateModifierPairs",
-          params: { modifier: baseName },
+          params: { modifier: modifierNames[left] },
         },
       };
     }

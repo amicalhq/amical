@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Pencil, Trash2, X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import { getKeyFromKeycode, keycodeToDisplay } from "@/utils/keycode-map";
+import {
+  getKeyFromKeycode,
+  keycodeToDisplay,
+  sortKeycodesForDisplay,
+} from "@/utils/keycode-map";
 import {
   handleActiveKeysEmission,
   initialShortcutRecordingState,
@@ -94,16 +99,11 @@ function RecordingDisplay({
       tabIndex={0}
     >
       {activeKeys.length > 0 ? (
-        <div className="flex items-center gap-1">
-          {activeKeys.map((key, index) => (
-            <kbd
-              key={index}
-              className="px-1.5 py-0.5 text-xs bg-background rounded border"
-            >
-              {keycodeToDisplay(key)}
-            </kbd>
+        <KbdGroup>
+          {sortKeycodesForDisplay(activeKeys).map((key, index) => (
+            <Kbd key={index}>{keycodeToDisplay(key)}</Kbd>
           ))}
-        </div>
+        </KbdGroup>
       ) : (
         <span className="text-sm text-muted-foreground">{pressKeysText}</span>
       )}
@@ -137,19 +137,16 @@ function ShortcutDisplay({
   return (
     <>
       {hasShortcut ? (
-        <div
-          onClick={onEdit}
-          className="flex cursor-pointer items-center gap-1"
-        >
-          {value.map((key, index) => (
-            <kbd
+        <KbdGroup onClick={onEdit} className="group cursor-pointer">
+          {sortKeycodesForDisplay(value).map((key, index) => (
+            <Kbd
               key={index}
-              className="inline-flex items-center rounded-md border bg-muted px-2 py-0.5 font-mono text-sm transition-colors hover:bg-muted/70"
+              className="transition-colors group-hover:bg-muted/70"
             >
               {keycodeToDisplay(key)}
-            </kbd>
+            </Kbd>
           ))}
-        </div>
+        </KbdGroup>
       ) : (
         <span className="text-sm text-muted-foreground">{unassignedText}</span>
       )}

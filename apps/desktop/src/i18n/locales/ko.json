@@ -861,7 +861,7 @@
         "invalidKeyCombination": "잘못된 키 조합입니다",
         "alreadyAssigned": "이미 할당된 단축키입니다",
         "conflictsWithSystem": "단축키 {{shortcut}} 조합이 시스템 단축키와 충돌합니다",
-        "addModifier": "Cmd, Ctrl, Fn 같은 보조 키를 추가하세요",
+        "addModifier": "{{mod1}}, {{mod2}}, {{mod3}} 같은 보조 키를 추가하세요",
         "duplicateModifierPairs": "{{modifier}} 키의 왼쪽과 오른쪽을 동시에 사용할 수 없습니다",
         "overlapsWithPushToTalk": "누르며 말하기 단축키와 겹쳐서 문제가 발생할 수 있습니다"
       },

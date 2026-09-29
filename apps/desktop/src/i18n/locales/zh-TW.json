@@ -861,7 +861,7 @@
         "invalidKeyCombination": "無效的按鍵組合",
         "alreadyAssigned": "該快捷鍵已指派",
         "conflictsWithSystem": "{{shortcut}} 與目前的系統快捷鍵衝突",
-        "addModifier": "請增加修飾鍵（如 Cmd、Ctrl 或是 Fn）",
+        "addModifier": "請增加修飾鍵（如 {{mod1}}、{{mod2}} 或是 {{mod3}}）",
         "duplicateModifierPairs": "無法同時使用左側與右側的 {{modifier}}",
         "overlapsWithPushToTalk": "這與您的「按住說話」快捷鍵重疊，可能會導致問題"
       },

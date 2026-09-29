@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkAlphanumericOnly,
+  checkDuplicateModifierPairs,
   checkMaxKeysLength,
   type ShortcutType,
   validateShortcutBindings,
@@ -104,6 +105,26 @@ describe("shortcut validation", () => {
 
   it("treats Windows Enter as a special key needing no modifier", () => {
     expect(checkAlphanumericOnly([0x0d], "win32")).toEqual({ valid: true });
+  });
+
+  it("names modifiers as each platform writes them in prose", () => {
+    expect(checkAlphanumericOnly([0], "darwin").error?.params).toEqual({
+      mod1: "Command",
+      mod2: "Control",
+      mod3: "Fn",
+    });
+    expect(checkAlphanumericOnly([0x41], "win32").error?.params).toEqual({
+      mod1: "Ctrl",
+      mod2: "Alt",
+      mod3: "Windows",
+    });
+    // Left and right Control; left and right Windows.
+    expect(
+      checkDuplicateModifierPairs([59, 62], "darwin").error?.params,
+    ).toEqual({ modifier: "Control" });
+    expect(
+      checkDuplicateModifierPairs([0x5b, 0x5c], "win32").error?.params,
+    ).toEqual({ modifier: "Windows" });
   });
 
   it("accepts a bare Return binding on macOS", () => {

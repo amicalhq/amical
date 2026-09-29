@@ -15,6 +15,7 @@ import { useHeldKeys } from "../shared/useHeldKeys";
 import { OnboardingShortcutInput } from "../shared/OnboardingShortcutInput";
 import { OnboardingScreen } from "@/types/onboarding";
 import { api } from "@/trpc/react";
+import { sortKeycodesForDisplay } from "@/utils/keycode-map";
 
 interface DraftShortcutScreenProps {
   onNext: () => void;
@@ -72,7 +73,7 @@ export function DraftShortcutScreen({
       <PreviewPanel>
         <div className="relative flex items-center justify-center gap-2.5">
           {configured.length ? (
-            configured.map((code) => (
+            sortKeycodesForDisplay(configured).map((code) => (
               <KeyCap
                 key={code}
                 keycode={code}

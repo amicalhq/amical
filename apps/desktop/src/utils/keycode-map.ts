@@ -1,4 +1,9 @@
 import { isWindows } from "./platform";
+import { MAC_KEYCODES, WINDOWS_KEYCODES } from "./keycodes";
+import {
+  MAC_MODIFIER_PAIRS,
+  WINDOWS_MODIFIER_PAIRS,
+} from "./shortcut-constants";
 
 // macOS keycode mappings
 // Note: PrintScreen is not standard on macOS keyboards. External keyboards may send it,
@@ -332,9 +337,122 @@ export function getKeyFromKeycode(keycode: number): string | undefined {
   return mapping[keycode];
 }
 
-/** User-facing label for a keycode, with the `Key<code>` fallback for unmapped codes. */
+/**
+ * A key's user-facing label: an optional glyph, a word, and whether it is
+ * the right-side key.
+ */
+export interface KeyLegend {
+  glyph?: string;
+  word: string;
+  right?: boolean;
+}
+
+// User-facing legends where they differ from the key names above. The names
+// stay as-is because they double as identifiers (e.g. the v6 settings
+// migration parses stored names). macOS keys use the Apple Style Guide name,
+// plus the macOS menu glyph only where users know it: ⌘ ⌥ ⌃ ⇧, the delete
+// keys and the arrows. Other keys show their name, as Mac keycaps do
+// (esc, tab, return).
+const macOSLegends: Record<string, KeyLegend> = {
+  Cmd: { glyph: "⌘", word: "Command" },
+  Ctrl: { glyph: "⌃", word: "Control" },
+  Alt: { glyph: "⌥", word: "Option" },
+  Shift: { glyph: "⇧", word: "Shift" },
+  Delete: { glyph: "⌫", word: "Delete" },
+  ForwardDelete: { glyph: "⌦", word: "Forward Delete" },
+  Up: { glyph: "↑", word: "Up Arrow" },
+  Down: { glyph: "↓", word: "Down Arrow" },
+  Left: { glyph: "←", word: "Left Arrow" },
+  Right: { glyph: "→", word: "Right Arrow" },
+  Enter: { word: "Return" },
+  Escape: { word: "Esc" },
+  PageUp: { word: "Page Up" },
+  PageDown: { word: "Page Down" },
+  CapsLock: { word: "Caps Lock" },
+};
+
+// Windows keys use the title-case names of the Windows UX guidelines. The
+// arrow keys and Win deliberately keep their short names ("Up", not
+// "Up Arrow"; "Win", not "Windows") so shortcut chips stay short.
+const windowsLegends: Record<string, KeyLegend> = {
+  Escape: { word: "Esc" },
+  PageUp: { word: "Page Up" },
+  PageDown: { word: "Page Down" },
+  CapsLock: { word: "Caps Lock" },
+  PrintScreen: { word: "Print Screen" },
+  NumLock: { word: "Num Lock" },
+  ScrollLock: { word: "Scroll Lock" },
+};
+
+export function keycodeToLegend(keycode: number): KeyLegend {
+  // A right-side modifier shows its left twin's legend, marked as right.
+  const pairs = isWindows() ? WINDOWS_MODIFIER_PAIRS : MAC_MODIFIER_PAIRS;
+  const left = pairs.find(([, right]) => right === keycode)?.[0];
+  if (left !== undefined) return { ...keycodeToLegend(left), right: true };
+
+  const name = getKeyFromKeycode(keycode) ?? `Key${keycode}`;
+  const legends = isWindows() ? windowsLegends : macOSLegends;
+  return legends[name] || { word: name };
+}
+
+/**
+ * Compact user-facing label for a keycode: the glyph where the key has one
+ * (macOS menus show keys this way), else the word. Right-side modifiers get
+ * a "Right" prefix.
+ */
 export function keycodeToDisplay(keycode: number): string {
-  return getKeyFromKeycode(keycode) ?? `Key${keycode}`;
+  const { glyph, word, right } = keycodeToLegend(keycode);
+  const label = glyph ?? word;
+  return right ? `Right ${label}` : label;
+}
+
+// Modifiers go first, in each platform's standard order: Fn, Control, Option,
+// Shift, Command on macOS (Apple Style Guide); Windows, Ctrl, Alt, Shift on
+// Windows (Windows UX guidelines). Other keys keep their press order.
+const macOSModifierOrder: number[] = [
+  MAC_KEYCODES.FN,
+  MAC_KEYCODES.CTRL,
+  MAC_KEYCODES.RCTRL,
+  MAC_KEYCODES.ALT,
+  MAC_KEYCODES.RALT,
+  MAC_KEYCODES.SHIFT,
+  MAC_KEYCODES.RSHIFT,
+  MAC_KEYCODES.CMD,
+  MAC_KEYCODES.RCMD,
+];
+const windowsModifierOrder: number[] = [
+  WINDOWS_KEYCODES.WIN,
+  WINDOWS_KEYCODES.RWIN,
+  WINDOWS_KEYCODES.CTRL,
+  WINDOWS_KEYCODES.RCTRL,
+  WINDOWS_KEYCODES.ALT,
+  WINDOWS_KEYCODES.RALT,
+  WINDOWS_KEYCODES.SHIFT,
+  WINDOWS_KEYCODES.RSHIFT,
+];
+
+/** The keys of a shortcut in display order. The stored order is unchanged. */
+export function sortKeycodesForDisplay(keycodes: number[]): number[] {
+  const order = isWindows() ? windowsModifierOrder : macOSModifierOrder;
+  const rank = (keycode: number) => {
+    const index = order.indexOf(keycode);
+    return index === -1 ? order.length : index;
+  };
+  return [...keycodes].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * A shortcut as text, in each platform's standard form: "⇧⌘3" on macOS,
+ * "Ctrl+Alt+Delete" on Windows. The modifier side is left out, as in system
+ * shortcut lists.
+ */
+export function formatShortcut(keycodes: number[]): string {
+  return sortKeycodesForDisplay(keycodes)
+    .map((keycode) => {
+      const { glyph, word } = keycodeToLegend(keycode);
+      return glyph ?? word;
+    })
+    .join(isWindows() ? "+" : "");
 }
 
 function buildReverseMap(

@@ -861,7 +861,7 @@
         "invalidKeyCombination": "無効なキーの組み合わせです",
         "alreadyAssigned": "ショートカットは既に割り当てられています",
         "conflictsWithSystem": "{{shortcut}}はシステムのショートカットと競合します",
-        "addModifier": "Cmd、Ctrl、Fnなどの修飾キーを追加してください",
+        "addModifier": "{{mod1}}、{{mod2}}、{{mod3}}などの修飾キーを追加してください",
         "duplicateModifierPairs": "左右の{{modifier}}を同時に使用できません",
         "overlapsWithPushToTalk": "プッシュトゥトークのショートカットと重複しており、問題が発生する可能性があります"
       },

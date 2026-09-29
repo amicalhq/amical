@@ -861,7 +861,7 @@
         "invalidKeyCombination": "Ungültige Tastenkombination",
         "alreadyAssigned": "Tastenkürzel ist bereits zugewiesen",
         "conflictsWithSystem": "{{shortcut}} steht in Konflikt mit einem System-Tastenkürzel",
-        "addModifier": "Füge eine Modifikator-Taste wie Cmd, Ctrl oder Fn hinzu",
+        "addModifier": "Füge eine Modifikator-Taste wie {{mod1}}, {{mod2}} oder {{mod3}} hinzu",
         "duplicateModifierPairs": "Linke und rechte {{modifier}}-Taste können nicht gleichzeitig verwendet werden",
         "overlapsWithPushToTalk": "Dies überschneidet sich mit deinem Push-to-Talk-Tastenkürzel und kann zu Problemen führen"
       },
