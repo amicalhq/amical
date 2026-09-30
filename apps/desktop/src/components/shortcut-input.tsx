@@ -5,11 +5,7 @@ import { Pencil, Trash2, X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import {
-  getKeyFromKeycode,
-  keycodeToDisplay,
-  sortKeycodesForDisplay,
-} from "@/utils/keycode-map";
+import { keycodeToDisplay, sortKeycodesForDisplay } from "@/utils/keycode-map";
 import {
   handleActiveKeysEmission,
   initialShortcutRecordingState,
@@ -25,31 +21,12 @@ interface ShortcutInputProps {
   allowUnassign: boolean;
 }
 
-const MODIFIER_KEYS = new Set([
-  "Cmd",
-  "RCmd",
-  "Win",
-  "RWin",
-  "Ctrl",
-  "RCtrl",
-  "Alt",
-  "RAlt",
-  "Shift",
-  "RShift",
-  "Fn",
-]);
 const MAX_KEY_COMBINATION_LENGTH = 4;
 
 type ValidationResult = {
   valid: boolean;
-  shortcut?: number[];
   error?: I18nMessage;
 };
-
-function isModifierKeycode(keycode: number): boolean {
-  const name = getKeyFromKeycode(keycode);
-  return name ? MODIFIER_KEYS.has(name) : false;
-}
 
 /**
  * Basic format validation only - business logic validation happens on backend
@@ -72,14 +49,7 @@ function validateShortcutFormat(keys: number[]): ValidationResult {
     };
   }
 
-  const modifierKeys = keys.filter((keycode) => isModifierKeycode(keycode));
-  const regularKeys = keys.filter((keycode) => !isModifierKeycode(keycode));
-
-  // Return array format: modifiers first, then regular keys
-  return {
-    valid: true,
-    shortcut: [...modifierKeys, ...regularKeys],
-  };
+  return { valid: true };
 }
 
 function RecordingDisplay({
@@ -213,9 +183,9 @@ export function ShortcutInput({
       if (completedKeys) {
         const result = validateShortcutFormat(completedKeys);
 
-        if (result.valid && result.shortcut) {
+        if (result.valid) {
           // Basic format is valid - let parent handle backend validation
-          onChange(result.shortcut);
+          onChange(completedKeys);
         } else {
           toast.error(
             result.error
