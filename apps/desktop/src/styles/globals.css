@@ -160,16 +160,13 @@ html.vibrancy [data-slot="sidebar-inner"] {
   background: transparent !important;
 }
 
-/* Flush content area (remove inset variant's margin/rounding/shadow) */
+/* Flush sidebar (remove inset variant's sidebar padding) */
 [data-slot="sidebar"][data-variant="inset"] [data-slot="sidebar-container"] {
   padding: 0 !important;
 }
 
+/* Clip content to the inset card's rounded corners */
 [data-slot="sidebar-inset"] {
-  margin: 0 !important;
-  box-shadow: none !important;
-  border-top-left-radius: 0.75rem !important;
-  border-bottom-left-radius: 0.75rem !important;
   overflow: hidden !important;
 }
 

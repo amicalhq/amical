@@ -43,10 +43,14 @@ export function SiteHeader({
           </div>
         ) : null}
       </div>
-      <header className="flex h-[var(--header-height)] shrink-0 items-center gap-2 backdrop-blur supports-[backdrop-filter]:bg-background sticky top-0 z-40 w-full">
-        <div className="flex w-full items-center gap-1">
+      {/* From md up the inset card sits 8px below the window top; pin the
+          title to a 32px top row so it stays level with the toolbar. Below
+          md the sidebar is a sheet, so start the title after the toolbar
+          (traffic lights + sidebar toggle). */}
+      <header className="flex h-[var(--header-height)] shrink-0 items-center md:items-start gap-2 backdrop-blur supports-[backdrop-filter]:bg-background sticky top-0 z-40 w-full max-md:pl-[calc(var(--toolbar-left)+2.25rem)]">
+        <div className="flex w-full items-center gap-1 md:h-8">
           <div
-            className={`flex items-center gap-1 py-1.5 transition-[padding] duration-200 ${sidebarState === "expanded" ? "px-4" : "px-0"}`}
+            className={`flex items-center gap-1 py-1.5 transition-[padding] duration-200 max-md:px-0 ${sidebarState === "expanded" ? "px-4" : "px-0"}`}
           />
           <div
             className={`flex items-center pointer-events-none select-none transition-opacity duration-200 ${showTitle ? "opacity-100" : "opacity-0"}`}
