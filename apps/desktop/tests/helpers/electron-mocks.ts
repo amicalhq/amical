@@ -237,6 +237,7 @@ const mockApp = {
   show: vi.fn(),
   setName: vi.fn(),
   setPath: vi.fn(),
+  setActivationPolicy: vi.fn(),
   getLocale: vi.fn(() => "en-US"),
   getLocaleCountryCode: vi.fn(() => "US"),
   getSystemLocale: vi.fn(() => "en-US"),

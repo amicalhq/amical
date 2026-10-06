@@ -63,15 +63,18 @@ if (isWindows()) {
   app.setAppUserModelId("ai.amical.desktop");
 }
 
-// Register the amical:// protocol
+// Register the deep-link protocol. Unpackaged dev builds use their own scheme
+// so they never take amical:// (and its OAuth callbacks) from an installed
+// Amical.
+const deepLinkScheme = app.isPackaged ? "amical" : "amical-dev";
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("amical", process.execPath, [
+    app.setAsDefaultProtocolClient(deepLinkScheme, process.execPath, [
       process.argv[1],
     ]);
   }
 } else {
-  app.setAsDefaultProtocolClient("amical");
+  app.setAsDefaultProtocolClient(deepLinkScheme);
 }
 
 // Enforce single instance
@@ -114,7 +117,7 @@ app.on("second-instance", (_event, commandLine) => {
     return;
   }
 
-  const url = commandLine.find((arg) => arg.startsWith("amical://"));
+  const url = commandLine.find((arg) => arg.startsWith(`${deepLinkScheme}://`));
   // Deep-link handling opens its own window; do not open it twice.
   if (!url && !isSilentStart(commandLine)) {
     if (isInitialized) {

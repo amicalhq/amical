@@ -39,6 +39,8 @@ afterEach(() => {
 async function launch(wasOpenedAtLogin = false) {
   const { app } = await import("electron");
   Object.assign(app, {
+    // Packaged, so deep links use the production amical:// scheme.
+    isPackaged: true,
     requestSingleInstanceLock: vi.fn(() => true),
     setAsDefaultProtocolClient: vi.fn(),
     setAppUserModelId: vi.fn(),

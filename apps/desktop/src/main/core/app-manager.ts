@@ -126,13 +126,21 @@ export class AppManager {
     // Subscribe to settings changes for window updates
     this.setupSettingsEventListeners(this.settingsService);
 
+    // Dev launches (often scripted while the user works elsewhere) show their
+    // first window without taking focus (or switching Spaces on macOS; see
+    // main.ts). Later opens from the tray, Dock, a second launch, or a deep
+    // link still focus.
+    const startInactive = !app.isPackaged;
+
     if (onboardingCheck.needed) {
       // Suppress global shortcut commands while onboarding is open; the
       // dictation try-it steps lift this for their lifetime (see the
       // try-it-active-changed listener above).
       this.shortcutManager.setCommandsSuppressed(true);
       await onboardingService.startOnboardingFlow();
-      await this.windowManager.createOrShowOnboardingWindow();
+      await this.windowManager.createOrShowOnboardingWindow({
+        inactive: startInactive,
+      });
 
       // Closing the wizard is the third exit (besides completed/cancelled):
       // treat it as cancel — track abandonment and quit via the cancelled
@@ -145,7 +153,7 @@ export class AppManager {
         }
       });
     } else {
-      await this.setupWindows(silentStart);
+      await this.setupWindows(silentStart, startInactive);
     }
 
     const locale = await this.setupMenu();
@@ -310,11 +318,14 @@ export class AppManager {
     logger.main.info("Settings event listeners set up");
   }
 
-  private async setupWindows(silentStart = false): Promise<void> {
+  private async setupWindows(
+    silentStart = false,
+    inactive = false,
+  ): Promise<void> {
     await this.windowManager.ensureWidgetWindow();
 
     if (!silentStart) {
-      await this.windowManager.createOrShowMainWindow();
+      await this.windowManager.createOrShowMainWindow(undefined, { inactive });
     }
 
     // Apply dock visibility based on user preference (macOS only)
