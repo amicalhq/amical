@@ -11,6 +11,7 @@ import {
   AppScopeTag,
 } from "../main/runtime/tags";
 import { step, up } from "../main/runtime/layer-helpers";
+import { getAmicalClientInfo } from "../utils/http-client";
 import type { SettingsService } from "./settings-service";
 import type { PostHogClient, SystemInfo } from "./posthog-client";
 import type { AuthState } from "./auth-service";
@@ -235,7 +236,11 @@ export class TelemetryService extends EventEmitter {
 
     // ! posthog-node code flow doesn't use register to set super properties
     // ! Track them manually
+    // Same values as the amical-client / amical-platform request headers.
+    const { client, platform } = getAmicalClientInfo();
     this.persistedProperties = {
+      client,
+      platform,
       app_version: app.getVersion(),
       machine_id: this.client.machineId,
       app_is_packaged: app.isPackaged,
@@ -430,10 +435,11 @@ export class TelemetryService extends EventEmitter {
     const user = this.client.identifiedUser;
     if (!this.client.posthog || !this.enabled || !user) return;
 
+    // Person properties carry only per-person facts. Device and app context
+    // stays on events, because one person can use several devices.
     this.client.posthog.identify({
       distinctId: user.userId,
       properties: {
-        ...this.persistedProperties,
         ...(user.email && { email: user.email }),
         ...(user.name && { name: user.name }),
         ...(this.client.machineId && {

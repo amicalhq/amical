@@ -5,7 +5,7 @@ import { getPlatformDisplayName } from "./platform";
 export interface AmicalClientInfo {
   client: "desktop";
   version: string;
-  platform: NodeJS.Platform;
+  platform: "macos" | "windows" | Exclude<NodeJS.Platform, "darwin" | "win32">;
   locale: string;
 }
 
@@ -25,7 +25,14 @@ const AMICAL_LAB_TOKEN_PATTERN = /^[A-Za-z0-9._~-]+(?:=[A-Za-z0-9._~-]+)?$/;
 const AMICAL_CLIENT_INFO: Omit<AmicalClientInfo, "locale"> = {
   client: "desktop",
   version: app.getVersion(),
-  platform: process.platform,
+  // macos / windows, not process.platform's darwin / win32. The server also
+  // accepts darwin / win32 from older app versions.
+  platform:
+    process.platform === "darwin"
+      ? "macos"
+      : process.platform === "win32"
+        ? "windows"
+        : process.platform,
 };
 
 const AMICAL_CLIENT_HEADERS: Readonly<Record<string, string>> = Object.freeze({

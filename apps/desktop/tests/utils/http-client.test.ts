@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getApplicationLocale,
   setApplicationLocale,
@@ -49,5 +49,32 @@ describe("Amical client locale", () => {
     expect(getAmicalClientHeaders()).toMatchObject({
       "Accept-Language": "en",
     });
+  });
+});
+
+describe("Amical client platform", () => {
+  const originalPlatform = process.platform;
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", {
+      value: originalPlatform,
+      configurable: true,
+    });
+  });
+
+  it.each([
+    ["darwin", "macos"],
+    ["win32", "windows"],
+    ["linux", "linux"],
+  ])("sends %s as %s", async (nodePlatform, expected) => {
+    Object.defineProperty(process, "platform", {
+      value: nodePlatform,
+      configurable: true,
+    });
+    vi.resetModules();
+    const client = await import("../../src/utils/http-client");
+
+    expect(client.getAmicalClientInfo().platform).toBe(expected);
+    expect(client.getAmicalClientHeaders()["amical-platform"]).toBe(expected);
   });
 });

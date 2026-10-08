@@ -3,7 +3,10 @@ import { Effect, Fiber } from "effect";
 
 import type { AuthService } from "../../src/services/auth-service";
 import { ActivityReportingClient } from "../../src/services/activity-reporting-client";
-import { AMICAL_PLATFORM_HEADER } from "../../src/utils/http-client";
+import {
+  AMICAL_PLATFORM_HEADER,
+  getAmicalClientInfo,
+} from "../../src/utils/http-client";
 import type { DictationActivity } from "../../src/types/activity";
 import {
   AuthenticationRequired,
@@ -60,7 +63,9 @@ describe("ActivityReportingClient", () => {
     ];
     expect(url.toString()).toBe("https://core.test/apps/v1/me/activities");
     expect(init.headers.Authorization).toBe("Bearer id-token");
-    expect(init.headers[AMICAL_PLATFORM_HEADER]).toBe(process.platform);
+    expect(init.headers[AMICAL_PLATFORM_HEADER]).toBe(
+      getAmicalClientInfo().platform,
+    );
     expect(JSON.parse(init.body)).toEqual({ activities: [activity] });
     expect(JSON.parse(init.body)).not.toHaveProperty("platform");
   });

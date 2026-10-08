@@ -20,7 +20,6 @@ import { ErrorCodes, type DictationErrorCode, type ErrorCode } from "./error";
  * Fired when user begins onboarding flow
  */
 export interface OnboardingStartedEvent {
-  platform: string;
   resumed: boolean;
   resumedFrom?: string;
 }
@@ -96,7 +95,6 @@ export interface OnboardingAbandonedEvent {
  */
 export interface NativeHelperCrashedEvent {
   helper_name: string;
-  platform: string;
   exit_code: number | null;
   signal: string | null;
   restart_attempt: number;

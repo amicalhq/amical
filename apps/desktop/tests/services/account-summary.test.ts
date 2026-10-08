@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
 import type { AuthService } from "../../src/services/auth-service";
 import { getAccountSummary } from "../../src/services/account-summary";
+import { getAmicalClientInfo } from "../../src/utils/http-client";
 
 const summary = {
   totals: {
@@ -53,7 +54,7 @@ describe("getAccountSummary", () => {
     expect(init.method).toBe("GET");
     expect(init.headers).toMatchObject({
       Authorization: "Bearer id-token",
-      "amical-platform": process.platform,
+      "amical-platform": getAmicalClientInfo().platform,
     });
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });

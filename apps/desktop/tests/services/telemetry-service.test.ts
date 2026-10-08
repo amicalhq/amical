@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TelemetryService } from "../../src/services/telemetry-service";
 import type { PostHogClient } from "../../src/services/posthog-client";
 import type { SettingsService } from "../../src/services/settings-service";
+import { getAmicalClientInfo } from "../../src/utils/http-client";
 
 interface AuthStateFixture {
   isAuthenticated: boolean;
@@ -120,6 +121,8 @@ describe("TelemetryService identity", () => {
     await service.initialize();
 
     expect(service.getCommonProperties()).toEqual({
+      client: "desktop",
+      platform: getAmicalClientInfo().platform,
       app_version: "0.1.0-test",
       machine_id: "machine-1",
       app_is_packaged: false,
@@ -177,11 +180,11 @@ describe("TelemetryService identity", () => {
     );
     expect(posthog.identify).toHaveBeenCalledWith({
       distinctId: "user-1",
-      properties: expect.objectContaining({
+      properties: {
         email: "user@example.com",
         name: "Test User",
         $anon_distinct_id: "machine-1",
-      }),
+      },
     });
     expect(posthog.capture).toHaveBeenLastCalledWith({
       distinctId: "user-1",
@@ -235,11 +238,11 @@ describe("TelemetryService identity", () => {
     );
     expect(posthog.identify).toHaveBeenCalledWith({
       distinctId: "user-from-settings",
-      properties: expect.objectContaining({
+      properties: {
         email: "persisted@example.com",
         name: "Persisted User",
         $anon_distinct_id: "machine-1",
-      }),
+      },
     });
     expect(posthog.capture).toHaveBeenCalledWith({
       distinctId: "user-from-settings",

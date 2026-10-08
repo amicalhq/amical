@@ -573,7 +573,6 @@ export class NativeBridge extends EventEmitter {
     // Track crash telemetry
     this.telemetryService?.trackNativeHelperCrashed({
       helper_name: helperName,
-      platform: process.platform,
       exit_code: this.lastCrashInfo?.code ?? null,
       signal: this.lastCrashInfo?.signal ?? null,
       restart_attempt: this.restartCount + 1,

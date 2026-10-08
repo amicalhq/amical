@@ -174,7 +174,7 @@ const createStream = (overrides: Partial<GrpcDictationStreamOptions> = {}) =>
     clientInfo: {
       client: "desktop",
       version: "0.0.0-test",
-      platform: "darwin",
+      platform: "macos",
       locale: "en",
     },
     sessionId: "session-1",
@@ -290,7 +290,7 @@ describe("CloudDictationGrpcStream", () => {
       clientInfo: {
         client: "desktop",
         version: "1.2.3",
-        platform: "darwin",
+        platform: "macos",
         locale: "ja-JP",
       },
     });
@@ -302,7 +302,7 @@ describe("CloudDictationGrpcStream", () => {
     expect(metadata.get("authorization")).toEqual(["Bearer token"]);
     expect(metadata.get("amical-client")).toEqual(["desktop"]);
     expect(metadata.get("amical-version")).toEqual(["1.2.3"]);
-    expect(metadata.get("amical-platform")).toEqual(["darwin"]);
+    expect(metadata.get("amical-platform")).toEqual(["macos"]);
     expect(metadata.get("accept-language")).toEqual(["ja-JP"]);
     expect(metadata.get("x-platform")).toEqual([]);
 

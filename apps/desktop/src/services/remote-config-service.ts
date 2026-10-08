@@ -11,6 +11,7 @@ import {
 import {
   AMICAL_DEVICE_ID_HEADER,
   getAmicalClientHeaders,
+  getAmicalClientInfo,
   getCoreApiUrl,
   getUserAgent,
 } from "../utils/http-client";
@@ -20,7 +21,6 @@ import type {
   ContractFailureKind,
   TelemetryService,
 } from "./telemetry-service";
-import { getApplicationLocale } from "../i18n/application-locale";
 import { Cause, Data, Effect, Layer, Scope } from "effect";
 import { z } from "zod";
 import {
@@ -396,9 +396,10 @@ export class RemoteConfigService {
   > {
     return Effect.gen({ self: this }, function* () {
       const url = getCoreApiUrl("/apps/v1/remote-config");
-      url.searchParams.set("platform", process.platform);
-      url.searchParams.set("version", app.getVersion());
-      url.searchParams.set("locale", getApplicationLocale());
+      const { platform, version, locale } = getAmicalClientInfo();
+      url.searchParams.set("platform", platform);
+      url.searchParams.set("version", version);
+      url.searchParams.set("locale", locale);
 
       // Runs in all cases — the server decides what (if anything) to return per
       // auth state. Attach the bearer token only when signed in, plus the
