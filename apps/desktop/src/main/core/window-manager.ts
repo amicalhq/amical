@@ -351,6 +351,11 @@ export class WindowManager extends EventEmitter {
       );
     }
 
+    const mainWindow = this.mainWindow;
+    mainWindow.on("minimize", () => {
+      void this.hideMinimizedMainWindowToTray(mainWindow);
+    });
+
     this.mainWindow.on("close", () => {
       // "close" fires before destruction — the window is still live here.
       this.emit("window-closing", this.mainWindow!);
@@ -362,6 +367,27 @@ export class WindowManager extends EventEmitter {
     });
 
     this.emit("window-created", this.mainWindow!);
+  }
+
+  /**
+   * On Windows, honor the minimizeToTray preference: a minimized main window
+   * leaves the taskbar and stays reachable from the tray icon, whose
+   * "Open Console" goes through createOrShowMainWindow (restore + show).
+   */
+  private async hideMinimizedMainWindowToTray(
+    window: BrowserWindow,
+  ): Promise<void> {
+    if (process.platform !== "win32") {
+      return;
+    }
+    try {
+      const { minimizeToTray } = await this.settingsService.getPreferences();
+      if (minimizeToTray && !window.isDestroyed() && window.isMinimized()) {
+        window.hide();
+      }
+    } catch (error) {
+      logger.main.error("Failed to apply minimizeToTray preference", error);
+    }
   }
 
   /**
