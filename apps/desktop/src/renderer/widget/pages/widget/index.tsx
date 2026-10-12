@@ -33,6 +33,7 @@ export function WidgetPage() {
         text={draft.review.text}
         onInsert={draft.insert}
         onDismiss={draft.dismiss}
+        onCopy={draft.copy}
         recordingStatus={recording.recordingStatus}
         audioLevelRef={recording.audioLevelRef}
       />

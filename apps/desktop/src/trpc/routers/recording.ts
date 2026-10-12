@@ -1,5 +1,5 @@
 import { observable } from "@trpc/server/observable";
-import { powerMonitor } from "electron";
+import { clipboard, powerMonitor } from "electron";
 import { createRouter, procedure } from "../trpc";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
@@ -93,6 +93,12 @@ export const recordingRouter = createRouter({
 
   dismissDraft: procedure.mutation(({ ctx }) => {
     requireLifecycle(ctx).dismissDraft();
+  }),
+
+  // Copy runs here, not in the widget: the widget window is never focused
+  // (focusable: false), so navigator.clipboard rejects there.
+  copyDraft: procedure.input(z.string()).mutation(({ input }) => {
+    clipboard.writeText(input);
   }),
 
   dismiss: procedure.mutation(async ({ ctx }) => {

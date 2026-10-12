@@ -14,6 +14,7 @@ interface DraftReviewProps {
   text: string;
   onInsert: () => void;
   onDismiss: () => void;
+  onCopy: () => Promise<void>;
   recordingStatus: RecordingStatus;
   audioLevelRef: RefObject<number>;
 }
@@ -48,6 +49,7 @@ export function DraftReview({
   text,
   onInsert,
   onDismiss,
+  onCopy,
   recordingStatus,
   audioLevelRef,
 }: DraftReviewProps) {
@@ -76,7 +78,7 @@ export function DraftReview({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      await onCopy();
       setCopied(true);
       if (copyResetRef.current) clearTimeout(copyResetRef.current);
       copyResetRef.current = setTimeout(() => setCopied(false), 1500);
