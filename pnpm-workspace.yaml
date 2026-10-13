@@ -4,3 +4,34 @@ packages:
   - "packages/**"
   - "!packages/**/whisper.cpp/**"
   - "!apps/www"
+
+overrides:
+  '@electron-forge/maker-dmg': 'https://registry.npmjs.org/@fellow/maker-dmg/-/maker-dmg-7.4.0.tgz'
+  node-abi: 4.14.0
+  '@types/minimatch': '3.0.5'
+
+onlyBuiltDependencies:
+  - electron
+  - electron-winstaller
+  - '@amical/whisper-wrapper'
+  - drizzle-orm/libsql
+  - '@libsql'
+  - macos-alias
+  - fs-xattr
+  - onnxruntime-node
+  - jest-worker
+
+ignoredBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - core-js-pure
+  - electron
+  - electron-winstaller
+  - esbuild
+  - keytar
+  - protobufjs
+  - sharp
+  - '@amical/whisper-wrapper'
+  - drizzle-orm/libsql
+
+patchedDependencies:
+  appdmg@0.6.6: patches/appdmg@0.6.6.patch
