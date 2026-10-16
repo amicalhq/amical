@@ -195,6 +195,18 @@ describe("buildLanguageConfig", () => {
     expect(result.languages.items).toEqual([1, 3]);
   });
 
+  it("maps regional variant and Cantonese tags to their enum values", () => {
+    const result = buildLanguageConfig([
+      "en-GB",
+      "de-CH",
+      "zh-Hans",
+      "en-CA",
+      "yue",
+    ]) as { languages: { items: number[] } };
+    // Wire values of LANGUAGE_EN_GB, _DE_CH, _ZH_HANS, _EN_CA and _YUE.
+    expect(result.languages.items).toEqual([100, 101, 102, 103, 104]);
+  });
+
   it("drops codes that have no enum mapping", () => {
     const result = buildLanguageConfig(["en", "zz-not-real"]) as {
       languages: { items: number[] };
