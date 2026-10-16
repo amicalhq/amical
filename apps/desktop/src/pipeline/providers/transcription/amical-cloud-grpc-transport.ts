@@ -19,6 +19,7 @@ import {
 } from "./amical-cloud-provider-state";
 import {
   CloudDictationGrpcStream,
+  type GrpcFinalTranscript,
   type GrpcStreamContext,
 } from "./grpc-dictation-client";
 import { float32ToPcmS16le } from "../../utils/pcm-encoding";
@@ -99,6 +100,7 @@ export class AmicalCloudGrpcTransport {
       return yield* this.finalizeGrpcStreamEffect(enableFormatting).pipe(
         Effect.map((result) => ({
           text: result.formattedTranscript || result.rawTranscript,
+          detectedLanguage: result.language,
         })),
         Effect.ensuring(this.clearGrpcAudioStateEffect()),
       );
@@ -107,10 +109,7 @@ export class AmicalCloudGrpcTransport {
 
   private finalizeGrpcStreamEffect(
     enableFormatting: boolean,
-  ): CloudProviderEffect<{
-    rawTranscript: string;
-    formattedTranscript: string;
-  }> {
+  ): CloudProviderEffect<GrpcFinalTranscript> {
     return Effect.gen({ self: this }, function* () {
       const stream = yield* this.ensureGrpcStreamEffect(enableFormatting);
       // Final re-sync: flush any context/skills change that landed since the

@@ -306,11 +306,12 @@ const settleGrpcOk = (
   rawTranscript: string,
   formattedTranscript = rawTranscript,
   throughSeq = "1",
+  language?: string,
 ) => {
   const stream = grpcMock.getLastStream();
   if (!stream) throw new Error("No grpc stream constructed");
   stream.emit("data", {
-    final: { rawTranscript, formattedTranscript, throughSeq },
+    final: { rawTranscript, formattedTranscript, throughSeq, language },
   });
   stream.emit("status", {
     code: grpcMock.status.OK,
@@ -412,6 +413,25 @@ describe("AmicalCloudProvider", () => {
       expect(result.text).toBe("hello world");
       expect(grpcMock.getLastClient()).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("gRPC final transcript", () => {
+    it("returns the session language as the detected language", async () => {
+      const provider = openCloudSessionWithTransport("grpc");
+      await provider.transcribe({
+        audioData: audioFrame(),
+        speechProbability: 1,
+        context: baseContext(),
+      });
+      const finalization = provider.flush(baseContext());
+      await flush();
+      settleGrpcOk("colour", "Colour.", "1", "en");
+
+      await expect(finalization).resolves.toEqual({
+        text: "Colour.",
+        detectedLanguage: "en",
+      });
     });
   });
 

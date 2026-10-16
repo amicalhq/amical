@@ -126,7 +126,10 @@ import {
   type GrpcDictationStreamOptions,
 } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
 import { expectRejectionProjection } from "../helpers/error-projection";
-import { StreamTranscribeRequest } from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
+import {
+  StreamTranscribeEvent,
+  StreamTranscribeRequest,
+} from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
 
 const flushEffects = () => new Promise((resolve) => setImmediate(resolve));
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -250,6 +253,36 @@ describe("CloudDictationGrpcStream", () => {
 
     expect(grpcStream.cancel).not.toHaveBeenCalled();
     expect(grpcClient.close).toHaveBeenCalledTimes(1);
+  });
+
+  // Settles a fresh stream with a final event that went through the wire codec.
+  const finalTranscriptFromWire = (final: Record<string, unknown>) => {
+    const clientStream = createStream();
+    const deserialize = grpcMock.getLastClient()!.makeBidiStreamRequest.mock
+      .calls[0]?.[2] as (data: Buffer) => unknown;
+    const grpcStream = grpcMock.getLastStream()!;
+    const bytes = StreamTranscribeEvent.encode(
+      StreamTranscribeEvent.create({ final }),
+    ).finish();
+
+    grpcStream.emit("data", deserialize(Buffer.from(bytes)));
+    grpcStream.emit("status", {
+      code: grpcMock.status.OK,
+      details: "OK",
+      metadata: grpcMock.metadata(),
+    });
+    return clientStream.finalTranscript;
+  };
+
+  it("decodes the final transcript language from the wire", async () => {
+    await expect(
+      finalTranscriptFromWire({ rawTranscript: "colour", language: "en" }),
+    ).resolves.toMatchObject({ rawTranscript: "colour", language: "en" });
+  });
+
+  it("leaves the final transcript language unset when the wire has none", async () => {
+    const final = await finalTranscriptFromWire({ rawTranscript: "hi" });
+    expect(final.language).toBeUndefined();
   });
 
   it("preserves port 80 for default plaintext endpoints", () => {

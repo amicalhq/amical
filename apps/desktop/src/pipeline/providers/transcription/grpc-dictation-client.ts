@@ -68,6 +68,9 @@ export interface GrpcFinalTranscript {
   rawTranscript: string;
   formattedTranscript: string;
   throughSeq: bigint;
+  // Base language code the session settled on (e.g. "en"); unset when the
+  // server did not settle on one.
+  language?: string;
 }
 
 const TRACE_ID_HEADER = "x-trace-id";
@@ -130,6 +133,7 @@ interface StreamTranscribeEventMessage {
     rawTranscript?: string;
     formattedTranscript?: string;
     throughSeq?: UInt64Value;
+    language?: string | null;
   };
 }
 
@@ -314,6 +318,7 @@ const finalTranscriptFromEvent = (
     rawTranscript: event.final.rawTranscript ?? "",
     formattedTranscript: event.final.formattedTranscript ?? "",
     throughSeq: toBigInt(event.final.throughSeq),
+    language: event.final.language || undefined,
   };
 };
 
