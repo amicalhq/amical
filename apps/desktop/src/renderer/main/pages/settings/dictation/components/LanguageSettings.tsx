@@ -15,6 +15,7 @@ import {
 import {
   AVAILABLE_LANGUAGES,
   labelForLanguage as labelFor,
+  oneCodePerLanguage,
 } from "@/constants/languages";
 import { useState, useEffect, useRef } from "react";
 import { api } from "@/trpc/react";
@@ -61,8 +62,9 @@ export function LanguageSettings({ inModal = false }: { inModal?: boolean }) {
   };
 
   const handleLanguagesChange = async (next: string[]) => {
-    setLanguages(next);
-    await persist({ autoDetectEnabled: autoDetect, languages: next });
+    const resolved = oneCodePerLanguage(next);
+    setLanguages(resolved);
+    await persist({ autoDetectEnabled: autoDetect, languages: resolved });
   };
 
   const disabled = autoDetect || isLoading || updateDictationSettings.isPending;

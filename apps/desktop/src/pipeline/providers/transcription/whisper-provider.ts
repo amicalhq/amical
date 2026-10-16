@@ -22,7 +22,28 @@ import {
 import { isLocalTranscriptionSupported } from "../../../utils/os-version";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
 import { buildWhisperPrompt } from "./whisper-prompt";
+import { baseLanguageCode } from "../../../constants/languages";
 import { Mutex } from "async-mutex";
+
+/**
+ * Whisper knows base languages only, so regional variants run as their base
+ * (en-GB → en). Only large-v3 models have a Cantonese token; older models
+ * decode Cantonese as Chinese.
+ */
+export const localWhisperLanguages = (
+  languages: string[] | undefined,
+  modelPath: string,
+): string[] | undefined => {
+  if (!languages) {
+    return undefined;
+  }
+  const hasCantoneseToken = path.basename(modelPath).includes("large-v3");
+  const codes = languages.map((code) => {
+    const base = baseLanguageCode(code);
+    return base === "yue" && !hasCantoneseToken ? "zh" : base;
+  });
+  return [...new Set(codes)];
+};
 
 const FRAME_SIZE = 512; // 32ms at 16kHz
 const MIN_AUDIO_DURATION_MS = 500;
@@ -410,7 +431,7 @@ export class WhisperProvider implements TranscriptionEngine {
         {
           // One language forces it; multiple drives constrained auto-detection
           // in the addon; empty/undefined means auto-detect.
-          languages: context.languages,
+          languages: localWhisperLanguages(context.languages, modelPath),
           initial_prompt: initialPrompt,
           suppress_blank: true,
           suppress_non_speech_tokens: true,

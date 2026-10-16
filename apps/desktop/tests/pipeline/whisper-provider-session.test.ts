@@ -74,7 +74,10 @@ beforeEach(() => {
   processingMocks.buildWhisperPrompt.mockReturnValue("test prompt");
 });
 
-import { WhisperProvider } from "../../src/pipeline/providers/transcription/whisper-provider";
+import {
+  WhisperProvider,
+  localWhisperLanguages,
+} from "../../src/pipeline/providers/transcription/whisper-provider";
 import type { ModelService } from "../../src/services/model-service";
 import { projectionOf, rejectionOf } from "../helpers/error-projection";
 
@@ -766,5 +769,29 @@ describe("WhisperProvider sessions", () => {
       expect(failure.code).toBe("WORKER_INITIALIZATION_FAILED");
       expect(failure.tag).toBe("WorkerInitFailed");
     });
+  });
+});
+
+describe("localWhisperLanguages", () => {
+  it("runs regional variants as their base language", () => {
+    expect(
+      localWhisperLanguages(["en-GB", "de-CH", "zh-Hans"], "/m/ggml-small.bin"),
+    ).toEqual(["en", "de", "zh"]);
+    expect(localWhisperLanguages(undefined, "/m/ggml-small.bin")).toBe(
+      undefined,
+    );
+  });
+
+  it("keeps Cantonese only for models with a Cantonese token", () => {
+    expect(localWhisperLanguages(["yue", "en"], "/m/ggml-small.bin")).toEqual([
+      "zh",
+      "en",
+    ]);
+    expect(
+      localWhisperLanguages(["yue", "en"], "/m/ggml-large-v3-turbo.bin"),
+    ).toEqual(["yue", "en"]);
+    expect(
+      localWhisperLanguages(["zh-Hans", "yue"], "/m/ggml-medium.bin"),
+    ).toEqual(["zh"]);
   });
 });

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { dictationLanguageForLocale } from "../../src/constants/languages";
+import {
+  dictationLanguageForLocale,
+  oneCodePerLanguage,
+} from "../../src/constants/languages";
 
 describe("dictationLanguageForLocale", () => {
   it("maps plain language tags", () => {
@@ -30,5 +33,18 @@ describe("dictationLanguageForLocale", () => {
 
   it("never maps to the auto sentinel entry", () => {
     expect(dictationLanguageForLocale("auto")).toBeUndefined();
+  });
+});
+
+describe("oneCodePerLanguage", () => {
+  it("lets a later pick replace the plain language or another variant", () => {
+    expect(oneCodePerLanguage(["en", "de", "en-GB"])).toEqual(["de", "en-GB"]);
+    expect(oneCodePerLanguage(["en-GB", "en-CA"])).toEqual(["en-CA"]);
+    expect(oneCodePerLanguage(["en-CA", "fr", "en"])).toEqual(["fr", "en"]);
+  });
+
+  it("treats Cantonese as independent of the Chinese options", () => {
+    expect(oneCodePerLanguage(["zh", "yue"])).toEqual(["zh", "yue"]);
+    expect(oneCodePerLanguage(["yue", "zh-Hans"])).toEqual(["yue", "zh-Hans"]);
   });
 });

@@ -1,7 +1,10 @@
 export const AVAILABLE_LANGUAGES = [
   { value: "auto", label: "Auto detect" },
   { value: "en", label: "🇺🇸 English" },
+  { value: "en-GB", label: "🇬🇧 English (UK)" },
+  { value: "en-CA", label: "🇨🇦 English (Canada)" },
   { value: "zh", label: "🇨🇳 Chinese" },
+  { value: "zh-Hans", label: "🇨🇳 Simplified Chinese" },
   { value: "es", label: "🇪🇸 Spanish" },
   { value: "af", label: "🇿🇦 Afrikaans" },
   { value: "sq", label: "🇦🇱 Albanian" },
@@ -17,6 +20,7 @@ export const AVAILABLE_LANGUAGES = [
   { value: "bs", label: "🇧🇦 Bosnian" },
   { value: "br", label: "🇫🇷 Breton" },
   { value: "bg", label: "🇧🇬 Bulgarian" },
+  { value: "yue", label: "🇭🇰 Cantonese" },
   { value: "ca", label: "🇪🇸 Catalan" },
   { value: "hr", label: "🇭🇷 Croatian" },
   { value: "cs", label: "🇨🇿 Czech" },
@@ -29,6 +33,7 @@ export const AVAILABLE_LANGUAGES = [
   { value: "gl", label: "🇪🇸 Galician" },
   { value: "ka", label: "🇬🇪 Georgian" },
   { value: "de", label: "🇩🇪 German" },
+  { value: "de-CH", label: "🇨🇭 German (Switzerland)" },
   { value: "el", label: "🇬🇷 Greek" },
   { value: "gu", label: "🇮🇳 Gujarati" },
   { value: "ht", label: "🇭🇹 Haitian Creole" },
@@ -103,6 +108,22 @@ export const AVAILABLE_LANGUAGES = [
 
 export const labelForLanguage = (code: string) =>
   AVAILABLE_LANGUAGES.find((l) => l.value === code)?.label ?? code;
+
+/** Spoken language of a dictation code: "en-GB" → "en", "yue" → "yue". */
+export const baseLanguageCode = (code: string): string =>
+  code.split("-")[0].toLowerCase();
+
+/**
+ * Keep one code per spoken language, the last one in the list: English (UK)
+ * after English replaces it. The picker appends each new pick.
+ */
+export const oneCodePerLanguage = (codes: readonly string[]): string[] =>
+  codes.filter(
+    (code, index) =>
+      codes.findLastIndex(
+        (other) => baseLanguageCode(other) === baseLanguageCode(code),
+      ) === index,
+  );
 
 // Primary subtags the OS reports differently than whisper names them.
 const LOCALE_ALIASES: Record<string, string> = {
