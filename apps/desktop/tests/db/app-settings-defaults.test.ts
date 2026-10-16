@@ -53,6 +53,17 @@ describe("default settings seed", () => {
     });
   });
 
+  it("replaces English with the English variant of a regional OS locale", async () => {
+    vi.mocked(app.getPreferredSystemLanguages).mockReturnValue(["en-AU"]);
+
+    const settings = await getAppSettings();
+
+    expect(settings.dictation).toEqual({
+      autoDetectEnabled: false,
+      languages: ["en-GB"],
+    });
+  });
+
   it("falls back to English only for unsupported OS languages", async () => {
     vi.mocked(app.getPreferredSystemLanguages).mockReturnValue(["eo-001"]);
 

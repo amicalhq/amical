@@ -25,7 +25,10 @@ import {
   type NewAppSettings,
   type AppSettingsData,
 } from "./schema";
-import { dictationLanguageForLocale } from "../constants/languages";
+import {
+  dictationLanguageForLocale,
+  oneCodePerLanguage,
+} from "../constants/languages";
 import { isMacOS } from "../utils/platform";
 import { MAC_KEYCODES, WINDOWS_KEYCODES } from "../utils/keycodes";
 import {
@@ -76,14 +79,17 @@ const getDefaultShortcuts = () => {
 // New installs get concrete dictation languages rather than auto-detect —
 // accuracy is better with a language constraint, and the onboarding language
 // step lets users adjust. English plus the OS language, when whisper supports
-// it and it isn't English.
+// it and it isn't English; an English variant (e.g. en-GB) replaces English.
 const defaultDictationSettings = (): AppSettingsData["dictation"] => {
   try {
     const locale =
       app.getPreferredSystemLanguages()[0] ?? app.getSystemLocale();
     const system = locale ? dictationLanguageForLocale(locale) : undefined;
-    if (system && system !== "en") {
-      return { autoDetectEnabled: false, languages: ["en", system] };
+    if (system) {
+      return {
+        autoDetectEnabled: false,
+        languages: oneCodePerLanguage(["en", system]),
+      };
     }
   } catch {
     // Locale APIs unavailable (e.g. before app ready); English-only is fine.

@@ -133,14 +133,40 @@ const LOCALE_ALIASES: Record<string, string> = {
   in: "id", // legacy Indonesian tag
 };
 
+// OS locales whose regional variant fits better than the plain language,
+// keyed by language plus script, or language plus region when no script.
+const LOCALE_VARIANTS: Record<string, string> = {
+  "en-GB": "en-GB",
+  "en-AU": "en-GB",
+  "en-NZ": "en-GB",
+  "en-IE": "en-GB",
+  "en-ZA": "en-GB",
+  "en-CA": "en-CA",
+  "de-CH": "de-CH",
+  "de-LI": "de-CH",
+  "zh-CN": "zh-Hans",
+  "zh-SG": "zh-Hans",
+  "zh-Hans": "zh-Hans",
+};
+
 /**
  * Map a BCP-47 locale tag (e.g. "fr-FR", "zh-Hant-TW", "nb-NO") to a
  * supported dictation language code, or undefined when whisper doesn't
- * cover that language.
+ * cover that language. Regional locales map to their variant (e.g. "en-AU"
+ * → "en-GB", "zh-Hans-HK" → "zh-Hans").
  */
 export const dictationLanguageForLocale = (
   locale: string,
 ): string | undefined => {
+  try {
+    const { language, script, region } = new Intl.Locale(locale);
+    const variant = LOCALE_VARIANTS[`${language}-${script ?? region}`];
+    if (variant) {
+      return variant;
+    }
+  } catch {
+    // Not a valid locale tag; the primary-subtag match below handles it.
+  }
   const primary = locale.toLowerCase().split("-")[0];
   const code = LOCALE_ALIASES[primary] ?? primary;
   // "auto" is a list entry, not a language — never a valid mapping target.

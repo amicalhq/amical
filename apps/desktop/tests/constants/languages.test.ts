@@ -16,6 +16,12 @@ describe("dictationLanguageForLocale", () => {
     expect(dictationLanguageForLocale("zh-Hant-TW")).toBe("zh");
   });
 
+  it("maps regional locales to their variant", () => {
+    expect(dictationLanguageForLocale("en-AU")).toBe("en-GB");
+    expect(dictationLanguageForLocale("zh-Hans-HK")).toBe("zh-Hans");
+    expect(dictationLanguageForLocale("zh-HK")).toBe("zh");
+  });
+
   it("is case-insensitive", () => {
     expect(dictationLanguageForLocale("DE-de")).toBe("de");
   });
