@@ -739,6 +739,62 @@ describe("AmicalCloudProvider", () => {
     });
   });
 
+  describe("HTTP language lock", () => {
+    const selection = ["en-GB", "de"];
+    const context = baseContext({ languages: selection });
+
+    // Each call buffers 28 seconds, which sends one non-final request.
+    const sendChunk = (
+      provider: TestCloudSession,
+      response: Record<string, unknown>,
+    ) => {
+      mockFetchOnce({ status: 200, json: { success: true, ...response } });
+      return provider.transcribe({
+        audioData: audioFrame(HTTP_AUTO_FLUSH_SAMPLES),
+        speechProbability: 1,
+        context,
+      });
+    };
+    const sentLanguages = () =>
+      fetchMock.mock.calls.map(
+        (_, index) => httpRequestBody(index).languages as string[],
+      );
+
+    it("locks to the selected code of the first reported language and keeps it", async () => {
+      const provider = openCloudSessionWithTransport("http");
+
+      await sendChunk(provider, { transcription: "Hello", language: "en" });
+      await sendChunk(provider, { transcription: "Hello there" });
+      mockFetchOnce({
+        status: 200,
+        json: { success: true, transcription: "Hello there." },
+      });
+      await provider.flush({
+        ...context,
+        aggregatedTranscription: "Hello there",
+      });
+
+      expect(sentLanguages()).toEqual([selection, ["en-GB"], ["en-GB"]]);
+      expect(httpRequestBody(2)).toMatchObject({ isFinal: true });
+    });
+
+    it("keeps the full list until a selected language is reported with text", async () => {
+      const provider = openCloudSessionWithTransport("http");
+
+      await sendChunk(provider, { transcription: "Bonjour", language: "fr" });
+      await sendChunk(provider, { transcription: "", language: "de" });
+      await sendChunk(provider, { transcription: "Hallo", language: "de" });
+      await sendChunk(provider, { transcription: "Hallo zusammen" });
+
+      expect(sentLanguages()).toEqual([
+        selection,
+        selection,
+        selection,
+        ["de"],
+      ]);
+    });
+  });
+
   describe("HTTP error surfacing", () => {
     it("surfaces 500 as INTERNAL_SERVER_ERROR", async () => {
       const provider = openCloudSessionWithTransport("http");

@@ -37,6 +37,7 @@ import {
 import type { DictationSkill } from "./dictation-skill";
 import { float32ToPcmS16le } from "../../utils/pcm-encoding";
 import { resolveSessionSkills } from "./skill-resolution";
+import { baseLanguageCode } from "../../../constants/languages";
 
 // Success response from cloud API (HTTP 200)
 interface CloudTranscriptionSuccess {
@@ -264,7 +265,9 @@ export class AmicalCloudHttpTransport {
               audioData: audioPayload,
               audioFormat: hasAudio ? "pcm_s16le" : undefined,
               vadProbs: this.CLOUD_CLIENT_VAD_ENABLED ? vadProbs : undefined,
-              languages: snapshot.currentLanguages,
+              languages: snapshot.httpLockedLanguage
+                ? [snapshot.httpLockedLanguage]
+                : snapshot.currentLanguages,
               vocabulary: snapshot.currentVocabulary,
               previousTranscription: snapshot.currentAggregatedTranscription,
               formatting: {
@@ -557,11 +560,36 @@ export class AmicalCloudHttpTransport {
           transcription: result.transcription,
         });
       });
+      yield* this.lockLanguageEffect(snapshot.currentLanguages, result);
 
       return {
         text: result.transcription,
         detectedLanguage: result.language,
       };
     }).pipe(Effect.ensuring(releaseRequest));
+  }
+
+  /**
+   * Fix the session language after the first response that has text and a
+   * language: later requests send only the selected code for that language
+   * (e.g. ["en-GB", "de"] and "en" → ["en-GB"]). A language that is not
+   * selected leaves the full list in place.
+   */
+  private lockLanguageEffect(
+    selectedLanguages: string[],
+    result: CloudTranscriptionSuccess,
+  ): Effect.Effect<void> {
+    const reported = result.language?.trim().toLowerCase();
+    const match = selectedLanguages.find(
+      (code) => baseLanguageCode(code) === reported,
+    );
+    if (!match || !result.transcription.trim()) {
+      return Effect.void;
+    }
+    return Ref.update(this.state, (state) =>
+      state.httpLockedLanguage
+        ? state
+        : { ...state, httpLockedLanguage: match },
+    );
   }
 }

@@ -74,6 +74,9 @@ export interface ProviderState {
   // finalize-phase dismiss can cancel an HTTP flush mid-request (gRPC uses
   // stream.cancel()).
   httpAbortController: AbortController | null;
+  // Selected language code the HTTP route sends alone once a response
+  // reported its language (the server keeps no state between requests).
+  httpLockedLanguage: string | null;
   // Sticky-within-session override: once gRPC fails with a transport-level
   // error, every subsequent transcribe()/flush() in the *same* dictation
   // session takes the HTTP path. The state is discarded on cancellation or
@@ -89,6 +92,7 @@ export interface ProviderRequestSnapshot {
   currentSessionId: string | undefined;
   currentIsInstruct: boolean;
   enabledLabs: string[];
+  httpLockedLanguage: string | null;
 }
 
 export const projectAccessibilityContext = (
@@ -154,6 +158,7 @@ export const createInitialProviderState = (): ProviderState => ({
   grpcFallbackStage: "transcribe",
   transportOverride: null,
   httpAbortController: null,
+  httpLockedLanguage: null,
 });
 
 const requestSnapshotFromState = (
@@ -166,6 +171,7 @@ const requestSnapshotFromState = (
   currentSessionId: state.currentSessionId,
   currentIsInstruct: state.currentIsInstruct,
   enabledLabs: state.currentEnabledLabs,
+  httpLockedLanguage: state.httpLockedLanguage,
 });
 
 export const requestSnapshotEffect = (
