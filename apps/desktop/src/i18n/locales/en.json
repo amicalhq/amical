@@ -760,7 +760,8 @@
         },
         "languagesLabel": "Languages",
         "languagesPlaceholder": "Select languages...",
-        "noResults": "No languages found."
+        "noResults": "No languages found.",
+        "cloudOnlyHint": "Cloud only. Local models use the base language."
       },
       "microphone": {
         "label": "Microphone",

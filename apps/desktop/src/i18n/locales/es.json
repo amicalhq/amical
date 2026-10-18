@@ -763,7 +763,8 @@
         },
         "languagesLabel": "Idiomas",
         "languagesPlaceholder": "Seleccionar idiomas...",
-        "noResults": "No se encontraron idiomas."
+        "noResults": "No se encontraron idiomas.",
+        "cloudOnlyHint": "Solo en la nube. Los modelos locales usan el idioma base."
       },
       "microphone": {
         "label": "Micrófono",

@@ -763,7 +763,8 @@
         },
         "languagesLabel": "語言",
         "languagesPlaceholder": "選擇語言...",
-        "noResults": "找不到語言。"
+        "noResults": "找不到語言。",
+        "cloudOnlyHint": "僅限雲端。本機模型會使用基本語言。"
       },
       "microphone": {
         "label": "麥克風",

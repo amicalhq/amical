@@ -763,7 +763,8 @@
         },
         "languagesLabel": "언어",
         "languagesPlaceholder": "언어 선택...",
-        "noResults": "언어를 찾을 수 없습니다."
+        "noResults": "언어를 찾을 수 없습니다.",
+        "cloudOnlyHint": "클라우드 전용. 로컬 모델에서는 기본 언어로 처리됩니다."
       },
       "microphone": {
         "label": "마이크",

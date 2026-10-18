@@ -14,9 +14,11 @@ import {
 } from "@/components/ui/combobox-base";
 import {
   AVAILABLE_LANGUAGES,
+  isCloudOnlyLanguage,
   labelForLanguage as labelFor,
   oneCodePerLanguage,
 } from "@/constants/languages";
+import { Cloud } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { api } from "@/trpc/react";
 import { useTranslation } from "react-i18next";
@@ -118,7 +120,15 @@ export function LanguageSettings({ inModal = false }: { inModal?: boolean }) {
                   {(values: string[]) => (
                     <>
                       {values.map((code) => (
-                        <ComboboxChip key={code}>{labelFor(code)}</ComboboxChip>
+                        <ComboboxChip key={code}>
+                          {labelFor(code)}
+                          {isCloudOnlyLanguage(code) && (
+                            <Cloud
+                              className="size-3 text-muted-foreground"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </ComboboxChip>
                       ))}
                       <ComboboxChipsInput
                         placeholder={t(
@@ -134,6 +144,8 @@ export function LanguageSettings({ inModal = false }: { inModal?: boolean }) {
                   lock and its clicks dismiss the dialog. */}
               <ComboboxContent
                 anchor={anchor}
+                align="end"
+                className="data-[chips=true]:min-w-max"
                 container={inModal ? portalContainer : undefined}
               >
                 <ComboboxEmpty>
@@ -143,6 +155,12 @@ export function LanguageSettings({ inModal = false }: { inModal?: boolean }) {
                   {(code: string) => (
                     <ComboboxItem key={code} value={code}>
                       {labelFor(code)}
+                      {isCloudOnlyLanguage(code) && (
+                        <Cloud
+                          className="ml-auto size-3.5 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                      )}
                     </ComboboxItem>
                   )}
                 </ComboboxList>
@@ -150,6 +168,10 @@ export function LanguageSettings({ inModal = false }: { inModal?: boolean }) {
             </ComboboxBase>
           </div>
         </div>
+        <p className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+          <Cloud className="size-3" aria-hidden="true" />
+          {t("settings.dictation.language.cloudOnlyHint")}
+        </p>
       </div>
     </div>
   );

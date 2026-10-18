@@ -763,7 +763,8 @@
         },
         "languagesLabel": "Sprachen",
         "languagesPlaceholder": "Sprachen auswählen...",
-        "noResults": "Keine Sprachen gefunden."
+        "noResults": "Keine Sprachen gefunden.",
+        "cloudOnlyHint": "Nur Cloud. Lokale Modelle verwenden die Grundsprache."
       },
       "microphone": {
         "label": "Mikrofon",

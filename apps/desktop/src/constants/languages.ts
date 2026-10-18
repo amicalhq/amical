@@ -1,10 +1,10 @@
 export const AVAILABLE_LANGUAGES = [
   { value: "auto", label: "Auto detect" },
   { value: "en", label: "🇺🇸 English" },
-  { value: "en-GB", label: "🇬🇧 English (UK)" },
-  { value: "en-CA", label: "🇨🇦 English (Canada)" },
+  { value: "en-GB", label: "🇬🇧 English (UK)", cloudOnly: true },
+  { value: "en-CA", label: "🇨🇦 English (Canada)", cloudOnly: true },
   { value: "zh", label: "🇨🇳 Chinese" },
-  { value: "zh-Hans", label: "🇨🇳 Simplified Chinese" },
+  { value: "zh-Hans", label: "🇨🇳 Simplified Chinese", cloudOnly: true },
   { value: "es", label: "🇪🇸 Spanish" },
   { value: "af", label: "🇿🇦 Afrikaans" },
   { value: "sq", label: "🇦🇱 Albanian" },
@@ -33,7 +33,7 @@ export const AVAILABLE_LANGUAGES = [
   { value: "gl", label: "🇪🇸 Galician" },
   { value: "ka", label: "🇬🇪 Georgian" },
   { value: "de", label: "🇩🇪 German" },
-  { value: "de-CH", label: "🇨🇭 German (Switzerland)" },
+  { value: "de-CH", label: "🇨🇭 German (Switzerland)", cloudOnly: true },
   { value: "el", label: "🇬🇷 Greek" },
   { value: "gu", label: "🇮🇳 Gujarati" },
   { value: "ht", label: "🇭🇹 Haitian Creole" },
@@ -108,6 +108,10 @@ export const AVAILABLE_LANGUAGES = [
 
 export const labelForLanguage = (code: string) =>
   AVAILABLE_LANGUAGES.find((l) => l.value === code)?.label ?? code;
+
+/** Regional variants only apply in the cloud; local models use the base. */
+export const isCloudOnlyLanguage = (code: string) =>
+  AVAILABLE_LANGUAGES.some((l) => l.value === code && l.cloudOnly);
 
 /** Spoken language of a dictation code: "en-GB" → "en", "yue" → "yue". */
 export const baseLanguageCode = (code: string): string =>
