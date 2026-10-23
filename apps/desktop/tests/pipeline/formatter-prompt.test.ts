@@ -14,6 +14,16 @@ const ctx = (bundleId: string | null, title: string | null) =>
     },
   }) as unknown as GetAccessibilityContextResult;
 
+// The native bridge reduces a browser URL to its hostname before app
+// detection sees it, so browser windows carry a hostname.
+const browserCtx = (bundleId: string, hostname: string) =>
+  ({
+    context: {
+      application: { bundleIdentifier: bundleId },
+      windowInfo: { title: "", url: hostname },
+    },
+  }) as unknown as GetAccessibilityContextResult;
+
 describe("detectApplicationType — Amical's own surfaces", () => {
   it("treats the onboarding email try-it as an email surface", () => {
     expect(
@@ -73,5 +83,32 @@ describe("detectApplicationType — Amical's own surfaces", () => {
     expect(
       detectApplicationType(ctx("electron", TRY_IT_WINDOW_TITLES.email)),
     ).toBe("default");
+  });
+});
+
+describe("detectApplicationType — web apps in browsers", () => {
+  const detect = (bundleId: string, hostname: string) =>
+    detectApplicationType(browserCtx(bundleId, hostname));
+
+  it("classifies web apps by hostname in macOS browsers", () => {
+    expect(detect("com.google.Chrome", "mail.google.com")).toBe("email");
+    expect(detect("com.apple.Safari", "app.slack.com")).toBe("chat");
+  });
+
+  it("classifies web apps in Windows browsers by process name", () => {
+    // The Windows helper reports the process name (no path, no .exe) as the
+    // bundle id, and resolves a URL only for the browsers it knows.
+    expect(detect("chrome", "mail.google.com")).toBe("email");
+    expect(detect("msedge", "app.slack.com")).toBe("chat");
+    expect(detect("firefox", "docs.google.com")).toBe("notes");
+  });
+
+  it("does not classify other apps by URL", () => {
+    expect(detect("notepad", "mail.google.com")).toBe("default");
+    expect(detect("com.apple.TextEdit", "mail.google.com")).toBe("default");
+  });
+
+  it("recognizes Google Chat", () => {
+    expect(detect("com.google.Chrome", "chat.google.com")).toBe("chat");
   });
 });
