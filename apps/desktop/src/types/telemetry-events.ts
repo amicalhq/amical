@@ -9,7 +9,9 @@
  * - Properties: snake_case for consistency
  */
 
+import type { EditWatchStartStatus } from "@amical/types";
 import { z } from "zod";
+import type { EditTrackerEndReason } from "../services/vocabulary-learning/types";
 import { ErrorCodes, type DictationErrorCode, type ErrorCode } from "./error";
 
 // ============================================================================
@@ -164,6 +166,7 @@ export const widgetNotificationShownSchema = z.object({
     "transcription_failed",
     "recording_duration_warning",
     "recording_auto_stopped",
+    "vocabulary_learned",
   ]),
   error_code: z
     .enum(Object.values(ErrorCodes) as [ErrorCode, ...ErrorCode[]])
@@ -174,3 +177,74 @@ export const widgetNotificationShownSchema = z.object({
 export type WidgetNotificationShownEvent = z.infer<
   typeof widgetNotificationShownSchema
 >;
+
+// ============================================================================
+// Vocabulary Learning Events
+// ============================================================================
+
+export type VocabularyEditWatchStartStatus = EditWatchStartStatus | "error";
+
+export type VocabularyEditWatchEndReason =
+  | EditTrackerEndReason
+  | "start_refused"
+  | "no_row";
+
+export type VocabularyClassifierOutcome =
+  | "ok"
+  | "disabled"
+  | "timeout"
+  | "http_error"
+  | "invalid";
+
+/**
+ * Fired once per edit watch (one per confirmed session paste that passed the
+ * gate). Counts and enums only: never words or field text.
+ */
+export interface VocabularyEditWatchCompletedEvent {
+  /** Absent for "no_row": no start was attempted. */
+  start_status?: VocabularyEditWatchStartStatus;
+  end_reason: VocabularyEditWatchEndReason;
+  app_type: string;
+  stale_final_state?: boolean;
+  key_events_seen?: boolean;
+  stable_final_state?: boolean;
+  located?: boolean;
+  locate_ms?: number | null;
+  read_count?: number;
+  read_error_count?: number;
+  read_ms_max?: number;
+  changed?: boolean;
+  rewrite?: boolean;
+  duration_ms?: number;
+  reanchor_count?: number;
+  rearranged_count?: number;
+  paste_reset_count?: number;
+  enter_mark_dropped_count?: number;
+  steps_m?: number;
+  steps_c?: number;
+  steps_d?: number;
+  steps_i?: number;
+  candidate_count?: number;
+  drop_shape?: number;
+  drop_length?: number;
+  drop_known?: number;
+  drop_cjk?: number;
+  drop_duplicate?: number;
+  drop_cap?: number;
+  sent_count?: number;
+  accepted_count?: number;
+  added_count?: number;
+  multiword_count?: number;
+  classifier_outcome?: VocabularyClassifierOutcome;
+  classifier_ms?: number;
+}
+
+/**
+ * Fired when learned words are removed: from the toast's Undo or by deleting
+ * a learned row in Settings.
+ */
+export interface VocabularyAutoUndoneEvent {
+  count: number;
+  via: "toast" | "settings";
+  age_ms: number;
+}

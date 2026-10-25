@@ -6,7 +6,10 @@ export type WidgetNotificationType =
   | "empty_transcript"
   | "transcription_failed"
   | "recording_duration_warning"
-  | "recording_auto_stopped";
+  | "recording_auto_stopped"
+  | "vocabulary_learned";
+
+export type WidgetNotificationTone = "error" | "success";
 
 export type WidgetNotificationActionIcon = "discord";
 
@@ -17,16 +20,23 @@ export type I18nText = {
 
 export type LocalizedText = string | I18nText;
 
+/** A main-process command an action runs (through tRPC) instead of navigating. */
+export type WidgetNotificationCommand = {
+  kind: "undoLearnedVocabulary";
+  entries: { id: string; word: string }[];
+};
+
 export interface WidgetNotificationAction {
   label: LocalizedText;
   icon?: WidgetNotificationActionIcon;
   navigateTo?: string; // Route to navigate to in main window
   externalUrl?: string; // External URL to open
+  command?: WidgetNotificationCommand;
 }
 
 export interface WidgetNotificationConfig {
   title: LocalizedText;
-  description: LocalizedText;
+  description?: LocalizedText;
   subDescription?: LocalizedText;
   primaryAction?: WidgetNotificationAction;
   secondaryAction?: WidgetNotificationAction;
@@ -35,6 +45,7 @@ export interface WidgetNotificationConfig {
 export interface WidgetNotification {
   id: string;
   type: WidgetNotificationType;
+  tone?: WidgetNotificationTone; // Defaults to "error"
   title: LocalizedText;
   description?: LocalizedText; // Pre-filled description, or generated via template on frontend
   subDescription?: LocalizedText;
@@ -49,7 +60,7 @@ export interface WidgetNotification {
 export const getNotificationDescription = (
   type: WidgetNotificationType,
   microphoneName: string,
-): I18nText => {
+): I18nText | undefined => {
   switch (type) {
     case "no_audio":
       return {
@@ -71,6 +82,8 @@ export const getNotificationDescription = (
       return {
         key: "widget.notifications.description.recordingAutoStopped",
       };
+    case "vocabulary_learned":
+      return undefined;
   }
 };
 
@@ -85,7 +98,7 @@ export const buildNotificationDescription = (
     uiMessage?: string;
     params?: Record<string, string | number>;
   },
-): LocalizedText => {
+): LocalizedText | undefined => {
   if (data.uiMessage != null) return data.uiMessage;
 
   const microphoneName =
@@ -97,7 +110,9 @@ export const buildNotificationDescription = (
   }
 
   const fallback = config.description;
-  if (!data.params || typeof fallback === "string") return fallback;
+  if (!fallback || !data.params || typeof fallback === "string") {
+    return fallback;
+  }
   return { ...fallback, params: { ...fallback.params, ...data.params } };
 };
 
@@ -355,6 +370,10 @@ export const WIDGET_NOTIFICATION_CONFIG: Record<
     description: {
       key: "widget.notifications.type.recordingAutoStopped.description",
     },
+  },
+  // Title and actions are built by the vocabulary learning service per toast.
+  vocabulary_learned: {
+    title: { key: "widget.notifications.type.vocabularyLearned.title" },
   },
   // Placeholder for type checking - actual config comes from ERROR_CODE_CONFIG
   transcription_failed: ERROR_CODE_CONFIG[ErrorCodes.UNKNOWN],

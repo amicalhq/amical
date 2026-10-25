@@ -29,6 +29,8 @@ import type {
   TranscriptionReportedEvent,
   WidgetNotificationShownEvent,
   CloudGrpcFallbackEvent,
+  VocabularyEditWatchCompletedEvent,
+  VocabularyAutoUndoneEvent,
 } from "../types/telemetry-events";
 
 export type ContractFailureKind = "invalid_json" | "schema_mismatch";
@@ -641,6 +643,20 @@ export class TelemetryService extends EventEmitter {
     this.captureEvent("widget_notification_shown", props);
 
     logger.main.debug("Tracked widget notification shown", props);
+  }
+
+  // ============================================================================
+  // Vocabulary Learning Events
+  // ============================================================================
+
+  trackVocabularyEditWatchCompleted(
+    props: VocabularyEditWatchCompletedEvent,
+  ): void {
+    this.captureEvent("vocabulary_edit_watch_completed", props);
+  }
+
+  trackVocabularyAutoUndone(props: VocabularyAutoUndoneEvent): void {
+    this.captureEvent("vocabulary_auto_undone", props);
   }
 
   /**

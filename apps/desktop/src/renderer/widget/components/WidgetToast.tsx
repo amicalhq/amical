@@ -3,6 +3,7 @@ import { XIcon } from "lucide-react";
 import type {
   LocalizedText,
   WidgetNotificationAction,
+  WidgetNotificationTone,
 } from "@/types/widget-notification";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,9 +17,9 @@ import { useTranslation } from "react-i18next";
 
 interface WidgetToastProps {
   title: LocalizedText;
-  description: LocalizedText;
+  description?: LocalizedText;
   subDescription?: LocalizedText;
-  isError?: boolean;
+  tone?: WidgetNotificationTone;
   traceId?: string;
   primaryAction?: WidgetNotificationAction;
   secondaryAction?: WidgetNotificationAction;
@@ -30,7 +31,7 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
   title,
   description,
   subDescription,
-  isError,
+  tone = "error",
   traceId,
   primaryAction,
   secondaryAction,
@@ -61,12 +62,16 @@ export const WidgetToast: React.FC<WidgetToastProps> = ({
         <XIcon className="size-4" />
       </button>
       <CardHeader className="gap-1 px-4 py-0 text-center">
-        <CardTitle className={`text-sm ${isError ? "text-destructive" : ""}`}>
+        <CardTitle
+          className={`text-sm ${tone === "error" ? "text-destructive" : ""}`}
+        >
           {resolveText(title)}
         </CardTitle>
-        <CardDescription className="text-xs">
-          {resolveText(description)}
-        </CardDescription>
+        {description && (
+          <CardDescription className="text-xs">
+            {resolveText(description)}
+          </CardDescription>
+        )}
         {subDescription && (
           <p className="text-muted-foreground text-xs">
             {resolveText(subDescription)}

@@ -332,7 +332,9 @@
         "settings": "設定",
         "aiModels": "AIモデル",
         "configureMicrophone": "マイクを設定",
-        "upgradePlan": "プランをアップグレード"
+        "upgradePlan": "プランをアップグレード",
+        "undo": "元に戻す",
+        "view": "表示"
       },
       "type": {
         "noAudio": {
@@ -350,6 +352,9 @@
         "recordingAutoStopped": {
           "title": "ディクテーションが自動停止しました",
           "description": "最大ディクテーション時間に達しました。必要に応じて新しいディクテーションを開始してください。"
+        },
+        "vocabularyLearned": {
+          "title": "{{terms}} をカスタム辞書に追加しました"
         }
       },
       "errorCode": {
@@ -980,6 +985,10 @@
         "cancel": "キャンセル",
         "deleting": "削除中...",
         "confirm": "削除"
+      },
+      "learned": {
+        "badge": "学習済み",
+        "tooltip": "修正内容から追加されました。「{{heard}}」と認識されていました。"
       }
     },
     "snippets": {

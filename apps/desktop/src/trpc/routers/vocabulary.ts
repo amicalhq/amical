@@ -16,6 +16,7 @@ import {
   bulkImportVocabulary,
   trackWordUsage,
   getMostUsedWords,
+  undoLearnedVocabulary,
 } from "../../db/vocabulary";
 import { getActiveOrganizationAccess } from "../../db/sync";
 import {
@@ -172,8 +173,38 @@ export const vocabularyRouter = createRouter({
   // Delete vocabulary word
   deleteVocabulary: procedure
     .input(z.object({ id: SettingsSyncIdSchema }))
-    .mutation(async ({ input }) => {
-      return await deleteVocabulary(input.id);
+    .mutation(async ({ ctx, input }) => {
+      const deleted = await deleteVocabulary(input.id);
+      if (deleted?.source === "auto") {
+        ctx.services.telemetryService.trackVocabularyAutoUndone({
+          count: 1,
+          via: "settings",
+          age_ms: Date.now() - deleted.createdAt.getTime(),
+        });
+      }
+      return deleted;
+    }),
+
+  // Undo a learning pass from the toast: removes the rows while they still
+  // hold source "auto" and the inserted word.
+  undoLearned: procedure
+    .input(
+      z.object({
+        entries: z.array(
+          z.object({ id: SettingsSyncIdSchema, word: z.string() }),
+        ),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const removed = await undoLearnedVocabulary(input.entries);
+      if (removed.length > 0) {
+        ctx.services.telemetryService.trackVocabularyAutoUndone({
+          count: removed.length,
+          via: "toast",
+          age_ms: Date.now() - removed[0].createdAt.getTime(),
+        });
+      }
+      return { removed: removed.length };
     }),
 
   deleteOrganizationVocabulary: procedure

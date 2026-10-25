@@ -98,6 +98,7 @@ import { NativeBridge } from "../../services/platform/native-bridge-service";
 import { VADService } from "../../services/vad-service";
 import { TranscriptionService } from "../../services/transcription-service";
 import { RecordingLifecycleLive } from "../lifecycle/live";
+import { VocabularyLearningService } from "../../services/vocabulary-learning/service";
 import { ShortcutManager } from "../managers/shortcut-manager";
 import { AutoUpdaterService } from "../services/auto-updater";
 import { WindowManager } from "../core/window-manager";
@@ -274,6 +275,7 @@ export const AppLive: Layer.Layer<
   Layer.provideMerge(
     Layer.mergeAll(
       ShortcutManager.Live,
+      VocabularyLearningService.Live,
       AutoUpdaterService.Live,
       SettingsSyncService.Live,
       ActivityReportingService.Live,

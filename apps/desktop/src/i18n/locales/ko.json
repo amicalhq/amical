@@ -332,7 +332,9 @@
         "settings": "설정",
         "aiModels": "AI 모델",
         "configureMicrophone": "마이크 설정",
-        "upgradePlan": "요금제 업그레이드"
+        "upgradePlan": "요금제 업그레이드",
+        "undo": "실행 취소",
+        "view": "보기"
       },
       "type": {
         "noAudio": {
@@ -350,6 +352,9 @@
         "recordingAutoStopped": {
           "title": "받아쓰기가 자동으로 중지되었습니다",
           "description": "최대 받아쓰기 시간에 도달했습니다. 필요하면 새 받아쓰기를 시작하세요."
+        },
+        "vocabularyLearned": {
+          "title": "{{terms}}을(를) 사용자 사전에 추가했습니다"
         }
       },
       "errorCode": {
@@ -980,6 +985,10 @@
         "cancel": "취소",
         "deleting": "삭제 중...",
         "confirm": "삭제"
+      },
+      "learned": {
+        "badge": "학습됨",
+        "tooltip": "수정한 내용에서 추가되었습니다. “{{heard}}”(으)로 인식되었습니다."
       }
     },
     "snippets": {

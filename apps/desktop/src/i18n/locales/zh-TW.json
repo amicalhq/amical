@@ -332,7 +332,9 @@
         "settings": "設定",
         "aiModels": "AI 模型",
         "configureMicrophone": "設定麥克風",
-        "upgradePlan": "升級方案"
+        "upgradePlan": "升級方案",
+        "undo": "復原",
+        "view": "檢視"
       },
       "type": {
         "noAudio": {
@@ -350,6 +352,9 @@
         "recordingAutoStopped": {
           "title": "聽寫已自動停止",
           "description": "達到聽寫時間上限，如有需要請開始新的聽寫。"
+        },
+        "vocabularyLearned": {
+          "title": "已將 {{terms}} 加入您的字典"
         }
       },
       "errorCode": {
@@ -980,6 +985,10 @@
         "cancel": "取消",
         "deleting": "刪除中...",
         "confirm": "確認刪除"
+      },
+      "learned": {
+        "badge": "已學習",
+        "tooltip": "由您的修正加入。原本聽寫為「{{heard}}」。"
       }
     },
     "snippets": {

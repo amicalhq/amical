@@ -85,6 +85,10 @@ export interface RecordingLifecycleDeps {
   isDraftChordActive: () => boolean;
   /** Grammar-side Enter routing arm (shortcut-manager draft mode). */
   setDraftInputActive: (armed: boolean) => void;
+  /** A session paste the helper acknowledged (vocabulary learning hook). */
+  onSessionPasteConfirmed?: (session: SessionId, text: string) => void;
+  /** A post-lifecycle paste (draft confirm, paste-latest) was dispatched. */
+  onOtherPaste?: () => void;
   audioFilePathFor: (session: SessionId) => string;
   tuning: LifecycleTuning;
   timers?: ShellTimerHost;
@@ -260,6 +264,8 @@ export function createRecordingLifecycle(
         isLifecycleIdle: () =>
           shell.getSnapshot().projection.publicState === "idle",
         setDraftInputActive: deps.setDraftInputActive,
+        onSessionPasteConfirmed: deps.onSessionPasteConfirmed,
+        onOtherPaste: deps.onOtherPaste,
       });
 
       return {

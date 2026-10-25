@@ -48,6 +48,13 @@ export interface DesktopRecordingLifecycle extends RecordingLifecycle {
   /** Late binding: ShortcutManager builds after the lifecycle (its Live
    * wires the hotkey stream in, mirroring the v1 dependency direction). */
   bindShortcutManager(shortcutManager: ShortcutManager): void;
+  /** A session paste the helper acknowledged (text as pasted). The
+   * vocabulary learning service starts its edit watch from here. */
+  onSessionPasteConfirmed(
+    listener: (session: string, text: string) => void,
+  ): () => void;
+  /** A draft confirm or paste-last-transcript paste was dispatched. */
+  onOtherPaste(listener: () => void): () => void;
 }
 
 /** Substituted when transcription-service init failed at boot: the stream
@@ -91,6 +98,13 @@ export function createDesktopRecordingLifecycle(deps: {
   const sessionWork = createSessionWork({ timers: REAL_TIMER_HOST });
 
   let shortcutManager: ShortcutManager | null = null;
+
+  // Paste hooks for the vocabulary learning service (built after the
+  // lifecycle, so it subscribes instead of being a constructor dep).
+  const pasteConfirmedListeners = new Set<
+    (session: string, text: string) => void
+  >();
+  const otherPasteListeners = new Set<() => void>();
 
   const ambiance = createRecorderAmbiance({
     nativeBridge,
@@ -172,6 +186,12 @@ export function createDesktopRecordingLifecycle(deps: {
       Boolean(await modelService.getSelectedModel()),
     isDraftChordActive: () => shortcutManager?.isPTTDraftActive() ?? false,
     setDraftInputActive: (armed) => shortcutManager?.setDraftActive(armed),
+    onSessionPasteConfirmed: (session, text) => {
+      for (const listener of pasteConfirmedListeners) listener(session, text);
+    },
+    onOtherPaste: () => {
+      for (const listener of otherPasteListeners) listener();
+    },
     audioFilePathFor: (session) => {
       const audioDir = path.join(app.getPath("temp"), "amical-audio");
       fs.mkdirSync(audioDir, { recursive: true });
@@ -323,6 +343,14 @@ export function createDesktopRecordingLifecycle(deps: {
       manager.on("enter-pressed", () => {
         void lifecycle.confirmDraftFromInput();
       });
+    },
+    onSessionPasteConfirmed(listener) {
+      pasteConfirmedListeners.add(listener);
+      return () => pasteConfirmedListeners.delete(listener);
+    },
+    onOtherPaste(listener) {
+      otherPasteListeners.add(listener);
+      return () => otherPasteListeners.delete(listener);
     },
   };
 }

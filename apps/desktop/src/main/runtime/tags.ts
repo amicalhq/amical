@@ -39,6 +39,7 @@ import type { NativeBridge } from "../../services/platform/native-bridge-service
 import type { VADService } from "../../services/vad-service";
 import type { TranscriptionService } from "../../services/transcription-service";
 import type { DesktopRecordingLifecycle } from "../lifecycle/live";
+import type { VocabularyLearningService } from "../../services/vocabulary-learning/service";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { AutoUpdaterService } from "../services/auto-updater";
 import type { ServiceMap, EarlyServiceRefs } from "../managers/service-manager";
@@ -124,6 +125,11 @@ export class ShortcutManagerTag extends Context.Service<
   ShortcutManager
 >()("AmicalApp/ShortcutManager") {}
 
+export class VocabularyLearningServiceTag extends Context.Service<
+  VocabularyLearningServiceTag,
+  VocabularyLearningService
+>()("AmicalApp/VocabularyLearningService") {}
+
 export class AutoUpdaterServiceTag extends Context.Service<
   AutoUpdaterServiceTag,
   AutoUpdaterService
@@ -197,6 +203,7 @@ export type AppServices =
   | TranscriptionServiceTag
   | RecordingLifecycleTag
   | ShortcutManagerTag
+  | VocabularyLearningServiceTag
   | AutoUpdaterServiceTag
   | TrpcHandlerTag
   | WindowManagerTag

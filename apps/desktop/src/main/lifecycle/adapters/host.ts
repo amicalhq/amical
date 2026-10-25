@@ -55,6 +55,10 @@ export interface HostAdapterDeps {
   isLifecycleIdle: () => boolean;
   /** Grammar-side Enter routing arm (v1: shortcutManager.setDraftActive). */
   setDraftInputActive: (armed: boolean) => void;
+  /** A session paste the helper acknowledged (vocabulary learning hook). */
+  onSessionPasteConfirmed?: (session: SessionId, text: string) => void;
+  /** A post-lifecycle paste (draft confirm, paste-latest) was dispatched. */
+  onOtherPaste?: () => void;
 }
 
 export interface HostAdapter extends HostPort {
@@ -145,6 +149,7 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
     try {
       const preserveClipboard = await deps.getPreserveClipboard();
       dispatchPaste(transcript, preserveClipboard);
+      deps.onOtherPaste?.();
     } catch (error) {
       logger.main.warn("Failed to prepare paste", { error });
     }
@@ -218,15 +223,19 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
                 // late, so the paste keys would never ship.
                 // The trace waits, grace-bounded; the reducer never does.
                 dispatched: () => expectObligation(session, "delivery.pasted"),
-                settled: (startedAt, confirmed) =>
-                  confirmed
-                    ? recordPhase(
-                        session,
-                        "delivery.pasted",
-                        startedAt,
-                        Date.now(),
-                      )
-                    : settleObligation(session, "delivery.pasted"),
+                settled: (startedAt, confirmed) => {
+                  if (!confirmed) {
+                    settleObligation(session, "delivery.pasted");
+                    return;
+                  }
+                  recordPhase(
+                    session,
+                    "delivery.pasted",
+                    startedAt,
+                    Date.now(),
+                  );
+                  deps.onSessionPasteConfirmed?.(session, sealed.text);
+                },
               }),
             )
             .pipe(

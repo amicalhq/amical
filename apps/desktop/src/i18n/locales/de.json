@@ -332,7 +332,9 @@
         "settings": "Einstellungen",
         "aiModels": "KI-Modelle",
         "configureMicrophone": "Mikrofon konfigurieren",
-        "upgradePlan": "Tarif upgraden"
+        "upgradePlan": "Tarif upgraden",
+        "undo": "Rückgängig",
+        "view": "Anzeigen"
       },
       "type": {
         "noAudio": {
@@ -350,6 +352,9 @@
         "recordingAutoStopped": {
           "title": "Diktat automatisch beendet",
           "description": "Maximale Diktatdauer erreicht. Starte bei Bedarf ein neues Diktat."
+        },
+        "vocabularyLearned": {
+          "title": "{{terms}} zum Vokabular hinzugefügt"
         }
       },
       "errorCode": {
@@ -980,6 +985,10 @@
         "cancel": "Abbrechen",
         "deleting": "Wird gelöscht...",
         "confirm": "Löschen"
+      },
+      "learned": {
+        "badge": "Gelernt",
+        "tooltip": "Aus deiner Korrektur hinzugefügt. Gehört als „{{heard}}“."
       }
     },
     "snippets": {

@@ -329,7 +329,9 @@
         "settings": "Settings",
         "aiModels": "AI Models",
         "configureMicrophone": "Configure Microphone",
-        "upgradePlan": "Upgrade plan"
+        "upgradePlan": "Upgrade plan",
+        "undo": "Undo",
+        "view": "View"
       },
       "type": {
         "noAudio": {
@@ -347,6 +349,9 @@
         "recordingAutoStopped": {
           "title": "Dictation auto-stopped",
           "description": "Max dictation duration reached. Start a new dictation if needed."
+        },
+        "vocabularyLearned": {
+          "title": "Added {{terms}} to your vocabulary"
         }
       },
       "errorCode": {
@@ -977,6 +982,10 @@
         "cancel": "Cancel",
         "deleting": "Deleting...",
         "confirm": "Delete"
+      },
+      "learned": {
+        "badge": "Learned",
+        "tooltip": "Added from your correction. Heard as “{{heard}}”."
       }
     },
     "snippets": {

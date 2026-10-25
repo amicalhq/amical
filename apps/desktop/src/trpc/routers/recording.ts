@@ -31,6 +31,7 @@ import {
   recordCapturePhases,
   settleObligation,
 } from "../../main/telemetry/dictation-trace";
+import { vocabularyLearningNotifications } from "../../services/vocabulary-learning/notifications";
 
 function recordCaptureTimings(
   sessionId: string,
@@ -222,7 +223,16 @@ export const recordingRouter = createRouter({
         });
       };
 
-      return lifecycle.onNotification(handleNotification);
+      const unsubscribeLifecycle = lifecycle.onNotification(handleNotification);
+      // Second source: the vocabulary learning service builds its toasts
+      // (title, Undo and View actions) itself.
+      const unsubscribeLearned = vocabularyLearningNotifications.onLearned(
+        (notification) => emit.next(notification),
+      );
+      return () => {
+        unsubscribeLifecycle();
+        unsubscribeLearned();
+      };
     });
   }),
 

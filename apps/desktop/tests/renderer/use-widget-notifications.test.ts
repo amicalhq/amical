@@ -43,6 +43,11 @@ vi.mock("@/trpc/react", () => ({
         useMutation: () => ({ mutate: mocks.navigate }),
       },
     },
+    vocabulary: {
+      undoLearned: {
+        useMutation: () => ({ mutate: vi.fn() }),
+      },
+    },
   },
 }));
 

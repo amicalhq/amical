@@ -13,6 +13,7 @@ import { setPassThroughReason } from "../pass-through";
 
 export const useWidgetNotifications = (recordingState: RecordingState) => {
   const navigateMainWindow = api.widget.navigateMainWindow.useMutation();
+  const undoLearnedVocabulary = api.vocabulary.undoLearned.useMutation();
   const trackEvent = api.telemetry.trackEvent.useMutation();
   const activeToastIdsRef = useRef<Set<string | number>>(new Set());
   const [hasVisibleNotification, setHasVisibleNotification] = useState(false);
@@ -26,7 +27,9 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
   };
 
   const handleActionClick = async (action: WidgetNotificationAction) => {
-    if (action.navigateTo) {
+    if (action.command?.kind === "undoLearnedVocabulary") {
+      undoLearnedVocabulary.mutate({ entries: action.command.entries });
+    } else if (action.navigateTo) {
       navigateMainWindow.mutate({ route: action.navigateTo });
     } else if (action.externalUrl) {
       await window.electronAPI.openExternal(action.externalUrl);
@@ -37,6 +40,7 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
     notification: Pick<
       WidgetNotification,
       | "type"
+      | "tone"
       | "title"
       | "description"
       | "subDescription"
@@ -60,7 +64,7 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
         <WidgetToast
           title={notification.title}
           description={description}
-          isError={true}
+          tone={notification.tone}
           subDescription={notification.subDescription}
           traceId={notification.traceId}
           primaryAction={notification.primaryAction}
