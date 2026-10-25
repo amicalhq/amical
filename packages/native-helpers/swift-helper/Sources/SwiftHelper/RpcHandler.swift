@@ -70,6 +70,12 @@ class IOBridge: NSObject {
     // touches no AX state, so it gets its own serial queue instead of
     // blocking AccessibilityQueue (and the AX context requests behind it).
     private let copyCaptureQueue = DispatchQueue(label: "com.amical.helper.copy-capture")
+    private let editWatchService = EditWatchService()
+
+    // Results of these methods carry field text; their bodies never reach the log.
+    private static let fieldTextMethods: Set<Method> = [
+        .startEditWatch, .readEditWatch, .stopEditWatch,
+    ]
 
     override init() {
         let accessibilityService = AccessibilityService()
@@ -92,7 +98,7 @@ class IOBridge: NSObject {
         let response = await RPCResponseExecutor.execute(id: request.id) { [self] in
             try await dispatchRpcRequest(request)
         }
-        sendRpcResponse(response)
+        sendRpcResponse(response, logBody: !Self.fieldTextMethods.contains(request.method))
     }
 
     private func dispatchRpcRequest(_ request: RPCRequestSchema) async throws -> JSONAny? {
@@ -136,6 +142,15 @@ class IOBridge: NSObject {
 
         case .getSelectedTextViaCopy:
             return try encodeResult(try await handleGetSelectedTextViaCopy(request))
+
+        case .startEditWatch:
+            return try encodeResult(try await handleStartEditWatch(request))
+
+        case .readEditWatch:
+            return try encodeResult(try await handleReadEditWatch(request))
+
+        case .stopEditWatch:
+            return try encodeResult(try await handleStopEditWatch(request))
 
         }
     }
@@ -319,6 +334,48 @@ class IOBridge: NSObject {
         }
     }
 
+    // Edit watch handlers log status, length and timing only; never the text.
+
+    private func handleStartEditWatch(
+        _ request: RPCRequestSchema
+    ) async throws -> StartEditWatchResultSchema {
+        logToStderr("[IOBridge] Handling startEditWatch for ID: \(request.id)")
+        let result = try await editWatchService.start()
+        logToStderr("[IOBridge] startEditWatch status=\(result.startStatus.rawValue)")
+        return result
+    }
+
+    private func handleReadEditWatch(
+        _ request: RPCRequestSchema
+    ) async throws -> ReadEditWatchResultSchema {
+        let params: ReadEditWatchParamsSchema = try decodeRequiredParams(
+            request.params,
+            method: "readEditWatch"
+        )
+        let result = try await editWatchService.read(watchID: params.watchID)
+        // Reads poll up to 10 times a second; log only the ones that fail.
+        if result.readStatus != .ok {
+            logToStderr(
+                "[IOBridge] readEditWatch status=\(result.readStatus.rawValue) "
+                    + "textLength=\(result.text?.utf16.count ?? 0) readMs=\(String(format: "%.1f", result.readMS))"
+            )
+        }
+        return result
+    }
+
+    private func handleStopEditWatch(
+        _ request: RPCRequestSchema
+    ) async throws -> StopEditWatchResultSchema {
+        logToStderr("[IOBridge] Handling stopEditWatch for ID: \(request.id)")
+        let params: StopEditWatchParamsSchema = try decodeRequiredParams(
+            request.params,
+            method: "stopEditWatch"
+        )
+        let result = try await editWatchService.stop(watchID: params.watchID)
+        logToStderr("[IOBridge] stopEditWatch stopped=\(result.stopped)")
+        return result
+    }
+
     private func decodeRequiredParams<T: Decodable>(
         _ params: JSONAny?,
         method: String
@@ -395,11 +452,13 @@ class IOBridge: NSObject {
         return try? JSONSerialization.data(withJSONObject: payload)
     }
 
-    private func sendRpcResponse(_ response: RPCResponseSchema) {
+    private func sendRpcResponse(_ response: RPCResponseSchema, logBody: Bool) {
         do {
             let responseData = try JSONEncoder().encode(response)
             if let responseString = String(data: responseData, encoding: .utf8) {
-                logToStderr("[Swift Biz Logic] FINAL JSON RESPONSE to stdout: \(responseString)")
+                if logBody {
+                    logToStderr("[Swift Biz Logic] FINAL JSON RESPONSE to stdout: \(responseString)")
+                }
                 StdoutWriter.writeLine(responseString)
             }
         } catch {
@@ -418,9 +477,12 @@ class IOBridge: NSObject {
 
             do {
                 let request = try JSONDecoder().decode(RPCRequestSchema.self, from: data)
-                logToStderr(
-                    "IOBridge: Received RPC Request ID \(request.id), Method: \(request.method)"
-                )
+                // readEditWatch polls up to 10 times a second; its handler logs failures only.
+                if request.method != .readEditWatch {
+                    logToStderr(
+                        "IOBridge: Received RPC Request ID \(request.id), Method: \(request.method)"
+                    )
+                }
                 Task(priority: .high) { [self] in
                     await handleRpcRequest(request)
                 }
