@@ -47,6 +47,12 @@ try {
     "generated/json-schemas/methods/recheck-pressed-keys-result.schema.json " +
     "generated/json-schemas/methods/get-selected-text-via-copy-params.schema.json " +
     "generated/json-schemas/methods/get-selected-text-via-copy-result.schema.json " +
+    "generated/json-schemas/methods/start-edit-watch-params.schema.json " +
+    "generated/json-schemas/methods/start-edit-watch-result.schema.json " +
+    "generated/json-schemas/methods/read-edit-watch-params.schema.json " +
+    "generated/json-schemas/methods/read-edit-watch-result.schema.json " +
+    "generated/json-schemas/methods/stop-edit-watch-params.schema.json " +
+    "generated/json-schemas/methods/stop-edit-watch-result.schema.json " +
     "generated/json-schemas/events/key-down-event.schema.json " +
     "generated/json-schemas/events/key-up-event.schema.json " +
     "generated/json-schemas/events/flags-changed-event.schema.json " +
