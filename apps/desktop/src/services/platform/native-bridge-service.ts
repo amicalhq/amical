@@ -54,6 +54,15 @@ import {
   GetSelectedTextViaCopyParams,
   GetSelectedTextViaCopyResult,
   GetSelectedTextViaCopyResultSchema,
+  StartEditWatchParams,
+  StartEditWatchResult,
+  StartEditWatchResultSchema,
+  ReadEditWatchParams,
+  ReadEditWatchResult,
+  ReadEditWatchResultSchema,
+  StopEditWatchParams,
+  StopEditWatchResult,
+  StopEditWatchResultSchema,
   AppContext,
 } from "@amical/types";
 
@@ -107,7 +116,30 @@ interface RPCMethods {
     params: GetSelectedTextViaCopyParams;
     result: GetSelectedTextViaCopyResult;
   };
+  startEditWatch: {
+    params: StartEditWatchParams;
+    result: StartEditWatchResult;
+  };
+  readEditWatch: {
+    params: ReadEditWatchParams;
+    result: ReadEditWatchResult;
+  };
+  stopEditWatch: {
+    params: StopEditWatchParams;
+    result: StopEditWatchResult;
+  };
 }
+
+// Edit-watch answers carry the text of a watched field. Neither their result
+// nor their raw message may reach a log, and a timeout is not an exception.
+const EDIT_WATCH_METHODS: ReadonlySet<keyof RPCMethods> = new Set<
+  keyof RPCMethods
+>(["startEditWatch", "readEditWatch", "stopEditWatch"]);
+const LATE_EDIT_WATCH_IDS_LIMIT = 64;
+// Every read answer has this key. A line that has it may carry field text,
+// so the paths below that log a whole line or message redact it.
+const EDIT_WATCH_READ_KEY = '"readStatus"';
+const REDACTED_LINE = "[edit watch answer redacted]";
 
 type PendingRpc = {
   method: keyof RPCMethods;
@@ -133,6 +165,9 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodType> = {
   setAllowInjectedKeys: SetAllowInjectedKeysResultSchema,
   recheckPressedKeys: RecheckPressedKeysResultSchema,
   getSelectedTextViaCopy: GetSelectedTextViaCopyResultSchema,
+  startEditWatch: StartEditWatchResultSchema,
+  readEditWatch: ReadEditWatchResultSchema,
+  stopEditWatch: StopEditWatchResultSchema,
 };
 
 function normalizeAccessibilityContext(
@@ -151,7 +186,7 @@ function normalizeAccessibilityContext(
   };
 }
 
-class NativeBridgeTimeoutError extends Error {
+export class NativeBridgeTimeoutError extends Error {
   constructor(
     message: string,
     public readonly method: string,
@@ -256,6 +291,9 @@ export class NativeBridge extends EventEmitter {
     null;
   private helperStderrLines: string[] = [];
   private telemetryService: TelemetryService | null = null;
+  // Ids of edit-watch requests that timed out: their late answers are dropped
+  // without logging (the "unknown message" path would log the field text).
+  private lateEditWatchIds = new Set<string>();
 
   constructor(telemetryService?: TelemetryService) {
     super();
@@ -361,116 +399,7 @@ export class NativeBridge extends EventEmitter {
     this.proc = spawn(this.helperPath, [], { stdio: ["pipe", "pipe", "pipe"] });
 
     this.proc.stdout.pipe(split2()).on("data", (line: string) => {
-      if (!line.trim()) return; // Ignore empty lines
-      try {
-        const message = JSON.parse(line);
-        this.logger.debug("Received message from helper", { message });
-
-        // Try to parse as RpcResponse first
-        const responseValidation = RpcResponseSchema.safeParse(message);
-        if (responseValidation.success) {
-          const rpcResponse = responseValidation.data;
-          const pendingItem = this.popPending(rpcResponse.id);
-          if (pendingItem) {
-            const completedAt = Date.now();
-            const duration = completedAt - pendingItem.startTime;
-
-            if (rpcResponse.error) {
-              const error = new NativeBridgeRpcResponseError(
-                `NativeBridge: RPC call "${pendingItem.method}" (id: ${rpcResponse.id}) failed with code ${rpcResponse.error.code}: ${rpcResponse.error.message}`,
-                pendingItem.method,
-                rpcResponse.id,
-                rpcResponse.error.code,
-                rpcResponse.error.data,
-              );
-              this.telemetryService?.captureException(error, {
-                source: "native_helper",
-                stage: "rpc_response_error",
-                method: pendingItem.method,
-                request_id: rpcResponse.id,
-                rpc_code: rpcResponse.error.code,
-              });
-              pendingItem.reject(error);
-              return;
-            }
-
-            // Log at INFO level for critical audio operations, DEBUG for others
-            const logLevel =
-              pendingItem.method === "startRecording" ||
-              pendingItem.method === "stopRecording"
-                ? "info"
-                : "debug";
-
-            // Log the raw resp.result with timing information
-            const logData = {
-              method: pendingItem.method,
-              id: rpcResponse.id,
-              result: rpcResponse.result,
-              startedAt: new Date(pendingItem.startTime).toISOString(),
-              completedAt: new Date(completedAt).toISOString(),
-              durationMs: duration,
-            };
-
-            if (logLevel === "info") {
-              this.logger.info("RPC response received", logData);
-            } else {
-              this.logger.debug("Raw RPC response result received", logData);
-            }
-
-            const resultSchema = RPC_RESULT_SCHEMAS[pendingItem.method];
-            const resultValidation = resultSchema.safeParse(rpcResponse.result);
-            if (!resultValidation.success) {
-              const error = new NativeBridgeInvalidResponseError(
-                `NativeBridge: Invalid RPC result for "${pendingItem.method}" (id: ${rpcResponse.id})`,
-                pendingItem.method,
-                rpcResponse.id,
-                resultValidation.error.message,
-              );
-              this.telemetryService?.captureException(error, {
-                source: "native_helper",
-                stage: "rpc_invalid_response",
-                method: pendingItem.method,
-                request_id: rpcResponse.id,
-                validation_error: resultValidation.error.message,
-              });
-              pendingItem.reject(error);
-              return;
-            }
-
-            pendingItem.resolve(resultValidation.data);
-            return; // Handled as an RPC response
-          }
-        }
-
-        // If not a pending RpcResponse, try to parse as HelperEvent
-        const eventValidation = HelperEventSchema.safeParse(message);
-        if (eventValidation.success) {
-          const helperEvent = eventValidation.data;
-          this.emit("helperEvent", helperEvent);
-          return; // Handled as a helper event
-        }
-
-        // If it's neither a recognized RPC response nor a helper event
-        this.logger.warn("Received unknown message from helper", {
-          message,
-          rpcResponseValidationIssues: responseValidation.success
-            ? undefined
-            : responseValidation.error.issues,
-          helperEventValidationIssues: eventValidation.error.issues,
-        });
-      } catch (e) {
-        this.logger.error("Error parsing JSON from helper", { error: e, line });
-        this.telemetryService?.captureException(e, {
-          source: "native_helper",
-          stage: "stdout_parse",
-          helper_name: getNativeHelperName(),
-          raw_line: line.slice(0, 2000),
-        });
-        this.emit(
-          "error",
-          new Error(`Error parsing JSON from helper: ${line}`),
-        );
-      }
+      this.handleHelperLine(line);
     });
 
     this.proc.stderr.on("data", (data: Buffer) => {
@@ -557,6 +486,138 @@ export class NativeBridge extends EventEmitter {
       this.emit("ready"); // Emit ready on next tick
     });
     this.logger.info("Helper process started and listeners attached");
+  }
+
+  /** One stdout line from the helper: an RPC answer, an event, or noise. */
+  private handleHelperLine(line: string): void {
+    if (!line.trim()) return; // Ignore empty lines
+    const loggableLine = line.includes(EDIT_WATCH_READ_KEY)
+      ? REDACTED_LINE
+      : line;
+    try {
+      const message = JSON.parse(line);
+
+      // Try to parse as RpcResponse first
+      const responseValidation = RpcResponseSchema.safeParse(message);
+      if (responseValidation.success) {
+        const rpcResponse = responseValidation.data;
+        if (this.lateEditWatchIds.delete(rpcResponse.id)) {
+          return; // Late edit-watch answer: dropped, never logged.
+        }
+        const pendingItem = this.popPending(rpcResponse.id);
+        if (pendingItem) {
+          // Edit-watch answers carry field text: only the response log below.
+          const redacted = EDIT_WATCH_METHODS.has(pendingItem.method);
+          if (!redacted) {
+            this.logger.debug("Received message from helper", { message });
+          }
+
+          const completedAt = Date.now();
+          const duration = completedAt - pendingItem.startTime;
+
+          if (rpcResponse.error) {
+            const error = new NativeBridgeRpcResponseError(
+              `NativeBridge: RPC call "${pendingItem.method}" (id: ${rpcResponse.id}) failed with code ${rpcResponse.error.code}: ${rpcResponse.error.message}`,
+              pendingItem.method,
+              rpcResponse.id,
+              rpcResponse.error.code,
+              rpcResponse.error.data,
+            );
+            this.telemetryService?.captureException(error, {
+              source: "native_helper",
+              stage: "rpc_response_error",
+              method: pendingItem.method,
+              request_id: rpcResponse.id,
+              rpc_code: rpcResponse.error.code,
+            });
+            pendingItem.reject(error);
+            return;
+          }
+
+          // Log at INFO level for critical audio operations, DEBUG for others
+          const logLevel =
+            pendingItem.method === "startRecording" ||
+            pendingItem.method === "stopRecording"
+              ? "info"
+              : "debug";
+
+          // Log the raw resp.result with timing information
+          const logData = {
+            method: pendingItem.method,
+            id: rpcResponse.id,
+            ...(redacted ? {} : { result: rpcResponse.result }),
+            startedAt: new Date(pendingItem.startTime).toISOString(),
+            completedAt: new Date(completedAt).toISOString(),
+            durationMs: duration,
+          };
+
+          if (logLevel === "info") {
+            this.logger.info("RPC response received", logData);
+          } else {
+            this.logger.debug("Raw RPC response result received", logData);
+          }
+
+          const resultSchema = RPC_RESULT_SCHEMAS[pendingItem.method];
+          const resultValidation = resultSchema.safeParse(rpcResponse.result);
+          if (!resultValidation.success) {
+            const error = new NativeBridgeInvalidResponseError(
+              `NativeBridge: Invalid RPC result for "${pendingItem.method}" (id: ${rpcResponse.id})`,
+              pendingItem.method,
+              rpcResponse.id,
+              resultValidation.error.message,
+            );
+            this.telemetryService?.captureException(error, {
+              source: "native_helper",
+              stage: "rpc_invalid_response",
+              method: pendingItem.method,
+              request_id: rpcResponse.id,
+              validation_error: resultValidation.error.message,
+            });
+            pendingItem.reject(error);
+            return;
+          }
+
+          pendingItem.resolve(resultValidation.data);
+          return; // Handled as an RPC response
+        }
+      }
+
+      this.logger.debug("Received message from helper", {
+        message: loggableLine === line ? message : REDACTED_LINE,
+      });
+
+      // If not a pending RpcResponse, try to parse as HelperEvent
+      const eventValidation = HelperEventSchema.safeParse(message);
+      if (eventValidation.success) {
+        const helperEvent = eventValidation.data;
+        this.emit("helperEvent", helperEvent);
+        return; // Handled as a helper event
+      }
+
+      // If it's neither a recognized RPC response nor a helper event
+      this.logger.warn("Received unknown message from helper", {
+        message: loggableLine === line ? message : REDACTED_LINE,
+        rpcResponseValidationIssues: responseValidation.success
+          ? undefined
+          : responseValidation.error.issues,
+        helperEventValidationIssues: eventValidation.error.issues,
+      });
+    } catch (e) {
+      this.logger.error("Error parsing JSON from helper", {
+        error: e,
+        line: loggableLine,
+      });
+      this.telemetryService?.captureException(e, {
+        source: "native_helper",
+        stage: "stdout_parse",
+        helper_name: getNativeHelperName(),
+        raw_line: loggableLine.slice(0, 2000),
+      });
+      this.emit(
+        "error",
+        new Error(`Error parsing JSON from helper: ${loggableLine}`),
+      );
+    }
   }
 
   private attemptRestart(): void {
@@ -701,14 +762,20 @@ export class NativeBridge extends EventEmitter {
           timeoutMs,
           duration,
         );
-        this.telemetryService?.captureException(error, {
-          source: "native_helper",
-          stage: "rpc_timeout",
-          method: method,
-          request_id: id,
-          timeout_ms: timeoutMs,
-          duration_ms: duration,
-        });
+        if (EDIT_WATCH_METHODS.has(method)) {
+          // A watch read on a hung app is an expected end, not an exception;
+          // the learning service counts it as a read error.
+          this.rememberLateEditWatchId(id);
+        } else {
+          this.telemetryService?.captureException(error, {
+            source: "native_helper",
+            stage: "rpc_timeout",
+            method: method,
+            request_id: id,
+            timeout_ms: timeoutMs,
+            duration_ms: duration,
+          });
+        }
         pendingItem.reject(error);
       }, timeoutMs);
 
@@ -786,6 +853,42 @@ export class NativeBridge extends EventEmitter {
         );
       }
     });
+  }
+
+  private rememberLateEditWatchId(id: string): void {
+    this.lateEditWatchIds.add(id);
+    if (this.lateEditWatchIds.size > LATE_EDIT_WATCH_IDS_LIMIT) {
+      const oldest = this.lateEditWatchIds.values().next().value;
+      if (oldest !== undefined) this.lateEditWatchIds.delete(oldest);
+    }
+  }
+
+  /**
+   * Edit watch (vocabulary learning): hold the text element the paste went
+   * into. Rejects on transport failure; the caller maps that to a refused
+   * start. 2 s timeout: the helper resolves one element and holds it.
+   */
+  async startEditWatch(): Promise<StartEditWatchResult> {
+    return this.call("startEditWatch", {}, 2000);
+  }
+
+  /**
+   * One read of the held element. Rejects on failure; a timeout rejects with
+   * NativeBridgeTimeoutError. The text in the answer must never be logged.
+   */
+  async readEditWatch(watchId: string): Promise<ReadEditWatchResult> {
+    return this.call("readEditWatch", { watchId }, 2000);
+  }
+
+  /** Release the held element. Best effort; a stale id is a no-op. */
+  async stopEditWatch(watchId: string): Promise<void> {
+    try {
+      await this.call("stopEditWatch", { watchId }, 1000);
+    } catch (error) {
+      this.logger.debug("stopEditWatch failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   public isHelperRunning(): boolean {
