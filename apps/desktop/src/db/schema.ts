@@ -76,6 +76,12 @@ export const vocabulary = sqliteTable(
     scopeId: text("scope_id").notNull().default(""),
     word: text("word").notNull(),
     replacementWord: text("replacement_word"),
+    // "auto" rows were learned from a correction on this device; the marker
+    // and the heard form stay local (not in the sync payload).
+    source: text("source", { enum: ["manual", "auto"] })
+      .notNull()
+      .default("manual"),
+    observedSource: text("observed_source"),
     dateAdded: integer("date_added", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),

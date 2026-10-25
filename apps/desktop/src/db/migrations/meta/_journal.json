@@ -127,6 +127,13 @@
       "when": 1789709766914,
       "tag": "0017_notes_auto_adoption",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1792643663064,
+      "tag": "0018_vocabulary_source",
+      "breakpoints": true
     }
   ]
 }

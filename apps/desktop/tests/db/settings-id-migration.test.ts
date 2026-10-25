@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, afterEach, expect, it } from "vitest";
 import { migrateDatabase } from "@/db/migrate";
+import { legacyVocabularyColumns } from "../helpers/legacy-vocabulary";
 import {
   vocabulary,
   snippets,
@@ -60,27 +61,24 @@ beforeEach(async () => {
   copyMigrations(11);
   migrateDatabase(testDb.db, { migrationsFolder: folder });
   const db = testDb.db;
-  db.insert(vocabulary)
-    .values([
-      {
-        id: WORD,
-        word: "Word",
-        replacementWord: "Local edit",
-        usageCount: 7,
-        createdAt: new Date(1000000),
-        updatedAt: new Date(2000000),
-      },
-      {
-        id: WORD,
-        scopeType: "org",
-        scopeId: "org-1",
-        word: "Word",
-        replacementWord: "Org edit",
-      },
-      { id: LOCAL, word: "Never synced" },
-      { id: PREFIXED, word: "Already converted" },
-    ])
-    .run();
+  const insertWord = db.$client.prepare(
+    `INSERT INTO vocabulary (
+    id, scope_type, scope_id, word, replacement_word, usage_count, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  insertWord.run(WORD, "user", "", "Word", "Local edit", 7, 1000, 2000);
+  insertWord.run(WORD, "org", "org-1", "Word", "Org edit", 0, 3000, 3000);
+  insertWord.run(LOCAL, "user", "", "Never synced", null, 0, 3000, 3000);
+  insertWord.run(
+    PREFIXED,
+    "user",
+    "",
+    "Already converted",
+    null,
+    0,
+    3000,
+    3000,
+  );
   db.insert(snippets)
     .values({ id: SNIPPET, trigger: "sig", content: "Regards" })
     .run();
@@ -180,7 +178,7 @@ afterEach(async () => {
 
 it("clears settings sync including pending deletions, then rekeys IDs without changing content", () => {
   const db = testDb.db;
-  const oldWords = db.select().from(vocabulary).all();
+  const oldWords = db.select(legacyVocabularyColumns).from(vocabulary).all();
   const oldSnippet = db.select().from(snippets).get()!;
   const oldNotes = db.$client.prepare("SELECT id, title FROM notes").all();
   db.insert(syncCollectionState)
@@ -201,6 +199,8 @@ it("clears settings sync including pending deletions, then rekeys IDs without ch
     expect(row).toEqual({
       ...old,
       id: expect.stringMatching(/^voc_[a-z][a-z0-9]{23}$/),
+      source: "manual",
+      observedSource: null,
     });
   }
   expect(words.find((row) => row.word === "Already converted")!.id).toBe(
@@ -270,7 +270,7 @@ it("lets server dedup restore the UUID without migrating it again on the next la
 it("rolls back IDs, outbox heads and versions together on migration failure", () => {
   const db = testDb.db;
   const before = {
-    words: db.select().from(vocabulary).all(),
+    words: db.select(legacyVocabularyColumns).from(vocabulary).all(),
     items: db.$client.prepare("SELECT * FROM sync_item_state").all(),
     outbox: db.$client.prepare("SELECT * FROM sync_outbox").all(),
     client: db.select().from(syncClientState).all(),
@@ -283,7 +283,7 @@ it("rolls back IDs, outbox heads and versions together on migration failure", ()
   );
   expect(() => migrateDatabase(db, { migrationsFolder: folder })).toThrow();
   expect({
-    words: db.select().from(vocabulary).all(),
+    words: db.select(legacyVocabularyColumns).from(vocabulary).all(),
     items: db.$client.prepare("SELECT * FROM sync_item_state").all(),
     outbox: db.$client.prepare("SELECT * FROM sync_outbox").all(),
     client: db.select().from(syncClientState).all(),

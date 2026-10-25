@@ -50,6 +50,7 @@ describe("settings sync schema migration", () => {
     for (const migrationName of [
       "0007_odd_mastermind.sql",
       "0009_known_robbie_robertson.sql",
+      "0018_vocabulary_source.sql",
     ]) {
       const migration = fs
         .readFileSync(

@@ -11,6 +11,7 @@ import { migrateDatabase } from "@/db/migrate";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import * as Y from "yjs";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
+import { legacyVocabularyColumns } from "../helpers/legacy-vocabulary";
 import { setTestDatabase } from "../setup";
 import { loadNoteBody } from "@/db/note-body";
 import {
@@ -53,13 +54,9 @@ beforeEach(async () => {
   mkdirSync(join(folder, "meta"));
   copyMigrations(10);
   migrateDatabase(testDb.db, { migrationsFolder: folder });
-  testDb.db
-    .insert(vocabulary)
-    .values({
-      id: "11111111-1111-4111-8111-111111111111",
-      word: "Existing word",
-    })
-    .run();
+  testDb.db.$client
+    .prepare("INSERT INTO vocabulary (id, word) VALUES (?, ?)")
+    .run("11111111-1111-4111-8111-111111111111", "Existing word");
   testDb.db
     .insert(snippets)
     .values({
@@ -107,13 +104,18 @@ afterEach(async () => {
 });
 
 it("upgrades integer IDs before Markdown and sync, retaining Yjs data and its foreign keys", () => {
-  const oldVocabulary = testDb.db.select().from(vocabulary).all();
+  const oldVocabulary = testDb.db
+    .select(legacyVocabularyColumns)
+    .from(vocabulary)
+    .all();
   const oldSnippets = testDb.db.select().from(snippets).all();
   migrateDatabase(testDb.db, { migrationsFolder: migrations });
   expect(testDb.db.select().from(vocabulary).all()).toEqual(
     oldVocabulary.map((row) => ({
       ...row,
       id: expect.stringMatching(/^voc_[a-z][a-z0-9]{23}$/),
+      source: "manual",
+      observedSource: null,
     })),
   );
   expect(testDb.db.select().from(snippets).all()).toEqual(

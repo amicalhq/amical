@@ -691,7 +691,13 @@ describe("scoped language asset migration", () => {
       VALUES ('22222222-2222-4222-8222-222222222222', 'org', 'org-1', '/organization', 'Value');
     `);
 
-    expect(testDb.db.select().from(vocabulary).all()).toEqual(
+    // Raw read: the drizzle schema has columns that later migrations add.
+    const vocabularyRows = testDb.db.$client
+      .prepare(
+        "SELECT id, word, scope_type AS scopeType, scope_id AS scopeId FROM vocabulary",
+      )
+      .all();
+    expect(vocabularyRows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: SHARED_VOCABULARY_SYNC_ID,
@@ -707,7 +713,7 @@ describe("scoped language asset migration", () => {
         }),
       ]),
     );
-    expect(testDb.db.select().from(vocabulary).all()).toHaveLength(2);
+    expect(vocabularyRows).toHaveLength(2);
     expect(testDb.db.select().from(snippets).all()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

@@ -9,6 +9,10 @@ import {
   getWritableOrganizationIdentity,
   vocabularySyncPayload,
 } from "./sync";
+import {
+  normalizeVocabularyKey,
+  vocabularyKeys,
+} from "../utils/vocabulary-keys";
 
 export type LanguageAssetScopeFilter = "all" | "user" | "org";
 
@@ -23,13 +27,19 @@ function effectiveVocabulary(rows: Vocabulary[]): Vocabulary[] {
   return [...effective.values()];
 }
 
+function isReadable(
+  row: Vocabulary,
+  organizationScopeId: string | undefined,
+): boolean {
+  return (
+    (row.scopeType === "user" && row.scopeId === "") ||
+    (row.scopeType === "org" && row.scopeId === organizationScopeId)
+  );
+}
+
 async function readableVocabulary(rows: Vocabulary[]): Promise<Vocabulary[]> {
   const organization = await getActiveOrganizationAccess();
-  return rows.filter(
-    (row) =>
-      (row.scopeType === "user" && row.scopeId === "") ||
-      (row.scopeType === "org" && row.scopeId === organization?.scopeId),
-  );
+  return rows.filter((row) => isReadable(row, organization?.scopeId));
 }
 
 // Create a new vocabulary word
@@ -59,6 +69,97 @@ export async function createVocabularyWord(
       vocabularySyncPayload(created),
     );
     return created;
+  });
+}
+
+export interface LearnedVocabularyEntry {
+  word: string;
+  /** What the transcript said before the user corrected it. */
+  observedSource: string;
+}
+
+/**
+ * Insert words learned from a correction as personal rows with source "auto".
+ * One transaction: words already readable (case-insensitive, word or
+ * replacement) are skipped, which also covers every unique-index conflict.
+ * Each inserted row gets a sync mutation like createVocabularyWord. Returns
+ * the inserted rows.
+ */
+export async function insertLearnedVocabulary(
+  entries: LearnedVocabularyEntry[],
+): Promise<Vocabulary[]> {
+  if (entries.length === 0) return [];
+  const organization = await getActiveOrganizationAccess();
+  const now = new Date();
+
+  return db.transaction((tx) => {
+    const known = vocabularyKeys(
+      tx
+        .select()
+        .from(vocabulary)
+        .all()
+        .filter((row) => isReadable(row, organization?.scopeId)),
+    );
+
+    const created: Vocabulary[] = [];
+    for (const entry of entries) {
+      const key = normalizeVocabularyKey(entry.word);
+      if (known.has(key)) continue;
+      known.add(key);
+      const row = tx
+        .insert(vocabulary)
+        .values({
+          scopeType: "user",
+          scopeId: "",
+          word: entry.word,
+          replacementWord: null,
+          source: "auto",
+          observedSource: entry.observedSource,
+          dateAdded: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
+      recordLocalSyncMutation(
+        tx,
+        "vocabulary",
+        row.id,
+        vocabularySyncPayload(row),
+      );
+      created.push(row);
+    }
+    return created;
+  });
+}
+
+/**
+ * Undo a learning pass: delete the given rows while they still hold source
+ * "auto" and the word that was inserted (an edited or re-added row stays).
+ * Not guarded on updatedAt: the sync push acknowledgement rewrites it.
+ * Returns the deleted rows.
+ */
+export async function undoLearnedVocabulary(
+  entries: { id: string; word: string }[],
+): Promise<Vocabulary[]> {
+  if (entries.length === 0) return [];
+  return db.transaction((tx) => {
+    const deleted: Vocabulary[] = [];
+    for (const entry of entries) {
+      const where = and(
+        eq(vocabulary.id, entry.id),
+        eq(vocabulary.scopeType, "user"),
+        eq(vocabulary.scopeId, ""),
+        eq(vocabulary.source, "auto"),
+        eq(vocabulary.word, entry.word),
+      );
+      const existing = tx.select().from(vocabulary).where(where).get();
+      if (!existing) continue;
+      recordLocalSyncMutation(tx, "vocabulary", existing.id, null);
+      const row = tx.delete(vocabulary).where(where).returning().get();
+      if (row) deleted.push(row);
+    }
+    return deleted;
   });
 }
 
@@ -177,8 +278,12 @@ export async function updateVocabulary(
   id: string,
   data: Partial<Omit<Vocabulary, "id" | "scopeType" | "scopeId" | "createdAt">>,
 ) {
+  const changesSyncPayload =
+    Object.hasOwn(data, "word") || Object.hasOwn(data, "replacementWord");
   const updateData = {
     ...data,
+    // The user edited the entry: a learned row becomes a manual one.
+    ...(changesSyncPayload ? { source: "manual" as const } : {}),
     updatedAt: new Date(),
   };
 
@@ -197,8 +302,6 @@ export async function updateVocabulary(
       .get();
     if (!updated) return null;
 
-    const changesSyncPayload =
-      Object.hasOwn(data, "word") || Object.hasOwn(data, "replacementWord");
     if (changesSyncPayload) {
       recordLocalSyncMutation(
         tx,
@@ -336,11 +439,7 @@ export async function trackWordUsage(word: string) {
         .from(vocabulary)
         .where(eq(vocabulary.word, word.toLowerCase()))
         .all()
-        .filter(
-          (row) =>
-            (row.scopeType === "user" && row.scopeId === "") ||
-            (row.scopeType === "org" && row.scopeId === organization?.scopeId),
-        ),
+        .filter((row) => isReadable(row, organization?.scopeId)),
     )[0];
     if (!effective) return null;
     return (

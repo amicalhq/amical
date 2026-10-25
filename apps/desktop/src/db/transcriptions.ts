@@ -418,6 +418,17 @@ export async function getTranscriptionsCount(search?: string) {
   }
 }
 
+/** The committed (sealed) row of a session, or null while it is provisional. */
+export async function getTranscriptionBySessionId(sessionId: string) {
+  const row = await db
+    .select()
+    .from(transcriptions)
+    .where(and(eq(transcriptions.sessionId, sessionId), settledRowsOnly))
+    .limit(1)
+    .get();
+  return row ?? null;
+}
+
 // Get latest non-empty transcription
 export async function getLatestTranscription() {
   const result = await db
