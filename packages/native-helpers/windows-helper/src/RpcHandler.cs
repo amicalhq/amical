@@ -84,6 +84,7 @@ namespace WindowsHelper
     {
         private readonly JsonSerializerOptions jsonOptions;
         private readonly AccessibilityService accessibilityService;
+        private readonly EditWatchService editWatchService;
         private readonly RecordingAmbianceController recordingAmbianceController;
         private readonly StaThreadRunner? staRunner;
         private bool disposed;
@@ -93,6 +94,7 @@ namespace WindowsHelper
             this.staRunner = staRunner;
             jsonOptions = WindowsHelper.Models.Converter.Settings;
             accessibilityService = new AccessibilityService(clipboardService);
+            editWatchService = new EditWatchService();
             var audioService = new AudioService();
             recordingAmbianceController = new RecordingAmbianceController(
                 audioService.PlaySound,
@@ -137,7 +139,11 @@ namespace WindowsHelper
                             continue;
                         }
 
-                        LogToStderr($"RpcHandler: Received RPC Request ID {request.Id}, Method: {request.Method}");
+                        // readEditWatch polls up to 10 times a second; its handler logs failures only.
+                        if (request.Method != Method.ReadEditWatch)
+                        {
+                            LogToStderr($"RpcHandler: Received RPC Request ID {request.Id}, Method: {request.Method}");
+                        }
                         _ = Task.Run(
                             () => ProcessAndRespondAsync(request),
                             cancellationToken
@@ -166,7 +172,7 @@ namespace WindowsHelper
                 () => DispatchRpcRequestAsync(request),
                 jsonOptions
             );
-            SendRpcResponse(responseJson);
+            SendRpcResponse(responseJson, request.Method);
         }
 
         private async Task<object?> DispatchRpcRequestAsync(RpcRequest request)
@@ -202,6 +208,15 @@ namespace WindowsHelper
 
                 case Method.GetSelectedTextViaCopy:
                     return HandleGetSelectedTextViaCopy(request);
+
+                case Method.StartEditWatch:
+                    return await HandleStartEditWatch(request);
+
+                case Method.ReadEditWatch:
+                    return await HandleReadEditWatch(request);
+
+                case Method.StopEditWatch:
+                    return HandleStopEditWatch(request);
 
                 case Method.GetAccessibilityStatus:
                 case Method.RequestAccessibilityPermission:
@@ -248,6 +263,48 @@ namespace WindowsHelper
         {
             LogToStderr($"Handling getSelectedTextViaCopy for ID: {request.Id}");
             return accessibilityService.GetSelectedTextViaCopy();
+        }
+
+        // Edit watch results carry field text. Log status, lengths and timings only.
+
+        private async Task<object?> HandleStartEditWatch(RpcRequest request)
+        {
+            LogToStderr($"Handling startEditWatch for ID: {request.Id}");
+            var result = await Task.Run(() => editWatchService.Start());
+            LogToStderr($"startEditWatch: status={result.StartStatus}");
+            return result;
+        }
+
+        private async Task<object?> HandleReadEditWatch(RpcRequest request)
+        {
+            var parameters = DecodeRequiredParams<ReadEditWatchParams>(
+                request,
+                "readEditWatch",
+                "watchId"
+            );
+            var result = await editWatchService.ReadAsync(parameters.WatchId);
+            // Reads poll up to 10 times a second; log only the ones that fail.
+            if (result.ReadStatus != ReadStatus.Ok)
+            {
+                LogToStderr(
+                    $"readEditWatch: status={result.ReadStatus} " +
+                    $"textLength={result.Text?.Length ?? 0} readMs={result.ReadMs}"
+                );
+            }
+            return result;
+        }
+
+        private object HandleStopEditWatch(RpcRequest request)
+        {
+            LogToStderr($"Handling stopEditWatch for ID: {request.Id}");
+            var parameters = DecodeRequiredParams<StopEditWatchParams>(
+                request,
+                "stopEditWatch",
+                "watchId"
+            );
+            var result = editWatchService.Stop(parameters.WatchId);
+            LogToStderr($"stopEditWatch: stopped={result.Stopped}");
+            return result;
         }
 
         private object HandlePasteText(RpcRequest request)
@@ -436,17 +493,28 @@ namespace WindowsHelper
             return new RpcDispatchException(-32602, message, request.Params);
         }
 
-        private void SendRpcResponse(string responseJson)
+        private void SendRpcResponse(string responseJson, Method method)
         {
             try
             {
-                LogToStderr($"[RpcHandler] Sending response to stdout: {responseJson}");
+                // Edit watch responses may carry field text: never log them.
+                if (!IsEditWatchMethod(method))
+                {
+                    LogToStderr($"[RpcHandler] Sending response to stdout: {responseJson}");
+                }
                 StdoutWriter.WriteLine(responseJson);
             }
             catch (Exception ex)
             {
                 LogToStderr($"Error writing RpcResponse: {ex.Message}");
             }
+        }
+
+        private static bool IsEditWatchMethod(Method method)
+        {
+            return method == Method.StartEditWatch
+                || method == Method.ReadEditWatch
+                || method == Method.StopEditWatch;
         }
 
         private void LogToStderr(string message)
