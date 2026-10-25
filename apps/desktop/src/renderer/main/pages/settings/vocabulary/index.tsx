@@ -13,6 +13,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -23,6 +29,8 @@ type VocabularyItem = {
   scopeId: string;
   word: string;
   replacementWord: string | null;
+  source: "manual" | "auto";
+  observedSource: string | null;
   dateAdded: Date;
   usageCount: number | null;
   createdAt: Date;
@@ -509,6 +517,24 @@ export default function VocabularySettingsPage() {
                         </>
                       ) : (
                         item.word
+                      )}
+                      {item.source === "auto" && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                                {t("settings.vocabulary.learned.badge")}
+                              </span>
+                            </TooltipTrigger>
+                            {item.observedSource && (
+                              <TooltipContent>
+                                {t("settings.vocabulary.learned.tooltip", {
+                                  heard: item.observedSource,
+                                })}
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
                       )}
                       {showOrganizationVocabulary && (
                         <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
