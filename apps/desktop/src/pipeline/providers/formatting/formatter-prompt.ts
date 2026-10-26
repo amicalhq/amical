@@ -326,11 +326,15 @@ const BROWSER_BUNDLE_IDS = [
   "com.brave.Browser",
   "com.operasoftware.Opera",
   "com.vivaldi.Vivaldi",
+  "org.chromium.Chromium",
+  "company.thebrowser.Browser", // Arc
+  "app.zen-browser.zen",
 ];
 
 // Windows browser process names. On Windows the helper reports the process
 // name (no path, no .exe) instead of a bundle id, and it resolves a URL only
-// for these browsers (UrlResolver.AddressBarClassNames in the Windows helper).
+// for these browsers. Keep in sync with UrlResolver.AddressBarClassNames in
+// the Windows helper.
 const WINDOWS_BROWSER_PROCESS_NAMES = [
   "chrome",
   "msedge",
@@ -406,10 +410,7 @@ export function detectApplicationType(
   // Check if it's a browser
   const isBrowser =
     WINDOWS_BROWSER_PROCESS_NAMES.includes(bundleId.toLowerCase()) ||
-    BROWSER_BUNDLE_IDS.some(
-      (browserId) =>
-        bundleId.includes(browserId) || browserId.includes(bundleId),
-    );
+    BROWSER_BUNDLE_IDS.some((browserId) => bundleId.includes(browserId));
 
   if (isBrowser && accessibilityContext.context?.windowInfo?.url) {
     // Try to detect type from URL

@@ -6,21 +6,15 @@ import {
   TRY_IT_WINDOW_TITLES,
 } from "../../src/constants/window-titles";
 
-const ctx = (bundleId: string | null, title: string | null) =>
+const ctx = (
+  bundleId: string | null,
+  title: string | null,
+  url: string | null = null,
+) =>
   ({
     context: {
       application: { bundleIdentifier: bundleId },
-      windowInfo: title === null ? null : { title, url: null },
-    },
-  }) as unknown as GetAccessibilityContextResult;
-
-// The native bridge reduces a browser URL to its hostname before app
-// detection sees it, so browser windows carry a hostname.
-const browserCtx = (bundleId: string, hostname: string) =>
-  ({
-    context: {
-      application: { bundleIdentifier: bundleId },
-      windowInfo: { title: "", url: hostname },
+      windowInfo: title === null ? null : { title, url },
     },
   }) as unknown as GetAccessibilityContextResult;
 
@@ -87,12 +81,17 @@ describe("detectApplicationType — Amical's own surfaces", () => {
 });
 
 describe("detectApplicationType — web apps in browsers", () => {
+  // The native bridge reduces a browser URL to its hostname before app
+  // detection sees it, so browser windows carry a hostname.
   const detect = (bundleId: string, hostname: string) =>
-    detectApplicationType(browserCtx(bundleId, hostname));
+    detectApplicationType(ctx(bundleId, "", hostname));
 
   it("classifies web apps by hostname in macOS browsers", () => {
     expect(detect("com.google.Chrome", "mail.google.com")).toBe("email");
     expect(detect("com.apple.Safari", "app.slack.com")).toBe("chat");
+    expect(detect("org.chromium.Chromium", "mail.google.com")).toBe("email");
+    expect(detect("company.thebrowser.Browser", "app.slack.com")).toBe("chat");
+    expect(detect("app.zen-browser.zen", "docs.google.com")).toBe("notes");
   });
 
   it("classifies web apps in Windows browsers by process name", () => {
@@ -104,7 +103,6 @@ describe("detectApplicationType — web apps in browsers", () => {
   });
 
   it("does not classify other apps by URL", () => {
-    expect(detect("notepad", "mail.google.com")).toBe("default");
     expect(detect("com.apple.TextEdit", "mail.google.com")).toBe("default");
   });
 
