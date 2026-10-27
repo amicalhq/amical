@@ -368,7 +368,7 @@
         },
         "quotaExceeded": {
           "title": "Límite del plan alcanzado",
-          "description": "Has usado todos los minutos de transcripción de tu plan actual. Mejora tu plan para seguir dictando."
+          "description": "Has usado todas las palabras de transcripción de tu plan actual. Mejora tu plan para seguir dictando."
         },
         "internalServerError": {
           "title": "Error del servidor",
@@ -470,7 +470,16 @@
       "discordAlt": "Discord",
       "logoAlt": "Logo de Amical",
       "brand": "Amical",
-      "backToApp": "Volver a la app"
+      "backToApp": "Volver a la app",
+      "usage": {
+        "label": "Dictado en la nube",
+        "wordsLeft_one": "Queda {{words}} palabra",
+        "wordsLeft_other": "Quedan {{words}} palabras",
+        "noWordsLeft": "No quedan palabras",
+        "detail": "{{used}} de {{limit}} palabras usadas - se restablece el {{date}}",
+        "upgradeUnlimited": "Mejorar a ilimitado",
+        "openFailed": "No se pudo abrir en el navegador"
+      }
     },
     "search": {
       "buttonLabel": "Buscar",

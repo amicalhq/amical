@@ -6,6 +6,8 @@ import { api } from "@/trpc/react";
 
 type CloudItem = { title: string; icon: Icon; returnPath: string };
 
+export const BILLING_RETURN_PATH = "/organization/billing";
+
 const CLOUD_ITEMS: CloudItem[] = [
   {
     title: "Invite Team",
@@ -15,7 +17,7 @@ const CLOUD_ITEMS: CloudItem[] = [
   {
     title: "Usage & Billing",
     icon: IconCreditCard,
-    returnPath: "/organization/billing",
+    returnPath: BILLING_RETURN_PATH,
   },
 ];
 

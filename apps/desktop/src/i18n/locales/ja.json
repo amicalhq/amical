@@ -470,7 +470,16 @@
       "discordAlt": "Discord",
       "logoAlt": "Amical ロゴ",
       "brand": "Amical",
-      "backToApp": "アプリに戻る"
+      "backToApp": "アプリに戻る",
+      "usage": {
+        "label": "クラウド音声入力",
+        "wordsLeft_one": "残り{{words}}語",
+        "wordsLeft_other": "残り{{words}}語",
+        "noWordsLeft": "残り語数なし",
+        "detail": "{{limit}}語中{{used}}語を使用 - {{date}}にリセット",
+        "upgradeUnlimited": "無制限にアップグレード",
+        "openFailed": "ブラウザで開けませんでした"
+      }
     },
     "search": {
       "buttonLabel": "検索",

@@ -368,7 +368,7 @@
         },
         "quotaExceeded": {
           "title": "요금제 사용 한도 도달",
-          "description": "현재 요금제에서 제공하는 음성 인식 시간을 모두 사용했습니다. 계속 받아쓰려면 요금제를 업그레이드하세요."
+          "description": "현재 요금제에서 제공하는 음성 인식 단어 수를 모두 사용했습니다. 계속 받아쓰려면 요금제를 업그레이드하세요."
         },
         "internalServerError": {
           "title": "서버 오류",
@@ -470,7 +470,16 @@
       "discordAlt": "Discord",
       "logoAlt": "Amical 로고",
       "brand": "Amical",
-      "backToApp": "앱으로 돌아가기"
+      "backToApp": "앱으로 돌아가기",
+      "usage": {
+        "label": "클라우드 받아쓰기",
+        "wordsLeft_one": "{{words}}단어 남음",
+        "wordsLeft_other": "{{words}}단어 남음",
+        "noWordsLeft": "남은 단어 없음",
+        "detail": "{{limit}}단어 중 {{used}}단어 사용 - {{date}}에 초기화",
+        "upgradeUnlimited": "무제한으로 업그레이드",
+        "openFailed": "브라우저에서 열 수 없습니다"
+      }
     },
     "search": {
       "buttonLabel": "검색",

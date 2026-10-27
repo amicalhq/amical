@@ -365,7 +365,7 @@
         },
         "quotaExceeded": {
           "title": "Plan limit reached",
-          "description": "You've used all the transcription minutes on your current plan. Upgrade to keep dictating."
+          "description": "You've used all the transcription words on your current plan. Upgrade to keep dictating."
         },
         "internalServerError": {
           "title": "Server error",
@@ -467,7 +467,16 @@
       "discordAlt": "Discord",
       "logoAlt": "Amical Logo",
       "brand": "Amical",
-      "backToApp": "Back to app"
+      "backToApp": "Back to app",
+      "usage": {
+        "label": "Cloud dictation",
+        "wordsLeft_one": "{{words}} word left",
+        "wordsLeft_other": "{{words}} words left",
+        "noWordsLeft": "No words left",
+        "detail": "{{used}} of {{limit}} words used - resets {{date}}",
+        "upgradeUnlimited": "Upgrade to unlimited",
+        "openFailed": "Couldn't open in browser"
+      }
     },
     "search": {
       "buttonLabel": "Search",

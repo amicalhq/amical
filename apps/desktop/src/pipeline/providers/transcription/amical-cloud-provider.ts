@@ -29,6 +29,7 @@ import {
   type CloudRequestMeta,
 } from "../../../types/errors";
 import { recordDefect } from "../../../main/telemetry/dictation-trace";
+import { notifyCloudUsageChanged } from "../../../services/cloud-usage-events";
 import { AMICAL_LAB_SELF_CORRECTION } from "../../../utils/http-client";
 import {
   AmicalCloudGrpcTransport,
@@ -251,7 +252,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
       this.transcribeEffect({
         ...params,
         context: this.contextForSession(params.context),
-      }).pipe(Effect.tapError((error) => this.logCloudErrorEffect(error))),
+      }).pipe(Effect.tapError((error) => this.onCloudErrorEffect(error))),
     );
     this.assertOpen();
     return result;
@@ -332,7 +333,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     this.assertOpen();
     await this.runProviderEffect(
       this.updateSessionContextEffect(this.contextForSession(context)).pipe(
-        Effect.tapError((error) => this.logCloudErrorEffect(error)),
+        Effect.tapError((error) => this.onCloudErrorEffect(error)),
       ),
     );
     this.assertOpen();
@@ -381,9 +382,11 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     try {
       const result = await this.runProviderEffect(
         this.flushEffect(sessionContext).pipe(
-          Effect.tapError((error) => this.logCloudErrorEffect(error)),
+          Effect.tapError((error) => this.onCloudErrorEffect(error)),
         ),
       );
+      // The server counts words at the final result.
+      notifyCloudUsageChanged();
       this.assertOpen();
       return result;
     } finally {
@@ -686,9 +689,10 @@ class AmicalCloudSession implements TranscriptionProviderSession {
     this.onCancel(this);
   }
 
-  private logCloudErrorEffect(error: CloudError): CloudProviderEffect<void> {
+  private onCloudErrorEffect(error: CloudError): CloudProviderEffect<void> {
     return Effect.sync(() => {
       logger.transcription.error("Cloud transcription error:", error);
+      if (tagOf(error) === "CloudQuotaExceeded") notifyCloudUsageChanged();
     });
   }
 

@@ -36,6 +36,7 @@ import { CreateNoteButton } from "./create-note-button";
 import { NavCloud } from "./nav-cloud";
 import { RemoteConfigSidebarSlot } from "./remote-config-surfaces";
 import { SettingsNavigationControls } from "./settings-navigation-controls";
+import { UsageMeter } from "./usage-meter";
 import { APP_NAV_ITEMS, SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
 const dragRegion = { WebkitAppRegion: "drag" } as React.CSSProperties;
@@ -206,7 +207,12 @@ export function SettingsSidebar({
         <NavSecondary
           items={navSecondary}
           prefix={<NavCloud />}
-          beforeAuth={updateReadyButton}
+          beforeAuth={
+            <>
+              {updateReadyButton}
+              {isSettingsSidebar ? null : <UsageMeter />}
+            </>
+          }
         />
       </SidebarFooter>
     </Sidebar>

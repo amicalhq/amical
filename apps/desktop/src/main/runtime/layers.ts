@@ -86,6 +86,7 @@ import { isMacOS, isWindows } from "../../utils/platform";
 import { SettingsService } from "../../services/settings-service";
 import { SettingsSyncService } from "../../services/settings-sync-service";
 import { ActivityReportingService } from "../../services/activity-reporting-service";
+import { UsageService } from "../../services/usage-service";
 import { AuthService } from "../../services/auth-service";
 import { PostHogClient } from "../../services/posthog-client";
 import { TelemetryService } from "../../services/telemetry-service";
@@ -110,6 +111,7 @@ import {
   SettingsServiceTag,
   SettingsSyncServiceTag,
   ActivityReportingServiceTag,
+  UsageServiceTag,
   AuthServiceTag,
   PostHogClientTag,
   TelemetryServiceTag,
@@ -171,6 +173,7 @@ export const ServicesBundleLive: Layer.Layer<
   | AuthServiceTag
   | SettingsSyncServiceTag
   | ActivityReportingServiceTag
+  | UsageServiceTag
   | PostHogClientTag
   | TelemetryServiceTag
   | FeatureFlagServiceTag
@@ -201,6 +204,7 @@ export const ServicesBundleLive: Layer.Layer<
       authService: yield* AuthServiceTag,
       settingsSyncService: yield* SettingsSyncServiceTag,
       activityReportingService: yield* ActivityReportingServiceTag,
+      usageService: yield* UsageServiceTag,
       vadService: yield* VadServiceTag,
       nativeBridge: yield* NativeBridgeTag,
       autoUpdaterService: yield* AutoUpdaterServiceTag,
@@ -279,6 +283,7 @@ export const AppLive: Layer.Layer<
       AutoUpdaterService.Live,
       SettingsSyncService.Live,
       ActivityReportingService.Live,
+      UsageService.Live,
     ),
   ),
   Layer.provideMerge(RecordingLifecycleLive),

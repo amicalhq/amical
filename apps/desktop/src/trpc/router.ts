@@ -14,6 +14,7 @@ import { featureFlagsRouter } from "./routers/feature-flags";
 import { remoteConfigRouter } from "./routers/remote-config";
 import { telemetryRouter } from "./routers/telemetry";
 import { skillsRouter } from "./routers/skills";
+import { usageRouter } from "./routers/usage";
 import { createRouter, procedure } from "./trpc";
 
 export const router = createRouter({
@@ -85,6 +86,9 @@ export const router = createRouter({
 
   // Personalization skills (per-app dictation formatting rules)
   skills: skillsRouter,
+
+  // Cloud word allowance for the sidebar meter
+  usage: usageRouter,
 });
 
 export type AppRouter = typeof router;

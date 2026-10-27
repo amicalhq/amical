@@ -368,7 +368,7 @@
         },
         "quotaExceeded": {
           "title": "Tariflimit erreicht",
-          "description": "Du hast alle Transkriptionsminuten deines aktuellen Tarifs aufgebraucht. Führe ein Upgrade durch, um weiter zu diktieren."
+          "description": "Du hast alle Transkriptionswörter deines aktuellen Tarifs aufgebraucht. Führe ein Upgrade durch, um weiter zu diktieren."
         },
         "internalServerError": {
           "title": "Serverfehler",
@@ -470,7 +470,16 @@
       "discordAlt": "Discord",
       "logoAlt": "Amical-Logo",
       "brand": "Amical",
-      "backToApp": "Zurück zur App"
+      "backToApp": "Zurück zur App",
+      "usage": {
+        "label": "Cloud-Diktat",
+        "wordsLeft_one": "{{words}} Wort übrig",
+        "wordsLeft_other": "{{words}} Wörter übrig",
+        "noWordsLeft": "Keine Wörter übrig",
+        "detail": "{{used}} von {{limit}} Wörtern genutzt – Zurücksetzung am {{date}}",
+        "upgradeUnlimited": "Upgrade auf unbegrenzt",
+        "openFailed": "Konnte nicht im Browser geöffnet werden"
+      }
     },
     "search": {
       "buttonLabel": "Suchen",
