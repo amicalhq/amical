@@ -30,6 +30,9 @@ export * from "./schemas/vocabulary-learning.js";
 // Activity summary HTTP contract
 export * from "./schemas/activity-summary.js";
 
+// Cloud usage (sidebar meter) HTTP contract
+export * from "./schemas/usage.js";
+
 // Shared cloud HTTP error envelope
 export * from "./schemas/cloud-http-error.js";
 
