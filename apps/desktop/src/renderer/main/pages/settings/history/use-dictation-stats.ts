@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "@/trpc/react";
+import { useDocumentVisible } from "@/renderer/main/hooks/use-document-visible";
 
 export function useDictationStats() {
   // undefined means authentication is not yet known.
   const [accountId, setAccountId] = useState<string | null>();
-  const [visible, setVisible] = useState(
-    () => document.visibilityState !== "hidden",
-  );
+  const visible = useDocumentVisible();
   const utils = api.useUtils();
   const { mutate: requestRefresh } =
     api.transcriptions.requestStatsRefresh.useMutation({
@@ -44,16 +43,6 @@ export function useDictationStats() {
     void utils.transcriptions.getLifetimeStats.invalidate();
     if (accountId) requestRefresh();
   }, [accountId, requestRefresh, utils]);
-
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      setVisible(document.visibilityState !== "hidden");
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    onVisibilityChange();
-    return () =>
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, []);
 
   return stats.data?.totalWords;
 }
