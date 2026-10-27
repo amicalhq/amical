@@ -47,7 +47,7 @@
     <img src="https://amical.ai/Store=Google%20Play,%20Type=Dark,%20Language=English.svg" alt="Get it on Google Play" height="60">
   </a>
   <a href="https://amical.ai/ios">
-    <img src="https://amical.ai/Store=App%20Store,%20Type=Dark,%20Language=English.svg" alt="Download on the App Store" height="60">
+    <img src="https://amical.ai/Store=App%20Store,%20Type=Dark,%20Language=English.svg" alt="Download on the App Store" width="180" height="60">
   </a>
 </p>
 
