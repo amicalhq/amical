@@ -39,6 +39,10 @@ interface PlatformKeys {
   nonEditing: ReadonlySet<number>;
   /** Keys that still edit with Cmd or Ctrl held. */
   commandExceptions: ReadonlySet<number>;
+  /** Keys that cannot add text, with any modifier: deletions and Escape. */
+  noText: ReadonlySet<number>;
+  /** With Cmd or Ctrl held, cut: it only removes text. */
+  cut: number;
   undo: number;
 }
 
@@ -47,6 +51,8 @@ function functionKeyCodes(table: Record<string, number>): number[] {
     .filter(([name]) => /^F\d+$/.test(name))
     .map(([, code]) => code);
 }
+
+const MAC_DELETION_KEYS = [MAC_KEYCODES.DELETE, MAC_KEYCODES.FORWARD_DELETE];
 
 const MAC_KEYS: PlatformKeys = {
   enter: new Set([
@@ -67,15 +73,21 @@ const MAC_KEYS: PlatformKeys = {
     ...functionKeyCodes(MAC_KEYCODES),
   ]),
   commandExceptions: new Set([
-    MAC_KEYCODES.DELETE,
-    MAC_KEYCODES.FORWARD_DELETE,
+    ...MAC_DELETION_KEYS,
     MAC_KEYCODES.Z,
     MAC_KEYCODES.X,
     MAC_KEYCODES.V,
     MAC_KEYCODES.Y,
   ]),
+  noText: new Set([...MAC_DELETION_KEYS, MAC_KEYCODES.ESCAPE]),
+  cut: MAC_KEYCODES.X,
   undo: MAC_KEYCODES.Z,
 };
+
+const WINDOWS_DELETION_KEYS = [
+  WINDOWS_KEYCODES.BACKSPACE,
+  WINDOWS_KEYCODES.DELETE,
+];
 
 const WINDOWS_KEYS: PlatformKeys = {
   enter: new Set([WINDOWS_KEYCODES.ENTER]),
@@ -92,13 +104,14 @@ const WINDOWS_KEYS: PlatformKeys = {
     ...functionKeyCodes(WINDOWS_KEYCODES),
   ]),
   commandExceptions: new Set([
-    WINDOWS_KEYCODES.BACKSPACE,
-    WINDOWS_KEYCODES.DELETE,
+    ...WINDOWS_DELETION_KEYS,
     WINDOWS_KEYCODES.Z,
     WINDOWS_KEYCODES.X,
     WINDOWS_KEYCODES.V,
     WINDOWS_KEYCODES.Y,
   ]),
+  noText: new Set([...WINDOWS_DELETION_KEYS, WINDOWS_KEYCODES.ESCAPE]),
+  cut: WINDOWS_KEYCODES.X,
   undo: WINDOWS_KEYCODES.Z,
 };
 
@@ -128,6 +141,14 @@ function isUndoKey(key: KeyDown, platform: TrackerPlatform): boolean {
   return (key.metaKey || key.ctrlKey) && key.keyCode === keysFor(platform).undo;
 }
 
+function addsNoText(key: KeyDown, platform: TrackerPlatform): boolean {
+  const keys = keysFor(platform);
+  return (
+    keys.noText.has(key.keyCode) ||
+    ((key.metaKey || key.ctrlKey) && key.keyCode === keys.cut)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Text helpers
 // ---------------------------------------------------------------------------
@@ -141,6 +162,21 @@ function normalizeWindowsText(text: string): string {
 }
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/**
+ * True when deleting characters from `source` can give `text`. Whitespace is
+ * ignored: editors rewrite the spaces around a deletion.
+ */
+function isLeftOver(text: string, source: string): boolean {
+  const kept = [...text.replace(/\s+/g, "")];
+  let index = 0;
+  for (const char of source.replace(/\s+/g, "")) {
+    if (index < kept.length && kept[index] === char) {
+      index++;
+    }
+  }
+  return index === kept.length;
+}
 
 function distanceUnits(text: string): string[] {
   const normalized = text.toLowerCase().trim().replace(/\s+/g, " ");
@@ -215,6 +251,7 @@ function isFar(a: string[], b: string[]): boolean {
 // Every other end learns from the Enter mark when there is one, else from R.
 const LEARNS_NOTHING: ReadonlySet<EditTrackerEndReason> = new Set([
   "paste_undone",
+  "region_deleted",
   "pasted_text_not_found",
 ]);
 
@@ -283,6 +320,8 @@ class EditTrackerImpl implements EditTracker {
 
   private keyEventsSeen = false;
   private lastEditingKey: { sequence: number; undo: boolean } | null = null;
+  /** Order position of the last editing key that can add text. */
+  private lastInsertingKeySequence = 0;
 
   constructor(options: EditTrackerOptions) {
     this.platform = options.platform;
@@ -344,6 +383,9 @@ class EditTrackerImpl implements EditTracker {
       };
     } else if (isEditingKey(key, this.platform)) {
       this.lastEditingKey = { sequence, undo: isUndoKey(key, this.platform) };
+      if (!addsNoText(key, this.platform)) {
+        this.lastInsertingKeySequence = sequence;
+      }
     }
     this.addTimer(KEY_READ_DELAY_MS, () => this.requestRead());
   }
@@ -528,18 +570,24 @@ class EditTrackerImpl implements EditTracker {
         this.end("sent");
         return;
       }
+      // With editing keys since R the user deleted the dictation: what they
+      // write next is a new text, not a correction of it.
+      if (empty) {
+        this.end(edited ? "region_deleted" : "field_cleared");
+        return;
+      }
       if (!edited) {
-        if (empty || !this.isRearrangedRegion(middle)) {
+        if (!this.isRearrangedRegion(middle)) {
           this.end("field_cleared");
           return;
         }
         this.rearrangedCount++;
+      } else if (this.isAppTextAfterDeletion(middle)) {
+        this.end("region_deleted");
+        return;
       }
-      // The user is deleting, moving or retyping. An empty middle is not
-      // trusted.
-      if (!empty) {
-        this.trust(middle, sequence);
-      }
+      // The user is moving or retyping.
+      this.trust(middle, sequence);
       return;
     }
 
@@ -613,6 +661,16 @@ class EditTrackerImpl implements EditTracker {
       counts.set(word, count - 1);
     }
     return this.keyEventsSeen || words.length === regionWords.length;
+  }
+
+  // Only keys that cannot add text (deletions, Escape) since R, yet the
+  // region holds text that is not left over from R. So the app put it there:
+  // a placeholder or a suggestion it shows in the cleared field.
+  private isAppTextAfterDeletion(text: string): boolean {
+    return (
+      this.lastInsertingKeySequence <= this.regionSequence &&
+      !isLeftOver(text, this.region)
+    );
   }
 
   private trust(region: string, sequence: number): void {

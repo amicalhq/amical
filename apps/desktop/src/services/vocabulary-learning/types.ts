@@ -36,6 +36,7 @@ export type EditTrackerEndReason =
   | "sent"
   | "field_cleared"
   | "paste_undone"
+  | "region_deleted"
   | "anchors_broken"
   | "window_elapsed"
   | "superseded"

@@ -318,16 +318,47 @@ describe("edit tracker scenarios", () => {
     expect(result.finalRegion).toBe(FIXED);
   });
 
-  it("8 selects the pasted text, presses Backspace, retypes → window_elapsed, learns the retyped term", async () => {
+  it("8 selects the pasted text, presses Backspace → region_deleted, nothing", async () => {
     const h = await locatedChat("ping the cube flow team");
     await h.advanceTo(3300);
     await h.key(MAC_KEYCODES.A, { metaKey: true });
     h.setText("");
     await h.key(MAC_KEYCODES.DELETE);
     await h.advance(50);
+
+    const result = await h.tracker.result;
+    expect(result.endReason).toBe("region_deleted");
+    expect(result.finalRegion).toBeNull();
+  });
+
+  it.each([
+    ["Backspace", [MAC_KEYCODES.DELETE]],
+    ["Backspace, then Escape", [MAC_KEYCODES.DELETE, MAC_KEYCODES.ESCAPE]],
+  ])(
+    "8b deletes the dictation (%s), the editor shows its placeholder in the value → region_deleted, nothing",
+    async (_keys, keyCodes) => {
+      const h = await locatedChat("can you check the report");
+      await h.advanceTo(3300);
+      await h.key(MAC_KEYCODES.A, { metaKey: true });
+      h.setText("Hi Sam, TAB");
+      for (const keyCode of keyCodes) {
+        await h.key(keyCode);
+      }
+      await h.advance(50);
+
+      const result = await h.tracker.result;
+      expect(result.endReason).toBe("region_deleted");
+      expect(result.finalRegion).toBeNull();
+    },
+  );
+
+  it("8c deletes most of the text with Backspace, retypes the rest → window_elapsed, learns", async () => {
+    const h = await locatedChat("ping the cube flow team");
+    await h.advanceTo(3300);
+    h.setText("ping");
+    await h.key(MAC_KEYCODES.DELETE);
+    await h.advance(50);
     expect(h.resolved).toBeNull();
-    await h.advanceTo(3600);
-    await typeFix(h, "ping");
     await h.advanceTo(4300);
     await typeFix(h, "ping the Kubeflow team");
     await h.advanceTo(60_000);
