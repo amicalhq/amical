@@ -154,4 +154,30 @@ describe("UsageService", () => {
     await vi.advanceTimersByTimeAsync(15_000);
     await vi.waitFor(() => expect(service.get()?.cloudWords?.used).toBe(5));
   });
+
+  it("reads after a quota rejection even when the last read had no meter", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(async () =>
+      Response.json({
+        cloudWords: null,
+        upgrade: null,
+        billing: { canManage: true },
+      }),
+    );
+    const service = new UsageService(authService);
+    service.watch();
+    service.activate("account-a");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // A successful dictation does not read for a plan with no meter.
+    service.refreshAfterDictation();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockImplementation(async () => Response.json(freeUsage(2000)));
+    service.refreshAfterDictation(true);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.waitFor(() => expect(service.get()?.cloudWords?.used).toBe(2000));
+  });
 });

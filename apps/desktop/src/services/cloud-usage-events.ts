@@ -4,6 +4,6 @@ import { EventEmitter } from "node:events";
 // successful cloud result or a quota rejection.
 export const cloudUsageEvents = new EventEmitter();
 
-export function notifyCloudUsageChanged(): void {
-  queueMicrotask(() => cloudUsageEvents.emit("changed"));
+export function notifyCloudUsageChanged(quotaExceeded = false): void {
+  queueMicrotask(() => cloudUsageEvents.emit("changed", quotaExceeded));
 }

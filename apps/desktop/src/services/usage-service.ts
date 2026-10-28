@@ -57,7 +57,8 @@ export class UsageService {
         if (accountId) service.activate(accountId);
       };
       const onLoggedOut = () => service.clear();
-      const onCloudUsage = () => service.refreshAfterDictation();
+      const onCloudUsage = (quotaExceeded: boolean) =>
+        service.refreshAfterDictation(quotaExceeded);
       authService.on("authenticated", onAuthenticated);
       authService.on("logged-out", onLoggedOut);
       cloudUsageEvents.on("changed", onCloudUsage);
@@ -103,10 +104,7 @@ export class UsageService {
   watch(): () => void {
     this.watchers += 1;
     if (this.watchers === 1) this.schedulePoll();
-    let open = true;
     return () => {
-      if (!open) return;
-      open = false;
       this.watchers -= 1;
       if (this.watchers === 0) this.cancelPoll();
     };
@@ -114,7 +112,11 @@ export class UsageService {
 
   /** Window focus or return from the web billing page. */
   refreshIfStale(): void {
-    if (Date.now() - this.lastFetchAt < STALE_AFTER_MS) return;
+    // No meter for this plan: a plan change shows within one poll interval.
+    const staleAfter = this.serverHidesMeter()
+      ? POLL_INTERVAL_MS
+      : STALE_AFTER_MS;
+    if (Date.now() - this.lastFetchAt < staleAfter) return;
     void this.refresh();
   }
 
@@ -142,8 +144,11 @@ export class UsageService {
   }
 
   /** Trailing debounce, so a burst of dictations gives one read. */
-  refreshAfterDictation(): void {
-    if (!this.accountId || this.serverHidesMeter()) return;
+  refreshAfterDictation(quotaExceeded = false): void {
+    if (!this.accountId) return;
+    // A quota rejection proves a cap now applies, even if the last read had
+    // no meter.
+    if (this.serverHidesMeter() && !quotaExceeded) return;
     // Nobody sees the meter: read once when it is next shown or focused.
     if (this.watchers === 0) {
       this.lastFetchAt = 0;
@@ -182,7 +187,7 @@ export class UsageService {
     if (this.watchers === 0 || !this.accountId) return;
     const jitterMs = Math.floor(Math.random() * 60_000);
     this.pollTimer = setTimeout(() => {
-      if (!this.serverHidesMeter()) void this.refresh();
+      void this.refresh();
       this.schedulePoll();
     }, POLL_INTERVAL_MS + jitterMs);
     this.pollTimer.unref?.();

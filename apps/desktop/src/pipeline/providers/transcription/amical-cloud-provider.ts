@@ -692,7 +692,7 @@ class AmicalCloudSession implements TranscriptionProviderSession {
   private onCloudErrorEffect(error: CloudError): CloudProviderEffect<void> {
     return Effect.sync(() => {
       logger.transcription.error("Cloud transcription error:", error);
-      if (tagOf(error) === "CloudQuotaExceeded") notifyCloudUsageChanged();
+      if (tagOf(error) === "CloudQuotaExceeded") notifyCloudUsageChanged(true);
     });
   }
 
