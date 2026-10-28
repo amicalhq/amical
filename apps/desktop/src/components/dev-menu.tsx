@@ -9,7 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { SidebarIconButton } from "@/components/sidebar-icon-button";
 import { clearRemoteConfigDismissals } from "@/utils/remote-config-dismissals";
 import { api } from "@/trpc/react";
 
@@ -94,85 +94,82 @@ export function DevMenu() {
   };
 
   return (
-    <SidebarMenuItem>
-      <Popover>
-        <PopoverTrigger asChild>
-          <SidebarMenuButton>
-            <IconCode />
-            <span>Developer</span>
-          </SidebarMenuButton>
-        </PopoverTrigger>
-        <PopoverContent side="right" align="end" className="w-72 p-3">
-          <div className="grid gap-3">
-            <div className="flex items-start gap-2">
-              <div className="mt-0.5 rounded-md bg-muted p-1.5 text-muted-foreground">
-                <IconCode className="size-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-medium">Developer</div>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                  Local-only controls for checking development states.
-                </p>
-              </div>
+    <Popover>
+      <PopoverTrigger asChild>
+        <SidebarIconButton label="Developer">
+          <IconCode />
+        </SidebarIconButton>
+      </PopoverTrigger>
+      <PopoverContent side="right" align="end" className="w-72 p-3">
+        <div className="grid gap-3">
+          <div className="flex items-start gap-2">
+            <div className="mt-0.5 rounded-md bg-muted p-1.5 text-muted-foreground">
+              <IconCode className="size-4" />
             </div>
-
-            <div className="grid gap-1 border-t pt-2">
-              <DevActionButton onClick={toggleTheme}>
-                {isDark ? (
-                  <Sun className="size-4" />
-                ) : (
-                  <Moon className="size-4" />
-                )}
-                <span>
-                  {isDark ? "Switch to light mode" : "Switch to dark mode"}
-                </span>
-              </DevActionButton>
-              <DevActionButton
-                disabled={refreshFeatureFlagsMutation.isPending}
-                onClick={() => refreshFeatureFlagsMutation.mutate()}
-              >
-                {refreshFeatureFlagsMutation.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <IconRefresh className="size-4" />
-                )}
-                <span>Refresh feature flags</span>
-              </DevActionButton>
-              <DevActionButton
-                disabled={refreshRemoteConfigMutation.isPending}
-                onClick={() => refreshRemoteConfigMutation.mutate()}
-              >
-                {refreshRemoteConfigMutation.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <IconRefresh className="size-4" />
-                )}
-                <span>Refresh remote config</span>
-              </DevActionButton>
-              <DevActionButton
-                onClick={() => {
-                  clearRemoteConfigDismissals();
-                  toast.success("Dismissed surfaces cleared");
-                }}
-              >
-                <Eraser className="size-4" />
-                <span>Clear dismissed surfaces</span>
-              </DevActionButton>
-              <DevActionButton
-                disabled={copyAuthTokenMutation.isPending}
-                onClick={() => copyAuthTokenMutation.mutate()}
-              >
-                {copyAuthTokenMutation.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <KeyRound className="size-4" />
-                )}
-                <span>Copy auth token</span>
-              </DevActionButton>
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Developer</div>
+              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                Local-only controls for checking development states.
+              </p>
             </div>
           </div>
-        </PopoverContent>
-      </Popover>
-    </SidebarMenuItem>
+
+          <div className="grid gap-1 border-t pt-2">
+            <DevActionButton onClick={toggleTheme}>
+              {isDark ? (
+                <Sun className="size-4" />
+              ) : (
+                <Moon className="size-4" />
+              )}
+              <span>
+                {isDark ? "Switch to light mode" : "Switch to dark mode"}
+              </span>
+            </DevActionButton>
+            <DevActionButton
+              disabled={refreshFeatureFlagsMutation.isPending}
+              onClick={() => refreshFeatureFlagsMutation.mutate()}
+            >
+              {refreshFeatureFlagsMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <IconRefresh className="size-4" />
+              )}
+              <span>Refresh feature flags</span>
+            </DevActionButton>
+            <DevActionButton
+              disabled={refreshRemoteConfigMutation.isPending}
+              onClick={() => refreshRemoteConfigMutation.mutate()}
+            >
+              {refreshRemoteConfigMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <IconRefresh className="size-4" />
+              )}
+              <span>Refresh remote config</span>
+            </DevActionButton>
+            <DevActionButton
+              onClick={() => {
+                clearRemoteConfigDismissals();
+                toast.success("Dismissed surfaces cleared");
+              }}
+            >
+              <Eraser className="size-4" />
+              <span>Clear dismissed surfaces</span>
+            </DevActionButton>
+            <DevActionButton
+              disabled={copyAuthTokenMutation.isPending}
+              onClick={() => copyAuthTokenMutation.mutate()}
+            >
+              {copyAuthTokenMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <KeyRound className="size-4" />
+              )}
+              <span>Copy auth token</span>
+            </DevActionButton>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

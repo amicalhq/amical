@@ -77,7 +77,7 @@ export function SettingsSidebar({
     ? settingsNavItems
     : [...appNavItems, settingsEntryItem];
 
-  const baseNavSecondary: NavSecondaryItem[] = [
+  const helpLinks: NavSecondaryItem[] = [
     {
       id: "docs",
       title: t("settings.sidebar.docs"),
@@ -106,9 +106,6 @@ export function SettingsSidebar({
       }
     : null;
 
-  const navSecondary: NavSecondaryItem[] = navSecondaryCta
-    ? [navSecondaryCta, ...baseNavSecondary]
-    : baseNavSecondary;
   const updateReadyButton =
     updateState === "downloaded" ? (
       <SidebarMenuItem>
@@ -205,12 +202,13 @@ export function SettingsSidebar({
       <SidebarFooter className="p-0">
         <RemoteConfigSidebarSlot />
         <NavSecondary
-          items={navSecondary}
+          cta={navSecondaryCta}
+          items={helpLinks}
           prefix={<NavCloud />}
           beforeAuth={
             <>
+              <UsageMeter />
               {updateReadyButton}
-              {isSettingsSidebar ? null : <UsageMeter />}
             </>
           }
         />

@@ -1,5 +1,5 @@
 import { IconMessageHeart } from "@tabler/icons-react";
-import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { SidebarIconButton } from "@/components/sidebar-icon-button";
 import { usePostHog } from "@/renderer/lib/posthog";
 
 export function FeedbackButton() {
@@ -10,11 +10,8 @@ export function FeedbackButton() {
   }
 
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton onClick={showFeedbackSurvey}>
-        <IconMessageHeart />
-        <span>Feedback</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
+    <SidebarIconButton label="Feedback" onClick={showFeedbackSurvey}>
+      <IconMessageHeart />
+    </SidebarIconButton>
   );
 }
