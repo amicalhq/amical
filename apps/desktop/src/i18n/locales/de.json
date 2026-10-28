@@ -477,6 +477,7 @@
         "wordsLeft_other": "{{words}} Wörter übrig",
         "noWordsLeft": "Keine Wörter übrig",
         "detail": "{{used}} von {{limit}} Wörtern genutzt – Zurücksetzung am {{date}}",
+        "detailRelative": "{{used}} von {{limit}} Wörtern genutzt – wird {{when}} zurückgesetzt",
         "upgradeUnlimited": "Upgrade auf unbegrenzt",
         "openFailed": "Konnte nicht im Browser geöffnet werden"
       }

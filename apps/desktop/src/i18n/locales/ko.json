@@ -477,6 +477,7 @@
         "wordsLeft_other": "{{words}}단어 남음",
         "noWordsLeft": "남은 단어 없음",
         "detail": "{{limit}}단어 중 {{used}}단어 사용 - {{date}}에 초기화",
+        "detailRelative": "{{limit}}단어 중 {{used}}단어 사용 - {{when}} 초기화",
         "upgradeUnlimited": "무제한으로 업그레이드",
         "openFailed": "브라우저에서 열 수 없습니다"
       }

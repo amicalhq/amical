@@ -18,8 +18,40 @@ import { BILLING_RETURN_PATH } from "./nav-cloud";
 const LOW_REMAINING_RATIO = 0.1;
 /** At and above this many words left, the line uses compact numbers. */
 const COMPACT_FROM = 10_000;
+const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
 const METER_CLASS =
   "-mx-2 block rounded-md px-2 pt-1 pb-2 outline-hidden focus-visible:ring-2 focus-visible:ring-sidebar-ring";
+
+/** "in 13 hours" or "in 3 days" within a week of the reset; else null. */
+function formatResetSoon(language: string, resetsAt: string): string | null {
+  const ms = Date.parse(resetsAt) - Date.now();
+  if (ms <= 0 || ms >= 7 * DAY_MS) return null;
+  const relative = new Intl.RelativeTimeFormat(language);
+  if (ms < DAY_MS) {
+    return relative.format(Math.max(1, Math.round(ms / HOUR_MS)), "hour");
+  }
+  return relative.format(Math.round(ms / DAY_MS), "day");
+}
+
+// Rendered when the tooltip opens, so the relative time is current.
+function ResetDetail({
+  used,
+  limit,
+  resetsAt,
+  dateDetail,
+}: {
+  used: string;
+  limit: string;
+  resetsAt: string;
+  dateDetail: string;
+}) {
+  const { t, i18n } = useTranslation();
+  const when = formatResetSoon(i18n.language, resetsAt);
+  return when
+    ? t("settings.sidebar.usage.detailRelative", { used, limit, when })
+    : dateDetail;
+}
 
 // The meter counts cloud words only, so it reads usage only while the cloud
 // speech model is selected.
@@ -78,6 +110,9 @@ function CloudUsageMeter() {
   const usage = usageQuery.data;
   const cloudWords = usage?.cloudWords;
   if (!usage || !cloudWords) return null;
+  // The main process stops serving a reset window, but this cached copy
+  // lives until the next read: never draw an old window's numbers.
+  if (Date.parse(cloudWords.resetsAt) <= Date.now()) return null;
 
   const { limit } = cloudWords;
   const used = Math.min(cloudWords.used, limit);
@@ -110,9 +145,12 @@ function CloudUsageMeter() {
         count: remaining,
         words: leftNumber.format(remaining),
       });
-  const detail = t("settings.sidebar.usage.detail", {
-    used: fullNumber.format(used),
-    limit: fullNumber.format(limit),
+  const usedText = fullNumber.format(used);
+  const limitText = fullNumber.format(limit);
+  // The exact date: the screen-reader label, and the tooltip a week out.
+  const dateDetail = t("settings.sidebar.usage.detail", {
+    used: usedText,
+    limit: limitText,
     date: new Intl.DateTimeFormat(i18n.language, {
       month: "short",
       day: "numeric",
@@ -133,7 +171,7 @@ function CloudUsageMeter() {
       </div>
       <Progress
         value={(used / limit) * 100}
-        getValueLabel={() => detail}
+        getValueLabel={() => dateDetail}
         className={cn("mt-1.5 h-1 bg-sidebar-foreground/20", barTone)}
       />
     </>
@@ -161,7 +199,14 @@ function CloudUsageMeter() {
             </div>
           )}
         </TooltipTrigger>
-        <TooltipContent side="top">{detail}</TooltipContent>
+        <TooltipContent side="top">
+          <ResetDetail
+            used={usedText}
+            limit={limitText}
+            resetsAt={cloudWords.resetsAt}
+            dateDetail={dateDetail}
+          />
+        </TooltipContent>
       </Tooltip>
       {/* An offer, not an alert: never in the warning colours. */}
       {showUpgrade ? (

@@ -477,6 +477,7 @@
         "wordsLeft_other": "Quedan {{words}} palabras",
         "noWordsLeft": "No quedan palabras",
         "detail": "{{used}} de {{limit}} palabras usadas - se restablece el {{date}}",
+        "detailRelative": "{{used}} de {{limit}} palabras usadas - se restablece {{when}}",
         "upgradeUnlimited": "Mejorar a ilimitado",
         "openFailed": "No se pudo abrir en el navegador"
       }

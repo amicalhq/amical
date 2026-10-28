@@ -477,6 +477,7 @@
         "wordsLeft_other": "剩餘 {{words}} 字",
         "noWordsLeft": "已無剩餘字數",
         "detail": "已使用 {{used}} / {{limit}} 字 - {{date}} 重設",
+        "detailRelative": "已使用 {{used}} / {{limit}} 字 - {{when}}重設",
         "upgradeUnlimited": "升級至無限制",
         "openFailed": "無法在瀏覽器中開啟"
       }

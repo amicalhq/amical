@@ -477,6 +477,7 @@
         "wordsLeft_other": "残り{{words}}語",
         "noWordsLeft": "残り語数なし",
         "detail": "{{limit}}語中{{used}}語を使用 - {{date}}にリセット",
+        "detailRelative": "{{limit}}語中{{used}}語を使用 - {{when}}にリセット",
         "upgradeUnlimited": "無制限にアップグレード",
         "openFailed": "ブラウザで開けませんでした"
       }
