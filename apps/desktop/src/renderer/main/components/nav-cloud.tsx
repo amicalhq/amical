@@ -42,7 +42,11 @@ export function NavCloud() {
       {CLOUD_ITEMS.map((item) => (
         <SidebarMenuItem key={item.returnPath}>
           <SidebarMenuButton
-            disabled={openWebSessionMutation.isPending}
+            // Only the row being opened waits; the other stays usable.
+            disabled={
+              openWebSessionMutation.isPending &&
+              openWebSessionMutation.variables?.returnPath === item.returnPath
+            }
             onClick={() =>
               openWebSessionMutation.mutate({ returnPath: item.returnPath })
             }
