@@ -13,7 +13,7 @@ import type {
 // into a (term, heard) pair. Pure functions; no I/O.
 
 const MAX_SUBSTITUTED_PAIRS = 4;
-const MAX_CANDIDATE_TOKENS = 4;
+const MAX_CANDIDATE_TOKENS = 2;
 const MIN_TERM_LENGTH = 2;
 const { maxTermLength, maxHeardLength, maxCandidates } =
   VOCABULARY_CLASSIFY_LIMITS;
@@ -201,9 +201,13 @@ export function extractCandidates(
   // than they insert hide deleted tokens from the pairs count: a retype
   // shorter than the paste kept 12% of the words, passed a pairs-only test
   // and produced 7 garbage candidates.
+  // Also a rewrite: a paste of two or more tokens that keeps none of them is
+  // a new text, not a correction. A one-token paste typed over is a name fix.
+  const kept = counts.m + counts.c;
   const rewrite =
-    substitutedPairs > MAX_SUBSTITUTED_PAIRS &&
-    counts.m + counts.c < pastedTokens.length / 2;
+    (substitutedPairs > MAX_SUBSTITUTED_PAIRS &&
+      kept < pastedTokens.length / 2) ||
+    (pastedTokens.length >= 2 && kept === 0);
   if (rewrite) {
     return { steps: counts, rewrite, candidates: [] };
   }

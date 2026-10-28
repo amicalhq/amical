@@ -66,10 +66,7 @@ describe("extractCandidates", () => {
       pasted: "can you send me the report by friday",
       edited: "please share the final report with me today",
       steps: { m: 2, c: 0, d: 6, i: 6 },
-      candidates: [
-        { term: "please share", heard: "can you send me" },
-        { term: "with me today", heard: "by friday" },
-      ],
+      candidates: [{ term: "please share", heard: "can you send me" }],
     },
     {
       pasted: "send the deck to john and the report to mike tomorrow",
@@ -105,10 +102,10 @@ describe("extractCandidates", () => {
     expect(result.candidates).toEqual(row.candidates);
   });
 
-  it("drops a run with more than 4 edited tokens", () => {
+  it("drops a run with more than 2 edited tokens", () => {
     const result = extractCandidates(
       "send it to john tomorrow",
-      "send it to the one and only Jon tomorrow",
+      "send it to Jon Smith Jr tomorrow",
     );
     expect(result.rewrite).toBe(false);
     expect(result.candidates).toEqual([]);
@@ -125,12 +122,19 @@ describe("extractCandidates", () => {
     expect(result.candidates).toEqual([]);
   });
 
-  it("keeps a full rewrite of a short dictation (not more than 4 pairs)", () => {
-    const result = extractCandidates("cube flow", "Kubeflow");
+  it.each([
+    ["cube flow", "Kubeflow"],
+    ["open cloud code and run it", "ok thanks see you"],
+  ])("rejects %s → %s: two or more tokens, none kept", (pasted, edited) => {
+    const result = extractCandidates(pasted, edited);
+    expect(result.rewrite).toBe(true);
+    expect(result.candidates).toEqual([]);
+  });
+
+  it("keeps a one-token paste typed over (a name fix)", () => {
+    const result = extractCandidates("Pria", "Priya");
     expect(result.rewrite).toBe(false);
-    expect(result.candidates).toEqual([
-      { term: "Kubeflow", heard: "cube flow" },
-    ]);
+    expect(result.candidates).toEqual([{ term: "Priya", heard: "Pria" }]);
   });
 
   it("joins CJK tokens without spaces", () => {
