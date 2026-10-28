@@ -162,6 +162,10 @@ export class AuthService extends EventEmitter {
     private readonly refreshRun: Ref.Ref<RefreshRun | null>,
   ) {
     super();
+    // Several services plus one listener per renderer auth subscription
+    // listen to the auth events, and each removes itself; this is not a
+    // leak, so lift Node's default warning limit of 10.
+    this.setMaxListeners(30);
 
     this.config = {
       clientId: process.env.AUTH_CLIENT_ID || __BUNDLED_AUTH_CLIENT_ID,
