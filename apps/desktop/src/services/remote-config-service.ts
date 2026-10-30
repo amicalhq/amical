@@ -39,6 +39,7 @@ import {
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 export const DESKTOP_BACKGROUND_UPDATES_FLAG = "desktop-background-updates";
 export const DESKTOP_AUTO_VOCABULARY_FLAG = "desktop-auto-vocabulary";
+export const DESKTOP_EDIT_METRICS_FLAG = "desktop-edit-metrics";
 
 /**
  * Network-phase failure: server unreachable or a non-OK status.
@@ -143,6 +144,7 @@ export type DesktopRemoteConfig = Omit<RemoteConfig, "flags"> & {
     Record<
       | typeof DESKTOP_BACKGROUND_UPDATES_FLAG
       | typeof DESKTOP_AUTO_VOCABULARY_FLAG
+      | typeof DESKTOP_EDIT_METRICS_FLAG
       | typeof DESKTOP_STEREO_MIC_DOWNMIX_FLAG
       | typeof DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG,
       boolean
@@ -154,6 +156,7 @@ const resolveRemoteConfig = (config: RemoteConfig): DesktopRemoteConfig => ({
   flags: {
     [DESKTOP_BACKGROUND_UPDATES_FLAG]: true,
     [DESKTOP_AUTO_VOCABULARY_FLAG]: true,
+    [DESKTOP_EDIT_METRICS_FLAG]: true,
     [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: true,
     [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: false,
     ...(config.flags ?? {}),

@@ -12,6 +12,7 @@ import {
 import { setApplicationLocale } from "../../src/i18n/application-locale";
 import {
   DESKTOP_AUTO_VOCABULARY_FLAG,
+  DESKTOP_EDIT_METRICS_FLAG,
   DESKTOP_BACKGROUND_UPDATES_FLAG,
   RemoteConfigService,
 } from "../../src/services/remote-config-service";
@@ -307,6 +308,7 @@ describe("RemoteConfigService", () => {
         flags: {
           [DESKTOP_BACKGROUND_UPDATES_FLAG]: true,
           [DESKTOP_AUTO_VOCABULARY_FLAG]: true,
+          [DESKTOP_EDIT_METRICS_FLAG]: true,
           [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: true,
           [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: false,
         },

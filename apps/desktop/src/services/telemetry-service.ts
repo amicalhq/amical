@@ -29,7 +29,8 @@ import type {
   TranscriptionReportedEvent,
   WidgetNotificationShownEvent,
   CloudGrpcFallbackEvent,
-  VocabularyEditWatchCompletedEvent,
+  TranscriptionEditWatchCompletedEvent,
+  VocabularyLearningCompletedEvent,
   VocabularyAutoUndoneEvent,
 } from "../types/telemetry-events";
 
@@ -646,13 +647,19 @@ export class TelemetryService extends EventEmitter {
   }
 
   // ============================================================================
-  // Vocabulary Learning Events
+  // Edit Watch and Vocabulary Learning Events
   // ============================================================================
 
-  trackVocabularyEditWatchCompleted(
-    props: VocabularyEditWatchCompletedEvent,
+  trackTranscriptionEditWatchCompleted(
+    props: TranscriptionEditWatchCompletedEvent,
   ): void {
-    this.captureEvent("vocabulary_edit_watch_completed", props);
+    this.captureEvent("transcription_edit_watch_completed", props);
+  }
+
+  trackVocabularyLearningCompleted(
+    props: VocabularyLearningCompletedEvent,
+  ): void {
+    this.captureEvent("vocabulary_learning_completed", props);
   }
 
   trackVocabularyAutoUndone(props: VocabularyAutoUndoneEvent): void {

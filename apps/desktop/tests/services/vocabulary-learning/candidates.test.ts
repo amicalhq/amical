@@ -12,92 +12,78 @@ function candidate(term: string, heard = "x"): Candidate {
 }
 
 describe("extractCandidates", () => {
-  // Golden rows. Steps are given as counts of M / C / D / I.
+  // Golden rows.
   const rows: Array<{
     pasted: string;
     edited: string;
-    steps: { m: number; c: number; d: number; i: number };
     rewrite?: boolean;
     candidates: Candidate[];
   }> = [
     {
       pasted: "open cloud code and run it",
       edited: "open Claude Code and run it",
-      steps: { m: 4, c: 1, d: 1, i: 1 },
       candidates: [{ term: "Claude Code", heard: "cloud code" }],
     },
     {
       pasted: "open cloud code and run it",
       edited: "open Claude Code, and run it",
-      steps: { m: 4, c: 1, d: 1, i: 1 },
       candidates: [{ term: "Claude Code", heard: "cloud code" }],
     },
     {
       pasted: "ping the cube flow team",
       edited: "ping the Kubeflow team",
-      steps: { m: 3, c: 0, d: 2, i: 1 },
       candidates: [{ term: "Kubeflow", heard: "cube flow" }],
     },
     {
       pasted: "send it to john tomorrow",
       edited: "send it to Jon tomorrow",
-      steps: { m: 4, c: 0, d: 1, i: 1 },
       candidates: [{ term: "Jon", heard: "john" }],
     },
     {
       pasted: "we use github",
       edited: "we use GitHub",
-      steps: { m: 2, c: 1, d: 0, i: 0 },
       candidates: [],
     },
     {
       pasted: "send it tomorrow",
       edited: "send it to Priya tomorrow",
-      steps: { m: 3, c: 0, d: 0, i: 2 },
       candidates: [],
     },
     {
       pasted: "ill take look",
       edited: "I'll take a look",
-      steps: { m: 2, c: 0, d: 1, i: 2 },
       candidates: [{ term: "I'll", heard: "ill" }],
     },
     {
       pasted: "can you send me the report by friday",
       edited: "please share the final report with me today",
-      steps: { m: 2, c: 0, d: 6, i: 6 },
       candidates: [{ term: "please share", heard: "can you send me" }],
     },
     {
       pasted: "send the deck to john and the report to mike tomorrow",
       edited: "please call Priya about budget review on Friday",
-      steps: { m: 0, c: 0, d: 11, i: 8 },
       rewrite: true,
       candidates: [],
     },
     {
       pasted: "um so like cloud code is great",
       edited: "Claude Code is great",
-      steps: { m: 2, c: 1, d: 4, i: 1 },
       candidates: [{ term: "Claude Code", heard: "um so like cloud code" }],
     },
     {
       pasted: "open cloud code and run it",
       edited: "open Claude",
-      steps: { m: 1, c: 0, d: 5, i: 1 },
       candidates: [{ term: "Claude", heard: "cloud code and run it" }],
     },
     {
       pasted: "これはkubanetesのせっていです",
       edited: "これはKubernetesのせっていです",
-      steps: { m: 10, c: 0, d: 1, i: 1 },
       candidates: [{ term: "Kubernetes", heard: "kubanetes" }],
     },
   ];
 
   it.each(rows)("$pasted → $edited", (row) => {
     const result = extractCandidates(row.pasted, row.edited);
-    expect(result.steps).toEqual(row.steps);
     expect(result.rewrite).toBe(row.rewrite ?? false);
     expect(result.candidates).toEqual(row.candidates);
   });

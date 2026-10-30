@@ -5,7 +5,6 @@ import type {
   Candidate,
   CandidateExtraction,
   CandidateFilterResult,
-  StepCounts,
 } from "./types";
 
 // Correction candidates: tokenize the pasted text and the edited region,
@@ -22,7 +21,8 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 // Han, Hiragana or Katakana. Hangul is not included on purpose.
 const CJK_RE = /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}]/u;
-const EDGE_PUNCTUATION_RE = /^\p{P}+|\p{P}+$/gu;
+const LEADING_PUNCTUATION_RE = /^\p{P}+/u;
+const TRAILING_PUNCTUATION_RE = /\p{P}+$/u;
 const LETTER_RE = /\p{L}/u;
 const UPPERCASE_OR_DIGIT_RE = /[\p{Lu}\p{Nd}]/u;
 const POSSESSIVE_RE = /['’]s$/;
@@ -34,11 +34,14 @@ interface Token {
   key: string;
   /** True when whitespace separated this token from the previous one. */
   spaceBefore: boolean;
+  /** Punctuation removed from the start and the end of the raw token. */
+  leading: string;
+  trailing: string;
 }
 
 type StepKind = "M" | "C" | "D" | "I";
 
-interface Step {
+export interface Step {
   kind: StepKind;
   pasted?: Token;
   edited?: Token;
@@ -53,7 +56,7 @@ interface Run {
 
 // Split on whitespace. Inside a chunk each CJK grapheme is its own token;
 // other graphemes stay together. Tokens that are only punctuation are dropped.
-function tokenize(text: string): Token[] {
+export function tokenize(text: string): Token[] {
   const tokens: Token[] = [];
   for (const chunk of text.split(/\s+/)) {
     if (chunk === "") {
@@ -62,7 +65,9 @@ function tokenize(text: string): Token[] {
     let spaceBefore = true;
     let pending = "";
     const push = (raw: string) => {
-      const core = raw.replace(EDGE_PUNCTUATION_RE, "");
+      const leading = LEADING_PUNCTUATION_RE.exec(raw)?.[0] ?? "";
+      const trailing = TRAILING_PUNCTUATION_RE.exec(raw)?.[0] ?? "";
+      const core = raw.slice(leading.length, raw.length - trailing.length);
       if (core === "") {
         return;
       }
@@ -70,6 +75,8 @@ function tokenize(text: string): Token[] {
         core,
         key: core.normalize("NFC").toLowerCase(),
         spaceBefore,
+        leading,
+        trailing,
       });
       spaceBefore = false;
     };
@@ -99,9 +106,37 @@ export function wordForms(text: string): string[] {
   return tokenize(text).map((token) => token.core.normalize("NFC"));
 }
 
+/** A pasted word that is still in the edited text (M, or C: case only). */
+export function isKept(step: Step): boolean {
+  return step.kind === "M" || step.kind === "C";
+}
+
+function matchStep(pasted: Token, edited: Token): Step {
+  return {
+    kind: pasted.core === edited.core ? "M" : "C",
+    pasted,
+    edited,
+  };
+}
+
 // Longest common subsequence over the comparison keys. Ties prefer D (advance
 // the pasted side) so a substitution always reads "D... I...".
-function align(pasted: Token[], edited: Token[]): Step[] {
+export function align(fullPasted: Token[], fullEdited: Token[]): Step[] {
+  // The walk below matches equal keys first, so a common prefix always aligns
+  // as matches: emit it and build the table for the rest only.
+  const steps: Step[] = [];
+  let start = 0;
+  while (
+    start < fullPasted.length &&
+    start < fullEdited.length &&
+    fullPasted[start].key === fullEdited[start].key
+  ) {
+    steps.push(matchStep(fullPasted[start], fullEdited[start]));
+    start++;
+  }
+  const pasted = fullPasted.slice(start);
+  const edited = fullEdited.slice(start);
+
   const n = pasted.length;
   const m = edited.length;
   const width = m + 1;
@@ -116,16 +151,11 @@ function align(pasted: Token[], edited: Token[]): Step[] {
     }
   }
 
-  const steps: Step[] = [];
   let i = 0;
   let j = 0;
   while (i < n || j < m) {
     if (i < n && j < m && pasted[i].key === edited[j].key) {
-      steps.push({
-        kind: pasted[i].core === edited[j].core ? "M" : "C",
-        pasted: pasted[i],
-        edited: edited[j],
-      });
+      steps.push(matchStep(pasted[i], edited[j]));
       i++;
       j++;
     } else if (
@@ -185,11 +215,6 @@ export function extractCandidates(
   const pastedTokens = tokenize(pasted);
   const steps = align(pastedTokens, tokenize(edited));
 
-  const counts: StepCounts = { m: 0, c: 0, d: 0, i: 0 };
-  for (const step of steps) {
-    counts[step.kind.toLowerCase() as keyof StepCounts]++;
-  }
-
   const runs = collectRuns(steps);
   const substitutedPairs = runs.reduce(
     (sum, run) => sum + Math.min(run.d, run.i),
@@ -203,13 +228,13 @@ export function extractCandidates(
   // and produced 7 garbage candidates.
   // Also a rewrite: a paste of two or more tokens that keeps none of them is
   // a new text, not a correction. A one-token paste typed over is a name fix.
-  const kept = counts.m + counts.c;
+  const kept = steps.filter(isKept).length;
   const rewrite =
     (substitutedPairs > MAX_SUBSTITUTED_PAIRS &&
       kept < pastedTokens.length / 2) ||
     (pastedTokens.length >= 2 && kept === 0);
   if (rewrite) {
-    return { steps: counts, rewrite, candidates: [] };
+    return { rewrite, candidates: [] };
   }
 
   const candidates: Candidate[] = runs
@@ -222,7 +247,7 @@ export function extractCandidates(
       heard: joinTokens(run.pasted),
     }));
 
-  return { steps: counts, rewrite, candidates };
+  return { rewrite, candidates };
 }
 
 /**

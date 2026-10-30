@@ -5,6 +5,7 @@ import {
 } from "../../utils/shortcut-constants";
 import { wordForms } from "./candidates";
 import type {
+  EditFinalState,
   EditTracker,
   EditTrackerDeps,
   EditTrackerEndReason,
@@ -163,6 +164,10 @@ function normalizeWindowsText(text: string): string {
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
+export function graphemeList(text: string): string[] {
+  return Array.from(graphemes.segment(text), (s) => s.segment);
+}
+
 /**
  * True when deleting characters from `source` can give `text`. Whitespace is
  * ignored: editors rewrite the spaces around a deletion.
@@ -179,8 +184,7 @@ function isLeftOver(text: string, source: string): boolean {
 }
 
 function distanceUnits(text: string): string[] {
-  const normalized = text.toLowerCase().trim().replace(/\s+/g, " ");
-  return Array.from(graphemes.segment(normalized), (s) => s.segment);
+  return graphemeList(text.toLowerCase().trim().replace(/\s+/g, " "));
 }
 
 // One far test runs on the main thread, up to 10 times a second. 4 M cells
@@ -190,7 +194,7 @@ function distanceUnits(text: string): string[] {
 const MAX_DISTANCE_CELLS = 4_000_000;
 
 /** Edit distance, or null when the changed part is too large to compare. */
-function levenshtein(fullA: string[], fullB: string[]): number | null {
+export function levenshtein(fullA: string[], fullB: string[]): number | null {
   // A common prefix or suffix does not change the distance: strip it.
   let start = 0;
   while (
@@ -248,11 +252,10 @@ function isFar(a: string[], b: string[]): boolean {
 // Tracker
 // ---------------------------------------------------------------------------
 
-// Every other end learns from the Enter mark when there is one, else from R.
-const LEARNS_NOTHING: ReadonlySet<EditTrackerEndReason> = new Set([
+// The user threw the dictation away: there is no final version.
+const DISCARDS: ReadonlySet<EditTrackerEndReason> = new Set([
   "paste_undone",
   "region_deleted",
-  "pasted_text_not_found",
 ]);
 
 /** Index of the only occurrence of `needle` in `text`, or -1. */
@@ -718,7 +721,8 @@ class EditTrackerImpl implements EditTracker {
 
     let region: string | null = null;
     let stale = false;
-    if (!LEARNS_NOTHING.has(reason)) {
+    // Every other located end uses the Enter mark when there is one, else R.
+    if (this.located && !DISCARDS.has(reason)) {
       region = this.enterMark?.region ?? this.region;
       stale = this.enterMark?.stale ?? this.editedSinceRegion();
     }
@@ -726,17 +730,21 @@ class EditTrackerImpl implements EditTracker {
     const changed = region !== null && region !== this.pasted;
     const stable =
       this.trustedReads >= 2 && this.previousRegion === this.region;
-    const finalRegion =
-      changed && !stale && (this.keyEventsSeen || stable) ? region : null;
+    let finalState: EditFinalState;
+    if (DISCARDS.has(reason)) finalState = "discarded";
+    else if (region === null) finalState = "none";
+    else if (stale) finalState = "editing";
+    else if (changed && !this.keyEventsSeen && !stable) finalState = "unstable";
+    else finalState = "settled";
 
     this.resolveResult({
       endReason: reason,
-      finalRegion,
+      finalState,
+      region,
+      finalRegion: finalState === "settled" && changed ? region : null,
       changed,
-      staleFinalState: stale,
       stableFinalState: stable,
       keyEventsSeen: this.keyEventsSeen,
-      located: this.located,
       locateMs: this.locateMs,
       readCount: this.readCount,
       readErrorCount: this.readErrorCount,

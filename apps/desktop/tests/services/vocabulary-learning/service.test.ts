@@ -22,7 +22,10 @@ import type { LifecycleSnapshot } from "../../../src/main/lifecycle/shell";
 import type { LifecycleSessionMeta } from "../../../src/main/lifecycle/metadata";
 import type { PublicState } from "../../../src/main/lifecycle/projection";
 import { NativeBridgeTimeoutError } from "../../../src/services/platform/native-bridge-service";
-import { DESKTOP_AUTO_VOCABULARY_FLAG } from "../../../src/services/remote-config-service";
+import {
+  DESKTOP_AUTO_VOCABULARY_FLAG,
+  DESKTOP_EDIT_METRICS_FLAG,
+} from "../../../src/services/remote-config-service";
 import { vocabularyLearningNotifications } from "../../../src/services/vocabulary-learning/notifications";
 import { VocabularyTermCheckContractFailure } from "../../../src/services/vocabulary-learning/term-check-client";
 import {
@@ -32,6 +35,7 @@ import {
 } from "../../../src/services/vocabulary-learning/service";
 import { CloudNetworkFailure } from "../../../src/types/errors/cloud-request";
 import type { WidgetNotification } from "../../../src/types/widget-notification";
+import { MAC_KEYCODES } from "../../../src/utils/keycodes";
 import { createTestDatabase, type TestDatabase } from "../../helpers/test-db";
 import { setTestDatabase } from "../../setup";
 
@@ -151,7 +155,6 @@ class FakeBridge extends EventEmitter {
     }),
   );
   stopEditWatch = vi.fn(async () => {});
-  getAccessibilityContext = () => null;
 }
 
 async function committedRow(sessionId: string, speechModel: string) {
@@ -159,6 +162,7 @@ async function committedRow(sessionId: string, speechModel: string) {
   await enrichTranscriptionBySession(sessionId, {
     speechModel,
     detectedLanguage: "en",
+    metaPatch: { activity: { appType: "chat" } },
   });
   await stampTranscriptionDisposition(sessionId, {
     disposition: "success",
@@ -173,9 +177,14 @@ describe("VocabularyLearningService", () => {
   let bridge: FakeBridge;
   let classify: Mock<VocabularyLearningServiceDeps["client"]["classify"]>;
   let track: Mock<
-    VocabularyLearningServiceDeps["telemetry"]["trackVocabularyEditWatchCompleted"]
+    VocabularyLearningServiceDeps["telemetry"]["trackTranscriptionEditWatchCompleted"]
+  >;
+  let trackLearning: Mock<
+    VocabularyLearningServiceDeps["telemetry"]["trackVocabularyLearningCompleted"]
   >;
   let flagOn: boolean;
+  let metricsOn: boolean;
+  let telemetryOn: boolean;
   let service: VocabularyLearningService;
   let toasts: WidgetNotification[];
   let unsubscribeToasts: () => void;
@@ -189,7 +198,10 @@ describe("VocabularyLearningService", () => {
     bridge = new FakeBridge();
     classify = vi.fn(() => Effect.succeed({ accepted: ["Claude Code"] }));
     track = vi.fn();
+    trackLearning = vi.fn();
     flagOn = true;
+    metricsOn = true;
+    telemetryOn = true;
     toasts = [];
     unsubscribeToasts = vocabularyLearningNotifications.onLearned((toast) =>
       toasts.push(toast),
@@ -201,10 +213,17 @@ describe("VocabularyLearningService", () => {
       remoteConfig: {
         getConfig: () =>
           ({
-            flags: { [DESKTOP_AUTO_VOCABULARY_FLAG]: flagOn },
+            flags: {
+              [DESKTOP_AUTO_VOCABULARY_FLAG]: flagOn,
+              [DESKTOP_EDIT_METRICS_FLAG]: metricsOn,
+            },
           }) as never,
       },
-      telemetry: { trackVocabularyEditWatchCompleted: track },
+      telemetry: {
+        trackTranscriptionEditWatchCompleted: track,
+        trackVocabularyLearningCompleted: trackLearning,
+        isEnabled: () => telemetryOn,
+      },
       client: { classify },
       platform: "darwin",
       timers: clock,
@@ -253,20 +272,37 @@ describe("VocabularyLearningService", () => {
     expect(bridge.stopEditWatch).toHaveBeenCalledWith("w1");
     expect(track).toHaveBeenCalledWith(
       expect.objectContaining({
+        session_id: "s1",
+        provider: "amical-cloud",
+        model_id: "amical-cloud",
+        detected_language: "en",
         start_status: "ok",
         end_reason: "superseded",
-        app_type: "default",
+        app_type: "chat",
+        final_state: "settled",
+        substituted_word_count: 1,
         changed: true,
         key_events_seen: false,
         stable_final_state: true,
-        candidate_count: 1,
-        sent_count: 1,
-        accepted_count: 1,
-        added_count: 1,
-        multiword_count: 1,
-        classifier_outcome: "ok",
       }),
     );
+    expect(trackLearning).toHaveBeenCalledWith({
+      session_id: "s1",
+      rewrite: false,
+      candidate_count: 1,
+      drop_shape_count: 0,
+      drop_length_count: 0,
+      drop_known_count: 0,
+      drop_cjk_count: 0,
+      drop_duplicate_count: 0,
+      drop_cap_count: 0,
+      sent_count: 1,
+      classifier_duration_ms: 0,
+      classifier_outcome: "ok",
+      accepted_count: 1,
+      added_count: 1,
+      multiword_count: 1,
+    });
 
     // A recording is active: the toast waits for idle.
     expect(toasts).toHaveLength(0);
@@ -289,19 +325,33 @@ describe("VocabularyLearningService", () => {
     });
   });
 
-  it("starts no watch when the flag is off, the model is local, or a newer session started", async () => {
+  it("starts no watch when neither consumer wants it or the model is local", async () => {
     await committedRow("s1", "amical-cloud");
     await committedRow("s2", "whisper-tiny");
 
     flagOn = false;
+    telemetryOn = false;
+    lifecycle.session("s1");
+    lifecycle.pasteConfirmed("s1", PASTED);
+    await settle();
+    telemetryOn = true;
+    metricsOn = false;
     lifecycle.session("s1");
     lifecycle.pasteConfirmed("s1", PASTED);
     await settle();
     flagOn = true;
+    metricsOn = true;
 
     lifecycle.session("s2");
     lifecycle.pasteConfirmed("s2", PASTED);
     await settle();
+
+    expect(bridge.startEditWatch).not.toHaveBeenCalled();
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("reports not_started when a newer session started before the watch", async () => {
+    await committedRow("s1", "amical-cloud");
 
     lifecycle.session("s1");
     lifecycle.publish("s3", "starting");
@@ -309,7 +359,86 @@ describe("VocabularyLearningService", () => {
     await settle();
 
     expect(bridge.startEditWatch).not.toHaveBeenCalled();
-    expect(track).not.toHaveBeenCalled();
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track.mock.calls[0][0]).toMatchObject({
+      session_id: "s1",
+      end_reason: "not_started",
+      provider: "amical-cloud",
+      app_type: "chat",
+    });
+  });
+
+  it("watches for metrics only when learning is off, and learns nothing", async () => {
+    await committedRow("s1", "amical-cloud");
+    flagOn = false;
+
+    await runCorrectedWatch("s1", "s2");
+
+    expect(classify).not.toHaveBeenCalled();
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        end_reason: "superseded",
+        final_state: "settled",
+        substituted_word_count: 1,
+      }),
+    );
+    expect(trackLearning).not.toHaveBeenCalled();
+  });
+
+  it("reports a learning run that finds no candidates", async () => {
+    await committedRow("s1", "amical-cloud");
+    lifecycle.session("s1");
+    lifecycle.pasteConfirmed("s1", PASTED);
+    await settle();
+    await clock.advance(250);
+    // A case-only change: the text changed, but no word was replaced.
+    bridge.fieldText = "Open cloud code and run it";
+    await clock.advance(1000);
+    await clock.advance(1000);
+    lifecycle.publish("s2", "starting");
+    await settle();
+
+    expect(classify).not.toHaveBeenCalled();
+    expect(trackLearning).toHaveBeenCalledWith({
+      session_id: "s1",
+      rewrite: false,
+      candidate_count: 0,
+    });
+  });
+
+  it("learns without metrics when telemetry is off", async () => {
+    await committedRow("s1", "amical-cloud");
+    telemetryOn = false;
+
+    await runCorrectedWatch("s1", "s2");
+
+    expect(classify).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a deleted dictation as discarded with its pasted size only", async () => {
+    await committedRow("s1", "amical-cloud");
+    lifecycle.session("s1");
+    lifecycle.pasteConfirmed("s1", PASTED);
+    await settle();
+    await clock.advance(250);
+
+    bridge.fieldText = "";
+    bridge.emit("helperEvent", {
+      type: "keyDown",
+      payload: { keyCode: MAC_KEYCODES.DELETE },
+    });
+    await settle();
+    // The key read waits for the 100 ms minimum gap after the locate read.
+    await clock.advance(200);
+
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track.mock.calls[0][0]).toMatchObject({
+      end_reason: "region_deleted",
+      final_state: "discarded",
+      pasted_char_count: PASTED.length,
+      pasted_word_count: 6,
+    });
+    expect(track.mock.calls[0][0]).not.toHaveProperty("final_word_count");
   });
 
   it("reports no_row without a committed transcription row", async () => {
@@ -319,35 +448,35 @@ describe("VocabularyLearningService", () => {
 
     expect(bridge.startEditWatch).not.toHaveBeenCalled();
     expect(track).toHaveBeenCalledWith({
+      session_id: "s1",
       end_reason: "no_row",
-      app_type: "default",
     });
   });
 
-  it("pauses watches for 24 h after a disabled answer", async () => {
+  it("pauses learning for 24 h after a disabled answer; metrics continue", async () => {
     await committedRow("s1", "amical-cloud");
     await committedRow("s3", "amical-cloud");
-    await committedRow("s4", "amical-cloud");
+    await committedRow("s5", "amical-cloud");
     classify.mockImplementation(() =>
       Effect.succeed({ accepted: [], disabled: true }),
     );
 
     await runCorrectedWatch("s1", "s2");
     expect(testDb.db.select().from(vocabulary).all()).toEqual([]);
-    expect(track).toHaveBeenCalledWith(
+    expect(trackLearning).toHaveBeenCalledWith(
       expect.objectContaining({ classifier_outcome: "disabled" }),
     );
 
-    lifecycle.session("s3");
-    lifecycle.pasteConfirmed("s3", PASTED);
-    await settle();
-    expect(bridge.startEditWatch).toHaveBeenCalledTimes(1);
+    await runCorrectedWatch("s3", "s4");
+    expect(bridge.startEditWatch).toHaveBeenCalledTimes(2);
+    expect(classify).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenLastCalledWith(
+      expect.objectContaining({ session_id: "s3", substituted_word_count: 1 }),
+    );
 
     await clock.advance(DAY_MS + 1);
-    lifecycle.session("s4");
-    lifecycle.pasteConfirmed("s4", PASTED);
-    await settle();
-    expect(bridge.startEditWatch).toHaveBeenCalledTimes(2);
+    await runCorrectedWatch("s5", "s6");
+    expect(classify).toHaveBeenCalledTimes(2);
   });
 
   it("reports a refused start without reading the field", async () => {
@@ -363,11 +492,14 @@ describe("VocabularyLearningService", () => {
     await clock.advance(2000);
 
     expect(bridge.readEditWatch).not.toHaveBeenCalled();
-    expect(track).toHaveBeenCalledWith({
-      start_status: "secure",
-      end_reason: "start_refused",
-      app_type: "default",
-    });
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session_id: "s1",
+        start_status: "secure",
+        end_reason: "start_refused",
+        app_type: "chat",
+      }),
+    );
   });
 
   it("counts a failed read as an error read and ends the watch on a read timeout", async () => {
@@ -453,7 +585,7 @@ describe("VocabularyLearningService", () => {
       await runCorrectedWatch("s1", "s2");
 
       expect(testDb.db.select().from(vocabulary).all()).toEqual([]);
-      expect(track).toHaveBeenCalledWith(
+      expect(trackLearning).toHaveBeenCalledWith(
         expect.objectContaining({ sent_count: 1, classifier_outcome: outcome }),
       );
     },
@@ -468,7 +600,7 @@ describe("VocabularyLearningService", () => {
 
     expect(testDb.db.select().from(vocabulary).all()).toEqual([]);
     expect(toasts).toHaveLength(0);
-    expect(track).toHaveBeenCalledWith(
+    expect(trackLearning).toHaveBeenCalledWith(
       expect.objectContaining({ classifier_outcome: "ok", accepted_count: 0 }),
     );
   });

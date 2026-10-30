@@ -11,7 +11,11 @@
 
 import type { EditWatchStartStatus } from "@amical/types";
 import { z } from "zod";
-import type { EditTrackerEndReason } from "../services/vocabulary-learning/types";
+import type { EditMetrics } from "../services/vocabulary-learning/edit-metrics";
+import type {
+  EditFinalState,
+  EditTrackerEndReason,
+} from "../services/vocabulary-learning/types";
 import { ErrorCodes, type DictationErrorCode, type ErrorCode } from "./error";
 
 // ============================================================================
@@ -179,15 +183,16 @@ export type WidgetNotificationShownEvent = z.infer<
 >;
 
 // ============================================================================
-// Vocabulary Learning Events
+// Edit Watch and Vocabulary Learning Events
 // ============================================================================
 
-export type VocabularyEditWatchStartStatus = EditWatchStartStatus | "error";
+export type EditWatchStartOutcome = EditWatchStartStatus | "error";
 
-export type VocabularyEditWatchEndReason =
+export type EditWatchEndReason =
   | EditTrackerEndReason
   | "start_refused"
-  | "no_row";
+  | "no_row"
+  | "not_started";
 
 export type VocabularyClassifierOutcome =
   | "ok"
@@ -197,46 +202,64 @@ export type VocabularyClassifierOutcome =
   | "invalid";
 
 /**
- * Fired once per edit watch (one per confirmed session paste that passed the
- * gate). Counts and enums only: never words or field text.
+ * Fired once per edit watch attempt (a confirmed session paste that passed
+ * the gate). Joins transcription_completed_v2 by session_id; provider and
+ * model_id use the same keys and values. Counts and enums only: never words
+ * or field text.
  */
-export interface VocabularyEditWatchCompletedEvent {
-  /** Absent for "no_row": no start was attempted. */
-  start_status?: VocabularyEditWatchStartStatus;
-  end_reason: VocabularyEditWatchEndReason;
-  app_type: string;
-  stale_final_state?: boolean;
+export interface TranscriptionEditWatchCompletedEvent
+  extends Partial<EditMetrics> {
+  session_id: string;
+  /** Absent when no start was attempted. */
+  start_status?: EditWatchStartOutcome;
+  end_reason: EditWatchEndReason;
+  /** The app type saved with the dictation; absent without a row. */
+  app_type?: string;
+  provider?: string;
+  model_id?: string;
+  formatting_model?: string;
+  language?: string;
+  detected_language?: string;
+  /** Set when the watch started. */
+  final_state?: EditFinalState;
   key_events_seen?: boolean;
   stable_final_state?: boolean;
-  located?: boolean;
-  locate_ms?: number | null;
+  /** Watch start to the read that located the paste; absent if never located. */
+  locate_duration_ms?: number;
   read_count?: number;
   read_error_count?: number;
-  read_ms_max?: number;
+  read_duration_max_ms?: number;
+  /** Raw text compare (watch health). For analysis use change_kind. */
   changed?: boolean;
-  rewrite?: boolean;
-  duration_ms?: number;
+  watch_duration_ms?: number;
   reanchor_count?: number;
   rearranged_count?: number;
   paste_reset_count?: number;
   enter_mark_dropped_count?: number;
-  steps_m?: number;
-  steps_c?: number;
-  steps_d?: number;
-  steps_i?: number;
+}
+
+/**
+ * Fired each time auto vocabulary runs on a watch's final version, also when
+ * nothing is learned. Joins transcription_edit_watch_completed by session_id.
+ * Counts and enums only: never terms or field text.
+ */
+export interface VocabularyLearningCompletedEvent {
+  session_id: string;
+  /** The user rewrote the text: no candidates are taken from it. */
+  rewrite?: boolean;
   candidate_count?: number;
-  drop_shape?: number;
-  drop_length?: number;
-  drop_known?: number;
-  drop_cjk?: number;
-  drop_duplicate?: number;
-  drop_cap?: number;
+  drop_shape_count?: number;
+  drop_length_count?: number;
+  drop_known_count?: number;
+  drop_cjk_count?: number;
+  drop_duplicate_count?: number;
+  drop_cap_count?: number;
   sent_count?: number;
   accepted_count?: number;
   added_count?: number;
   multiword_count?: number;
   classifier_outcome?: VocabularyClassifierOutcome;
-  classifier_ms?: number;
+  classifier_duration_ms?: number;
 }
 
 /**

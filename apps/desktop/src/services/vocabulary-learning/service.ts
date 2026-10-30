@@ -23,14 +23,12 @@ import {
   TelemetryServiceTag,
   VocabularyLearningServiceTag,
 } from "../../main/runtime/tags";
-import {
-  detectApplicationType,
-  type AppType,
-} from "../../pipeline/providers/formatting/formatter-prompt";
+import { activityAppTypeOf } from "../../types/activity";
 import { CloudNetworkFailure } from "../../types/errors/cloud-request";
 import type {
+  TranscriptionEditWatchCompletedEvent,
   VocabularyClassifierOutcome,
-  VocabularyEditWatchCompletedEvent,
+  VocabularyLearningCompletedEvent,
 } from "../../types/telemetry-events";
 import type { WidgetNotification } from "../../types/widget-notification";
 import {
@@ -43,10 +41,12 @@ import {
 } from "../platform/native-bridge-service";
 import {
   DESKTOP_AUTO_VOCABULARY_FLAG,
+  DESKTOP_EDIT_METRICS_FLAG,
   type RemoteConfigService,
 } from "../remote-config-service";
 import type { TelemetryService } from "../telemetry-service";
 import { extractCandidates, filterCandidates } from "./candidates";
+import { measureEdits, pastedSize } from "./edit-metrics";
 import { createEditTracker } from "./edit-tracker";
 import { vocabularyLearningNotifications } from "./notifications";
 import {
@@ -69,7 +69,6 @@ type LearningBridge = Pick<
   | "startEditWatch"
   | "readEditWatch"
   | "stopEditWatch"
-  | "getAccessibilityContext"
   | "on"
   | "off"
 >;
@@ -97,18 +96,33 @@ export interface VocabularyLearningServiceDeps {
   bridge: LearningBridge | null;
   lifecycle: LearningLifecycle;
   remoteConfig: Pick<RemoteConfigService, "getConfig">;
-  telemetry: Pick<TelemetryService, "trackVocabularyEditWatchCompleted">;
+  telemetry: Pick<
+    TelemetryService,
+    | "trackTranscriptionEditWatchCompleted"
+    | "trackVocabularyLearningCompleted"
+    | "isEnabled"
+  >;
   client: Pick<VocabularyTermCheckClient, "classify">;
   platform?: TrackerPlatform | null;
   timers?: LearningTimers;
 }
 
+/** Event properties known when the watch starts. */
+type WatchEventBase = Pick<
+  TranscriptionEditWatchCompletedEvent,
+  | "session_id"
+  | "app_type"
+  | "provider"
+  | "model_id"
+  | "formatting_model"
+  | "language"
+  | "detected_language"
+>;
+
 interface ActiveWatch {
   watchId: string;
-  sessionId: string;
   pastedText: string;
-  language: string | undefined;
-  appType: AppType;
+  eventBase: WatchEventBase;
   tracker: EditTracker;
 }
 
@@ -119,8 +133,9 @@ function currentPlatform(): TrackerPlatform | null {
 }
 
 /**
- * Auto vocabulary: after a confirmed session paste, hold the pasted-into
- * element through the native helper, track the user's edits (edit tracker),
+ * Edit watch: after a confirmed session paste, hold the pasted-into element
+ * through the native helper and track the user's edits (edit tracker). At
+ * the end, report edit metrics (counts only) and, for auto vocabulary,
  * extract correction candidates, ask the term check, and store accepted
  * terms as learned vocabulary with a toast that offers Undo.
  *
@@ -131,10 +146,7 @@ export class VocabularyLearningService {
   private readonly bridge: LearningBridge | null;
   private readonly lifecycle: LearningLifecycle;
   private readonly remoteConfig: Pick<RemoteConfigService, "getConfig">;
-  private readonly telemetry: Pick<
-    TelemetryService,
-    "trackVocabularyEditWatchCompleted"
-  >;
+  private readonly telemetry: VocabularyLearningServiceDeps["telemetry"];
   private readonly client: Pick<VocabularyTermCheckClient, "classify">;
   private readonly platform: TrackerPlatform | null;
   private readonly timers: LearningTimers;
@@ -275,27 +287,38 @@ export class VocabularyLearningService {
     const bridge = this.bridge;
     const platform = this.platform;
     if (!bridge || !platform || this.disposed) return;
-    if (
-      this.remoteConfig.getConfig().flags[DESKTOP_AUTO_VOCABULARY_FLAG] ===
-      false
-    ) {
-      return;
-    }
-    if (this.timers.now() < this.pausedUntil) return;
-    if (this.newerSessionStarted(session)) return;
+    const metricsWanted = this.metricsWanted();
+    const learningAllowed = this.learningAllowed();
+    if (!metricsWanted && !learningAllowed) return;
 
-    // app_type now: the next session clears the cached context.
-    const appType = detectApplicationType(bridge.getAccessibilityContext());
     const row = await getTranscriptionBySessionId(session);
     if (!row) {
-      this.telemetry.trackVocabularyEditWatchCompleted({
+      this.telemetry.trackTranscriptionEditWatchCompleted({
+        session_id: session,
         end_reason: "no_row",
-        app_type: appType,
       });
       return;
     }
-    if (row.speechModel !== "amical-cloud") return;
-    if (this.disposed || this.newerSessionStarted(session)) return;
+    // Amical Cloud dictations only, to start with. provider and model_id use
+    // the dictation trace's values.
+    if (row.speechModel !== "amical-cloud" || this.disposed) return;
+    const eventBase: WatchEventBase = {
+      session_id: session,
+      app_type: activityAppTypeOf(row.meta),
+      provider: "amical-cloud",
+      model_id: "amical-cloud",
+      // Absent when unknown, as on transcription_completed_v2.
+      formatting_model: row.formattingModel ?? undefined,
+      language: row.language ?? undefined,
+      detected_language: row.detectedLanguage ?? undefined,
+    };
+    if (this.newerSessionStarted(session)) {
+      this.telemetry.trackTranscriptionEditWatchCompleted({
+        ...eventBase,
+        end_reason: "not_started",
+      });
+      return;
+    }
 
     // One watch at a time: a new confirmed paste supersedes the current one.
     this.watch?.tracker.onOtherPaste();
@@ -307,39 +330,37 @@ export class VocabularyLearningService {
       logger.main.debug("startEditWatch failed", {
         error: error instanceof Error ? error.message : String(error),
       });
-      this.telemetry.trackVocabularyEditWatchCompleted({
+      this.telemetry.trackTranscriptionEditWatchCompleted({
+        ...eventBase,
         start_status: "error",
         end_reason: "start_refused",
-        app_type: appType,
       });
       return;
     }
     if (start.startStatus !== "ok" || start.watchId === null) {
-      this.telemetry.trackVocabularyEditWatchCompleted({
+      this.telemetry.trackTranscriptionEditWatchCompleted({
+        ...eventBase,
         start_status: start.startStatus,
         end_reason: "start_refused",
-        app_type: appType,
       });
       return;
     }
     const watchId = start.watchId;
     if (this.disposed || this.newerSessionStarted(session)) {
       void bridge.stopEditWatch(watchId);
+      if (!this.disposed) {
+        this.telemetry.trackTranscriptionEditWatchCompleted({
+          ...eventBase,
+          end_reason: "not_started",
+        });
+      }
       return;
     }
 
-    const language =
-      row.detectedLanguage &&
-      row.detectedLanguage.length <=
-        VOCABULARY_CLASSIFY_LIMITS.maxLanguageLength
-        ? row.detectedLanguage
-        : undefined;
     const watch: ActiveWatch = {
       watchId,
-      sessionId: session,
       pastedText: text,
-      language,
-      appType,
+      eventBase,
       tracker: createEditTracker({
         pastedText: text,
         platform,
@@ -353,7 +374,9 @@ export class VocabularyLearningService {
     this.watch = watch;
     logger.main.debug("Edit watch started", {
       sessionId: session,
-      appType,
+      appType: eventBase.app_type,
+      metricsWanted,
+      learningAllowed,
       pastedLength: text.length,
     });
     void watch.tracker.result.then(
@@ -374,112 +397,149 @@ export class VocabularyLearningService {
     void this.bridge?.stopEditWatch(watch.watchId);
     if (this.disposed) return;
 
-    const event: VocabularyEditWatchCompletedEvent = {
+    const event: TranscriptionEditWatchCompletedEvent = {
+      ...watch.eventBase,
       start_status: "ok",
       end_reason: result.endReason,
-      app_type: watch.appType,
-      stale_final_state: result.staleFinalState,
       key_events_seen: result.keyEventsSeen,
       stable_final_state: result.stableFinalState,
-      located: result.located,
-      locate_ms: result.locateMs,
+      locate_duration_ms: result.locateMs ?? undefined,
       read_count: result.readCount,
       read_error_count: result.readErrorCount,
-      read_ms_max: result.readMsMax,
+      read_duration_max_ms: result.readMsMax,
       changed: result.changed,
-      duration_ms: result.durationMs,
+      watch_duration_ms: result.durationMs,
       reanchor_count: result.reanchorCount,
       rearranged_count: result.rearrangedCount,
       paste_reset_count: result.pasteResetCount,
       enter_mark_dropped_count: result.enterMarkDroppedCount,
+      final_state: result.finalState,
     };
-    try {
-      if (result.finalRegion !== null) {
-        await this.learn(watch, result.finalRegion, event);
+    // Checked again, like learning: the flag or the opt-out can change. A
+    // metrics failure must not drop the event or block learning.
+    if (this.metricsWanted()) {
+      try {
+        Object.assign(
+          event,
+          result.region === null
+            ? pastedSize(watch.pastedText)
+            : measureEdits(watch.pastedText, result.region),
+        );
+      } catch (error) {
+        logger.main.warn("Edit metrics failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
-    } catch (error) {
-      logger.main.warn("Vocabulary learning pass failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
     }
-    this.telemetry.trackVocabularyEditWatchCompleted(event);
+    this.telemetry.trackTranscriptionEditWatchCompleted(event);
     logger.main.debug("Edit watch ended", {
-      sessionId: watch.sessionId,
+      sessionId: watch.eventBase.session_id,
       endReason: result.endReason,
       readCount: result.readCount,
       readErrorCount: result.readErrorCount,
       durationMs: result.durationMs,
-      candidateCount: event.candidate_count,
-      sentCount: event.sent_count,
-      addedCount: event.added_count,
-      classifierOutcome: event.classifier_outcome,
     });
+
+    // Checked again: the flag or the pause can change during the watch.
+    if (result.finalRegion !== null && this.learningAllowed()) {
+      await this.learn(watch, result.finalRegion);
+    }
   }
 
-  private async learn(
-    watch: ActiveWatch,
-    finalRegion: string,
-    event: VocabularyEditWatchCompletedEvent,
-  ): Promise<void> {
-    const extraction = extractCandidates(watch.pastedText, finalRegion);
-    event.rewrite = extraction.rewrite;
-    event.steps_m = extraction.steps.m;
-    event.steps_c = extraction.steps.c;
-    event.steps_d = extraction.steps.d;
-    event.steps_i = extraction.steps.i;
-    event.candidate_count = extraction.candidates.length;
-    if (extraction.rewrite || extraction.candidates.length === 0) return;
-
-    const filtered = filterCandidates(
-      extraction.candidates,
-      await this.loadKnownKeys(),
+  private metricsWanted(): boolean {
+    return (
+      this.remoteConfig.getConfig().flags[DESKTOP_EDIT_METRICS_FLAG] !==
+        false && this.telemetry.isEnabled()
     );
-    event.drop_shape = filtered.dropped.shape;
-    event.drop_length = filtered.dropped.length;
-    event.drop_known = filtered.dropped.known;
-    event.drop_cjk = filtered.dropped.cjk;
-    event.drop_duplicate = filtered.dropped.duplicate;
-    event.drop_cap = filtered.dropped.cap;
-    if (filtered.kept.length === 0) return;
+  }
 
-    event.sent_count = filtered.kept.length;
-    const started = this.timers.now();
-    const exit = await Effect.runPromiseExit(
-      this.client.classify({
-        candidates: filtered.kept,
-        language: watch.language,
-      }),
+  private learningAllowed(): boolean {
+    return (
+      this.remoteConfig.getConfig().flags[DESKTOP_AUTO_VOCABULARY_FLAG] !==
+        false && this.timers.now() >= this.pausedUntil
     );
-    event.classifier_ms = Math.round(this.timers.now() - started);
-    if (Exit.isFailure(exit)) {
-      event.classifier_outcome = classifierOutcomeOf(exit.cause);
-      return;
+  }
+
+  private async learn(watch: ActiveWatch, finalRegion: string): Promise<void> {
+    const event: VocabularyLearningCompletedEvent = {
+      session_id: watch.eventBase.session_id,
+    };
+    try {
+      const extraction = extractCandidates(watch.pastedText, finalRegion);
+      event.rewrite = extraction.rewrite;
+      event.candidate_count = extraction.candidates.length;
+      if (extraction.rewrite || extraction.candidates.length === 0) return;
+
+      const filtered = filterCandidates(
+        extraction.candidates,
+        await this.loadKnownKeys(),
+      );
+      event.drop_shape_count = filtered.dropped.shape;
+      event.drop_length_count = filtered.dropped.length;
+      event.drop_known_count = filtered.dropped.known;
+      event.drop_cjk_count = filtered.dropped.cjk;
+      event.drop_duplicate_count = filtered.dropped.duplicate;
+      event.drop_cap_count = filtered.dropped.cap;
+      if (filtered.kept.length === 0) return;
+
+      event.sent_count = filtered.kept.length;
+      const detected = watch.eventBase.detected_language;
+      const language =
+        detected &&
+        detected.length <= VOCABULARY_CLASSIFY_LIMITS.maxLanguageLength
+          ? detected
+          : undefined;
+      const started = this.timers.now();
+      const exit = await Effect.runPromiseExit(
+        this.client.classify({
+          candidates: filtered.kept,
+          language,
+        }),
+      );
+      event.classifier_duration_ms = Math.round(this.timers.now() - started);
+      if (Exit.isFailure(exit)) {
+        event.classifier_outcome = classifierOutcomeOf(exit.cause);
+        return;
+      }
+      if (exit.value.disabled) {
+        event.classifier_outcome = "disabled";
+        this.pausedUntil = this.timers.now() + DISABLED_PAUSE_MS;
+        return;
+      }
+      event.classifier_outcome = "ok";
+
+      const heardByTerm = new Map(
+        filtered.kept.map((candidate) => [candidate.term, candidate.heard]),
+      );
+      const accepted = [...new Set(exit.value.accepted)].filter((term) =>
+        heardByTerm.has(term),
+      );
+      event.accepted_count = accepted.length;
+      if (accepted.length === 0) return;
+
+      const added = await insertLearnedVocabulary(
+        accepted.map((term) => ({
+          word: term,
+          observedSource: heardByTerm.get(term) ?? "",
+        })),
+      );
+      event.added_count = added.length;
+      event.multiword_count = added.filter((row) => /\s/.test(row.word)).length;
+      if (added.length > 0) this.showToast(added);
+    } catch (error) {
+      logger.main.warn("Vocabulary learning pass failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.telemetry.trackVocabularyLearningCompleted(event);
+      logger.main.debug("Vocabulary learning ended", {
+        sessionId: event.session_id,
+        candidateCount: event.candidate_count,
+        sentCount: event.sent_count,
+        addedCount: event.added_count,
+        classifierOutcome: event.classifier_outcome,
+      });
     }
-    if (exit.value.disabled) {
-      event.classifier_outcome = "disabled";
-      this.pausedUntil = this.timers.now() + DISABLED_PAUSE_MS;
-      return;
-    }
-    event.classifier_outcome = "ok";
-
-    const heardByTerm = new Map(
-      filtered.kept.map((candidate) => [candidate.term, candidate.heard]),
-    );
-    const accepted = [...new Set(exit.value.accepted)].filter((term) =>
-      heardByTerm.has(term),
-    );
-    event.accepted_count = accepted.length;
-    if (accepted.length === 0) return;
-
-    const added = await insertLearnedVocabulary(
-      accepted.map((term) => ({
-        word: term,
-        observedSource: heardByTerm.get(term) ?? "",
-      })),
-    );
-    event.added_count = added.length;
-    event.multiword_count = added.filter((row) => /\s/.test(row.word)).length;
-    if (added.length > 0) this.showToast(added);
   }
 
   private async loadKnownKeys(): Promise<Set<string>> {

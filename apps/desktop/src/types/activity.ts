@@ -95,6 +95,14 @@ export function normalizeActivityAppType(value: unknown) {
   return normalizeHistoricalActivityAppType(value) ?? DEFAULT_ACTIVITY_APP_TYPE;
 }
 
+/** The app type saved with a dictation (transcription meta.activity). */
+export function activityAppTypeOf(meta: unknown): string | undefined {
+  const activity = (
+    meta as { activity?: { appType?: unknown } } | null | undefined
+  )?.activity;
+  return normalizeHistoricalActivityAppType(activity?.appType) ?? undefined;
+}
+
 export function normalizeHistoricalActivityAppType(
   value: unknown,
 ): string | null {

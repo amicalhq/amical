@@ -46,20 +46,37 @@ export type EditTrackerEndReason =
   | "helper_restart"
   | "pasted_text_not_found";
 
+/**
+ * The user's version of the pasted text when the watch ended:
+ * - none: never located;
+ * - discarded: undone or deleted;
+ * - editing: an editing key came after the last trusted read;
+ * - unstable: changed with no key seen and no two equal trusted reads;
+ * - settled: everything else, also an unchanged region.
+ */
+export type EditFinalState =
+  | "none"
+  | "discarded"
+  | "editing"
+  | "unstable"
+  | "settled";
+
 export interface EditTrackerResult {
   endReason: EditTrackerEndReason;
+  finalState: EditFinalState;
   /**
-   * The final region to learn from, or null when nothing may be learned
-   * (no change, stale or unstable final state, or an end that learns nothing).
+   * The user's last version of the pasted text: the Enter-mark region, else
+   * the last trusted region. Null when finalState is none or discarded.
    */
+  region: string | null;
+  /** The region to learn from: region when settled and changed, else null. */
   finalRegion: string | null;
-  /** True when the final region differs from the pasted text. */
+  /** True when region differs from the pasted text. */
   changed: boolean;
-  staleFinalState: boolean;
   /** Only meaningful when no key stream was seen. */
   stableFinalState: boolean;
   keyEventsSeen: boolean;
-  located: boolean;
+  /** Null when the paste was never located. */
   locateMs: number | null;
   readCount: number;
   readErrorCount: number;
@@ -118,15 +135,7 @@ export interface Candidate {
   heard: string;
 }
 
-export interface StepCounts {
-  m: number;
-  c: number;
-  d: number;
-  i: number;
-}
-
 export interface CandidateExtraction {
-  steps: StepCounts;
   /** True when the rewrite guard fired; candidates is then empty. */
   rewrite: boolean;
   candidates: Candidate[];
