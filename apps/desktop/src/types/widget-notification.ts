@@ -1,4 +1,5 @@
 import type { ParseKeys } from "i18next";
+import { BILLING_RETURN_PATH } from "../constants/web-app";
 import { ErrorCodes, type ErrorCode } from "./error";
 
 export type WidgetNotificationType =
@@ -21,10 +22,10 @@ export type I18nText = {
 export type LocalizedText = string | I18nText;
 
 /** A main-process command an action runs (through tRPC) instead of navigating. */
-export type WidgetNotificationCommand = {
-  kind: "undoLearnedVocabulary";
-  entries: { id: string; word: string }[];
-};
+export type WidgetNotificationCommand =
+  | { kind: "undoLearnedVocabulary"; entries: { id: string; word: string }[] }
+  // Opens the web app at `returnPath`, already signed in.
+  | { kind: "openWebSession"; returnPath: string };
 
 export interface WidgetNotificationAction {
   label: LocalizedText;
@@ -118,7 +119,8 @@ export const buildNotificationDescription = (
 
 // Discord support server URL (same as sidebar Community link)
 export const DISCORD_SUPPORT_URL = "https://amical.ai/community";
-export const APP_PLAN_URL = "https://app.amical.ai/plan";
+// Billing, opened from the cap toast; `from` tells the page where the click came from.
+export const QUOTA_BILLING_PATH = `${BILLING_RETURN_PATH}?from=quota`;
 
 const MICROPHONE_NOTIFICATION_CONFIG: WidgetNotificationConfig = {
   title: { key: "widget.notifications.type.noAudio.title" },
@@ -178,7 +180,7 @@ export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.upgradePlan" },
-      externalUrl: APP_PLAN_URL,
+      command: { kind: "openWebSession", returnPath: QUOTA_BILLING_PATH },
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },

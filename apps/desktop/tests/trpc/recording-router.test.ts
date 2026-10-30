@@ -336,4 +336,59 @@ describe("recordingRouter capture lifecycle", () => {
 
     observer.unsubscribe();
   });
+
+  it.each([
+    ["an owner or admin", { billing: { canManage: true } }, true],
+    ["a member", { billing: { canManage: false } }, false],
+    // Usage loads only while a meter is watched; an unknown role keeps Upgrade.
+    ["a user whose role is not loaded", null, true],
+  ])(
+    "shows Upgrade on the cap toast to %s",
+    async (_who, usage, upgradeShown) => {
+      type NotificationListener = (data: {
+        type: "transcription_failed";
+        errorCode: string;
+      }) => void;
+      const notificationListeners = new Set<NotificationListener>();
+      const caller = recordingRouter.createCaller({
+        services: {
+          recordingLifecycle: {
+            onNotification: vi.fn((listener: NotificationListener) => {
+              notificationListeners.add(listener);
+              return () => notificationListeners.delete(listener);
+            }),
+          },
+          usageService: { get: () => usage },
+        },
+      } as never);
+      const emitted: Array<{
+        primaryAction?: unknown;
+        secondaryAction?: unknown;
+      }> = [];
+      const subscription = await caller.widgetNotifications();
+      const observer = subscription.subscribe({
+        next: (notification) => emitted.push(notification),
+      });
+
+      for (const listener of notificationListeners)
+        listener({ type: "transcription_failed", errorCode: "QUOTA_EXCEEDED" });
+
+      const upgrade = expect.objectContaining({
+        command: {
+          kind: "openWebSession",
+          returnPath: "/organization/billing?from=quota",
+        },
+      });
+      const support = expect.objectContaining({ icon: "discord" });
+      expect(emitted).toEqual([
+        expect.objectContaining(
+          upgradeShown
+            ? { primaryAction: upgrade, secondaryAction: support }
+            : { primaryAction: support, secondaryAction: undefined },
+        ),
+      ]);
+
+      observer.unsubscribe();
+    },
+  );
 });

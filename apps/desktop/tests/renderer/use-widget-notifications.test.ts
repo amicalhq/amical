@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   dismiss: vi.fn(),
   navigate: vi.fn(),
+  openWebSession: vi.fn(),
+  toastRenders: new Map<number, (id: number) => unknown>(),
   setPassThroughReason: vi.fn(),
   subscription: undefined as
     | {
@@ -48,6 +50,11 @@ vi.mock("@/trpc/react", () => ({
         useMutation: () => ({ mutate: vi.fn() }),
       },
     },
+    auth: {
+      openWebSession: {
+        useMutation: () => ({ mutate: mocks.openWebSession }),
+      },
+    },
   },
 }));
 
@@ -55,11 +62,12 @@ vi.mock("sonner", () => ({
   toast: {
     custom: vi.fn(
       (
-        _render: unknown,
+        render: (id: number) => unknown,
         options: { onDismiss: () => void; onAutoClose: () => void },
       ) => {
         const id = ++mocks.toastId;
         mocks.toastOptions.set(id, options);
+        mocks.toastRenders.set(id, render);
         return id;
       },
     ),
@@ -84,6 +92,8 @@ const notification = {
 beforeEach(() => {
   mocks.dismiss.mockClear();
   mocks.navigate.mockClear();
+  mocks.openWebSession.mockReset();
+  mocks.toastRenders.clear();
   mocks.setPassThroughReason.mockClear();
   mocks.subscription = undefined;
   mocks.toastId = 0;
@@ -139,6 +149,64 @@ describe("useWidgetNotifications", () => {
       notificationSequence: 1,
     });
     expect(mocks.setPassThroughReason).toHaveBeenLastCalledWith("toast", false);
+
+    unmount();
+  });
+
+  it("opens a signed-in web session for an openWebSession action", () => {
+    const { unmount } = renderHook(() => useWidgetNotifications("idle"));
+    const upgrade = {
+      label: "Upgrade",
+      command: {
+        kind: "openWebSession" as const,
+        returnPath: "/organization/billing?from=quota",
+      },
+    };
+
+    act(() =>
+      mocks.subscription?.onData({ ...notification, primaryAction: upgrade }),
+    );
+    const toastElement = mocks.toastRenders.get(1)?.(1) as {
+      props: { onActionClick: (action: typeof upgrade) => void };
+    };
+    act(() => toastElement.props.onActionClick(upgrade));
+
+    expect(mocks.openWebSession).toHaveBeenCalledWith(
+      { returnPath: "/organization/billing?from=quota" },
+      expect.anything(),
+    );
+    expect(mocks.navigate).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it("opens the page in the browser when the signed-in session fails", () => {
+    const openExternal = vi.fn();
+    Object.assign(window, { electronAPI: { openExternal } });
+    mocks.openWebSession.mockImplementation(
+      (_input: unknown, options: { onError: (error: Error) => void }) =>
+        options.onError(new Error("Not signed in")),
+    );
+    const { unmount } = renderHook(() => useWidgetNotifications("idle"));
+    const upgrade = {
+      label: "Upgrade",
+      command: {
+        kind: "openWebSession" as const,
+        returnPath: "/organization/billing?from=quota",
+      },
+    };
+
+    act(() =>
+      mocks.subscription?.onData({ ...notification, primaryAction: upgrade }),
+    );
+    const toastElement = mocks.toastRenders.get(1)?.(1) as {
+      props: { onActionClick: (action: typeof upgrade) => void };
+    };
+    act(() => toastElement.props.onActionClick(upgrade));
+
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://app.amical.ai/organization/billing?from=quota",
+    );
 
     unmount();
   });

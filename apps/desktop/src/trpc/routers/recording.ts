@@ -206,6 +206,10 @@ export const recordingRouter = createRouter({
           config,
           data,
         );
+        // Members can't change the plan, so their cap toast has no Upgrade.
+        const memberAtCap =
+          config === ERROR_CODE_CONFIG[ErrorCodes.QUOTA_EXCEEDED] &&
+          ctx.services.usageService.get()?.billing.canManage === false;
 
         emit.next({
           id: uuid(),
@@ -217,8 +221,10 @@ export const recordingRouter = createRouter({
           subDescription: data.noRecording ? undefined : config.subDescription,
           errorCode: data.errorCode,
           traceId: data.traceId,
-          primaryAction: config.primaryAction,
-          secondaryAction: config.secondaryAction,
+          primaryAction: memberAtCap
+            ? config.secondaryAction
+            : config.primaryAction,
+          secondaryAction: memberAtCap ? undefined : config.secondaryAction,
           timestamp: Date.now(),
         });
       };

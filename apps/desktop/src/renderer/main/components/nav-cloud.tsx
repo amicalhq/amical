@@ -2,11 +2,10 @@ import { IconCreditCard, IconUserPlus, type Icon } from "@tabler/icons-react";
 import { toast } from "sonner";
 
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { BILLING_RETURN_PATH } from "@/constants/web-app";
 import { api } from "@/trpc/react";
 
 type CloudItem = { title: string; icon: Icon; returnPath: string };
-
-export const BILLING_RETURN_PATH = "/organization/billing";
 
 const CLOUD_ITEMS: CloudItem[] = [
   {

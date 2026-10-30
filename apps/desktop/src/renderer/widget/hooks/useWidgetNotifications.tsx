@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/trpc/react";
+import { WEB_APP_ORIGIN } from "@/constants/web-app";
 import {
   WIDGET_NOTIFICATION_TIMEOUT,
   WIDGET_NOTIFICATION_CONFIG,
@@ -14,6 +15,7 @@ import { setPassThroughReason } from "../pass-through";
 export const useWidgetNotifications = (recordingState: RecordingState) => {
   const navigateMainWindow = api.widget.navigateMainWindow.useMutation();
   const undoLearnedVocabulary = api.vocabulary.undoLearned.useMutation();
+  const openWebSession = api.auth.openWebSession.useMutation();
   const trackEvent = api.telemetry.trackEvent.useMutation();
   const activeToastIdsRef = useRef<Set<string | number>>(new Set());
   const [hasVisibleNotification, setHasVisibleNotification] = useState(false);
@@ -29,6 +31,18 @@ export const useWidgetNotifications = (recordingState: RecordingState) => {
   const handleActionClick = async (action: WidgetNotificationAction) => {
     if (action.command?.kind === "undoLearnedVocabulary") {
       undoLearnedVocabulary.mutate({ entries: action.command.entries });
+    } else if (action.command?.kind === "openWebSession") {
+      const { returnPath } = action.command;
+      // Signed out, or the handoff failed: open the page anyway; the browser asks to sign in.
+      openWebSession.mutate(
+        { returnPath },
+        {
+          onError: () =>
+            void window.electronAPI.openExternal(
+              `${WEB_APP_ORIGIN}${returnPath}`,
+            ),
+        },
+      );
     } else if (action.navigateTo) {
       navigateMainWindow.mutate({ route: action.navigateTo });
     } else if (action.externalUrl) {

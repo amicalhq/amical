@@ -12,7 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useDocumentVisible } from "@/renderer/main/hooks/use-document-visible";
 import { api } from "@/trpc/react";
-import { BILLING_RETURN_PATH } from "./nav-cloud";
+import { BILLING_RETURN_PATH } from "@/constants/web-app";
 
 /** Below this share of the allowance left, the meter warns. */
 const LOW_REMAINING_RATIO = 0.1;
@@ -157,7 +157,9 @@ function CloudUsageMeter() {
     }).format(new Date(cloudWords.resetsAt)),
   });
   const openBilling = () =>
-    openWebSession.mutate({ returnPath: BILLING_RETURN_PATH });
+    openWebSession.mutate({
+      returnPath: `${BILLING_RETURN_PATH}?from=desktop_meter`,
+    });
 
   const meter = (
     <>
