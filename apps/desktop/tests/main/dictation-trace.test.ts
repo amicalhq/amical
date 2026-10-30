@@ -15,6 +15,7 @@ import {
   recordCapturePhases,
   recordAudioContextTelemetry,
   recordCaptureErrorName,
+  recordSessionDimensions,
   settleObligation,
 } from "../../src/main/telemetry/dictation-trace";
 import { runPromise } from "../../src/main/runtime/telemetry-runtime";
@@ -126,6 +127,24 @@ describe("dictation trace", () => {
       Object.keys(flushed[0]).filter((key) => key.startsWith("audio_context_")),
     ).toEqual([]);
     expect(flushed[0]).not.toHaveProperty("capture_error_name");
+  });
+
+  it("adds known session dimensions and skips absent ones", () => {
+    install();
+    openSessionTrace("dims", {});
+    recordSessionDimensions("dims", {
+      app_type: "chat",
+      detected_language: "de",
+      formatting_model: undefined,
+    });
+    closeSessionTrace("dims", { disposition: "success" });
+
+    expect(flushed).toHaveLength(1);
+    expect(flushed[0]).toMatchObject({
+      app_type: "chat",
+      detected_language: "de",
+    });
+    expect(flushed[0]).not.toHaveProperty("formatting_model");
   });
 
   it("reports the latest observed capture format on the v2 event without leaking arbitrary fields", () => {

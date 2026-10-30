@@ -187,6 +187,29 @@ export function openSessionTrace(
   });
 }
 
+/** Session dimensions, under the keys the edit-watch event also uses
+ * (transcription_edit_watch_completed), so the two events break down alike. */
+export interface SessionTraceDimensions {
+  app_type?: string;
+  detected_language?: string;
+  formatting_model?: string;
+}
+
+/** Add known dimensions to the session's payload; absent values are skipped. */
+export function recordSessionDimensions(
+  sessionId: string,
+  dimensions: SessionTraceDimensions,
+): void {
+  const trace = sessions.get(sessionId);
+  if (!trace) {
+    dropLate(sessionId, "dimensions");
+    return;
+  }
+  for (const [key, value] of Object.entries(dimensions)) {
+    if (value !== undefined) trace.meta[key] = value;
+  }
+}
+
 /** Preserve the historical session-open boundary after registering early
  * enough to collect synchronous warmup spans. Earlier spans have negative offsets. */
 export function markSessionTraceAnchor(sessionId: string): void {

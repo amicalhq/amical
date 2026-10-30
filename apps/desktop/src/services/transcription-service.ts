@@ -56,6 +56,7 @@ import {
   recordDefect,
   recordPhase,
   recordPoint,
+  recordSessionDimensions,
   type ChunkAggregate,
 } from "../main/telemetry/dictation-trace";
 import {
@@ -1146,6 +1147,12 @@ export class TranscriptionService {
             ? transcriptionActivityModel("amical-cloud", true)
             : null),
       };
+
+      recordSessionDimensions(sessionId, {
+        app_type: activity.appType,
+        detected_language: prepared.detectedLanguage,
+        formatting_model: prepared.formattingModel,
+      });
 
       logger.transcription.info("Streaming session resolved", { sessionId });
       return {
