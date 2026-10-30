@@ -1,5 +1,7 @@
 import { observable } from "@trpc/server/observable";
+import { shell } from "electron";
 import { z } from "zod";
+import { WEB_APP_ORIGIN } from "../../constants/web-app";
 import { createRouter, procedure } from "../trpc";
 import { logger } from "../../main/logger";
 import { runAuthEffect, type AuthState } from "../../services/auth-service";
@@ -48,11 +50,26 @@ export const authRouter = createRouter({
     };
   }),
 
+  // `returnPath` starts with "/", so the fallback URL stays on the web app.
   openWebSession: procedure
-    .input(z.object({ returnPath: z.string().optional() }).optional())
+    .input(
+      z
+        .object({ returnPath: z.string().startsWith("/").optional() })
+        .optional(),
+    )
     .mutation(async ({ ctx, input }) => {
       const authService = ctx.services.authService;
-      await runAuthEffect(authService.openWebSession(input?.returnPath ?? "/"));
+      const returnPath = input?.returnPath ?? "/";
+      try {
+        await runAuthEffect(authService.openWebSession(returnPath));
+      } catch (error) {
+        // Signed out, or the handoff failed: open the page anyway; the browser asks to sign in.
+        logger.main.warn(
+          "Web-session handoff failed, opening directly:",
+          error,
+        );
+        await shell.openExternal(`${WEB_APP_ORIGIN}${returnPath}`);
+      }
       return { success: true };
     }),
 
