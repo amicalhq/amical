@@ -100,7 +100,8 @@
       },
       "microphone": {
         "title": "Micrófono",
-        "description": "Para que Amical pueda oír tu dictado"
+        "description": "Para que Amical pueda oír tu dictado",
+        "windowsBlocked": "Windows impide que Amical use el micrófono. Abre la configuración y permite que Amical acceda al micrófono."
       },
       "accessibility": {
         "title": "Accesibilidad",

@@ -442,6 +442,14 @@ export class OnboardingService extends EventEmitter {
       !permissions.microphone || !permissions.accessibility;
 
     const needed = forceOnboarding || !hasCompleted || hasMissingPermissions;
+    if (needed) {
+      logger.main.info("Onboarding needed", {
+        forceOnboarding,
+        notCompleted: !hasCompleted,
+        microphoneStatus: systemPreferences.getMediaAccessStatus("microphone"),
+        accessibility: permissions.accessibility,
+      });
+    }
 
     return {
       needed,

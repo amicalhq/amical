@@ -100,7 +100,8 @@
       },
       "microphone": {
         "title": "Microphone",
-        "description": "So Amical can hear your dictation"
+        "description": "So Amical can hear your dictation",
+        "windowsBlocked": "Windows blocks Amical from using the microphone. Open settings and allow microphone access for Amical."
       },
       "accessibility": {
         "title": "Accessibility",

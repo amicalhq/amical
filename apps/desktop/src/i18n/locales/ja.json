@@ -100,7 +100,8 @@
       },
       "microphone": {
         "title": "マイク",
-        "description": "Amicalがディクテーションを聞き取るために必要です"
+        "description": "Amicalがディクテーションを聞き取るために必要です",
+        "windowsBlocked": "WindowsがAmicalのマイク使用をブロックしています。設定を開いて、Amicalにマイクへのアクセスを許可してください。"
       },
       "accessibility": {
         "title": "アクセシビリティ",
