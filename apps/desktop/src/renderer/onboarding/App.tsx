@@ -11,6 +11,7 @@ import { PermissionsScreen } from "./components/screens/PermissionsScreen";
 import { DiscoverySourceScreen } from "./components/screens/DiscoverySourceScreen";
 import { ModelSelectionScreen } from "./components/screens/ModelSelectionScreen";
 import { SignInScreen } from "./components/screens/SignInScreen";
+import { TelemetryScreen } from "./components/screens/TelemetryScreen";
 import { DownloadScreen } from "./components/screens/DownloadScreen";
 import { MicTestScreen } from "./components/screens/MicTestScreen";
 import { ShortcutScreen } from "./components/screens/ShortcutScreen";
@@ -77,6 +78,13 @@ export function App() {
   // tRPC queries
   const featureFlagsQuery = api.onboarding.getFeatureFlags.useQuery();
   const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
+
+  // A signed-in user who picks Local skips the telemetry step.
+  const [signedIn, setSignedIn] = useState(false);
+  api.auth.onAuthStateChange.useSubscription(undefined, {
+    onData: (authState) => setSignedIn(authState.isAuthenticated),
+    onError: (error) => console.error("Auth state subscription error:", error),
+  });
   const utils = api.useUtils();
 
   // Effective model type: the in-progress selection, falling back to persisted
@@ -96,8 +104,9 @@ export function App() {
         modelType,
         flags: featureFlagsQuery.data,
         skipped: (skippedScreensQuery.data as OnboardingScreen[]) || [],
+        signedIn,
       }),
-    [featureFlagsQuery.data, skippedScreensQuery.data],
+    [featureFlagsQuery.data, skippedScreensQuery.data, signedIn],
   );
 
   // Get active screens. The cloud-only dictation steps are inserted only when
@@ -374,6 +383,9 @@ export function App() {
 
       case OnboardingScreen.SignIn:
         return <SignInScreen onNext={navigateNext} onBack={navigateBack} />;
+
+      case OnboardingScreen.Telemetry:
+        return <TelemetryScreen onNext={navigateNext} onBack={navigateBack} />;
 
       case OnboardingScreen.Download:
         return <DownloadScreen onNext={navigateNext} onBack={navigateBack} />;

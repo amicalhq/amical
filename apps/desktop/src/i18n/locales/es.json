@@ -177,6 +177,12 @@
         "loginStartFailed": "No se pudo abrir el inicio de sesión. Por favor, inténtalo de nuevo."
       }
     },
+    "telemetry": {
+      "title": "Ayuda a mejorar Amical",
+      "subtitle": "Los datos de uso y los informes de errores nos ayudan a encontrar problemas y mejorar Amical.",
+      "share": "Compartir datos de uso anónimos",
+      "decline": "No compartir"
+    },
     "download": {
       "title": "Preparando tu modelo",
       "subtitle": "Amical está descargando un modelo de voz. Esto ocurre una sola vez; después, el dictado funciona completamente sin conexión.",

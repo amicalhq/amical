@@ -15,6 +15,7 @@ export enum OnboardingScreen {
   DiscoverySource = "discovery",
   ModelSelection = "models",
   SignIn = "signin",
+  Telemetry = "telemetry",
   Download = "download",
   MicTest = "mic_test",
   Shortcut = "shortcut",

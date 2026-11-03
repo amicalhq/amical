@@ -177,6 +177,12 @@
         "loginStartFailed": "登入開啟失敗，請再試一次。"
       }
     },
+    "telemetry": {
+      "title": "協助改善 Amical",
+      "subtitle": "使用資料和當機報告可協助我們找出問題並改善 Amical。",
+      "share": "分享匿名使用資料",
+      "decline": "不分享"
+    },
     "download": {
       "title": "正在準備您的模型",
       "subtitle": "Amical 正在下載語音模型。只需下載一次，之後聽寫即可完全離線運作。",

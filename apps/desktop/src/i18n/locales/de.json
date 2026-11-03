@@ -177,6 +177,12 @@
         "loginStartFailed": "Anmeldung konnte nicht geöffnet werden. Bitte versuche es erneut."
       }
     },
+    "telemetry": {
+      "title": "Hilf, Amical zu verbessern",
+      "subtitle": "Nutzungsdaten und Absturzberichte helfen uns, Probleme zu finden und Amical zu verbessern.",
+      "share": "Anonyme Nutzungsdaten teilen",
+      "decline": "Nicht teilen"
+    },
     "download": {
       "title": "Dein Modell wird vorbereitet",
       "subtitle": "Amical lädt ein Spracherkennungsmodell herunter. Das passiert nur einmal, danach funktioniert das Diktat komplett offline.",

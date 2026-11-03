@@ -449,6 +449,9 @@ export class AuthService extends EventEmitter {
 
       this.pendingAuth = null;
       this.emit("authenticated", authState);
+      // "authenticated" is also re-emitted to restore state (e.g. after a
+      // failed logout). "signed-in" fires only for a completed sign-in.
+      this.emit("signed-in", authState);
       logger.main.info("Authentication successful", {
         userInfo: authState.userInfo,
       });

@@ -13,7 +13,10 @@ interface AuthStateFixture {
   };
 }
 
-function createHarness(auth?: AuthStateFixture) {
+function createHarness(
+  auth?: AuthStateFixture,
+  telemetry: { enabled?: boolean } = { enabled: true },
+) {
   const posthog = {
     capture: vi.fn(),
     captureException: vi.fn(),
@@ -78,7 +81,7 @@ function createHarness(auth?: AuthStateFixture) {
   } as unknown as PostHogClient;
 
   const settingsService = {
-    getTelemetrySettings: vi.fn(() => Promise.resolve({ enabled: true })),
+    getTelemetrySettings: vi.fn(() => Promise.resolve(telemetry)),
     getAllSettings: vi.fn(() => Promise.resolve({ auth })),
     setTelemetrySettings: vi.fn(() => Promise.resolve()),
   } as unknown as SettingsService;
@@ -253,6 +256,74 @@ describe("TelemetryService identity", () => {
         $is_identified: true,
       }),
     });
+  });
+});
+
+describe("TelemetryService consent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("holds events until opt-in, then sends them with their capture time", async () => {
+    const { posthog, service } = createHarness(undefined, {});
+
+    await service.initialize();
+    service.trackAppLaunch();
+
+    expect(service.isEnabled()).toBe(false);
+    expect(posthog.optOut).toHaveBeenCalled();
+    expect(posthog.capture).not.toHaveBeenCalled();
+
+    await service.optIn();
+
+    expect(posthog.capture).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        distinctId: "machine-1",
+        event: "app_launch",
+        timestamp: expect.any(Date),
+      }),
+    );
+  });
+
+  it("drops held events on opt-out", async () => {
+    const { posthog, service } = createHarness(undefined, {});
+
+    await service.initialize();
+    service.trackAppLaunch();
+    await service.optOut();
+    await service.optIn();
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it("does not hold events for an install that opted out", async () => {
+    const { posthog, service } = createHarness(undefined, { enabled: false });
+
+    await service.initialize();
+    service.trackAppLaunch();
+    await service.optIn();
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it("turns telemetry on at sign-in and sends held events", async () => {
+    const { posthog, service, settingsService } = createHarness(undefined, {});
+
+    await service.initialize();
+    service.trackAppLaunch();
+    service.identifyUser("user-1");
+    await service.handleSignIn();
+
+    expect(settingsService.setTelemetrySettings).toHaveBeenCalledWith({
+      enabled: true,
+    });
+    expect(service.isEnabled()).toBe(true);
+    expect(posthog.identify).toHaveBeenCalledWith(
+      expect.objectContaining({ distinctId: "user-1" }),
+    );
+    expect(posthog.capture).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "app_launch" }),
+    );
   });
 });
 

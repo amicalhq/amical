@@ -486,7 +486,7 @@ export default function HistorySettingsPage() {
   );
   const audioPlayer = useAudioPlayer();
   const telemetrySettingsQuery = api.settings.getTelemetrySettings.useQuery();
-  const isTelemetryEnabled = telemetrySettingsQuery.data?.enabled !== false;
+  const isTelemetryEnabled = telemetrySettingsQuery.data?.enabled === true;
   const retryDisabledByRecording = recordingState !== "idle";
 
   api.recording.stateUpdates.useSubscription(undefined, {

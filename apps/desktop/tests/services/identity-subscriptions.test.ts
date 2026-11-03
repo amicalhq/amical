@@ -52,7 +52,10 @@ describe("identity subscriptions", () => {
           clientState.isIdentified = false;
         }),
       } as unknown as PostHogClient;
-      const settingsService = {} as unknown as SettingsService;
+      // A completed sign-in turns telemetry on, which persists the setting.
+      const settingsService = {
+        setTelemetrySettings: vi.fn(async () => undefined),
+      } as unknown as SettingsService;
       const authService = new EventEmitter() as unknown as AuthService;
 
       const scope = Effect.runSync(Scope.make());
@@ -72,9 +75,28 @@ describe("identity subscriptions", () => {
       return {
         service: Context.get(ctx, TelemetryServiceTag),
         client,
+        settingsService,
         authEmitter: authService as unknown as EventEmitter,
       };
     };
+
+    it("turns telemetry on at signed-in, not at a re-emitted authenticated", async () => {
+      const { settingsService, authEmitter } = await build();
+
+      // A failed logout re-emits "authenticated" to restore state.
+      authEmitter.emit("authenticated", {
+        isAuthenticated: true,
+        userInfo: { sub: "user-1" },
+      });
+      expect(settingsService.setTelemetrySettings).not.toHaveBeenCalled();
+
+      authEmitter.emit("signed-in", { isAuthenticated: true });
+      await vi.waitFor(() =>
+        expect(settingsService.setTelemetrySettings).toHaveBeenCalledWith({
+          enabled: true,
+        }),
+      );
+    });
 
     it("identifies on authenticated when the token carried a subject", async () => {
       const { client, authEmitter } = await build();

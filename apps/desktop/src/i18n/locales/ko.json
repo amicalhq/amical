@@ -177,6 +177,12 @@
         "loginStartFailed": "로그인 페이지를 열지 못했습니다. 다시 시도해 주세요."
       }
     },
+    "telemetry": {
+      "title": "Amical 개선에 참여해 주세요",
+      "subtitle": "사용 데이터와 오류 보고서는 문제를 찾고 Amical을 개선하는 데 도움이 됩니다.",
+      "share": "익명 사용 데이터 공유",
+      "decline": "공유 안 함"
+    },
     "download": {
       "title": "모델 준비 중",
       "subtitle": "Amical이 음성 모델을 다운로드하고 있습니다. 한 번만 진행되며, 이후 받아쓰기는 완전히 오프라인으로 실행됩니다.",

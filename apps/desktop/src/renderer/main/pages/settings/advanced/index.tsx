@@ -38,6 +38,7 @@ export default function AdvancedSettingsPage() {
   const [preloadWhisperModel, setPreloadWhisperModel] = useState(true);
   const [preserveClipboard, setPreserveClipboard] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   // tRPC queries and mutations
   const settingsQuery = api.settings.getSettings.useQuery();
@@ -84,6 +85,29 @@ export default function AdvancedSettingsPage() {
         toast.error(t("settings.advanced.toast.telemetryUpdateFailed"));
       },
     });
+
+  api.auth.onAuthStateChange.useSubscription(undefined, {
+    onData: (authState) => setIsAuthenticated(authState.isAuthenticated),
+    onError: (error) => console.error("Auth state subscription error:", error),
+  });
+
+  const telemetryEnabled = telemetryQuery.data?.enabled === true;
+
+  // A sign-in turns telemetry on in the main process. Refetch so the toggle
+  // hides. The subscription also emits the current value on start; skip that.
+  api.settings.onTelemetryEnabledChange.useSubscription(undefined, {
+    onData: (enabled) => {
+      if (enabled !== telemetryEnabled) {
+        void utils.settings.getTelemetrySettings.invalidate();
+      }
+    },
+  });
+  // Signed-in users have no opt-out. A signed-in user who opted out earlier
+  // keeps the toggle until they turn telemetry on.
+  const showTelemetryToggle =
+    isAuthenticated !== null &&
+    telemetryQuery.data !== undefined &&
+    (!isAuthenticated || !telemetryEnabled);
 
   const resetAppMutation = api.settings.resetApp.useMutation({
     onMutate: () => {
@@ -317,27 +341,29 @@ export default function AdvancedSettingsPage() {
             </Select>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="telemetry">
-                {t("settings.advanced.telemetry.label")}
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                {t("settings.advanced.telemetry.description")}{" "}
-                <button
-                  onClick={handleOpenTelemetryDocs}
-                  className="text-primary hover:underline"
-                >
-                  {t("settings.advanced.telemetry.learnMore")}
-                </button>
-              </p>
+          {showTelemetryToggle && (
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="telemetry">
+                  {t("settings.advanced.telemetry.label")}
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  {t("settings.advanced.telemetry.description")}{" "}
+                  <button
+                    onClick={handleOpenTelemetryDocs}
+                    className="text-primary hover:underline"
+                  >
+                    {t("settings.advanced.telemetry.learnMore")}
+                  </button>
+                </p>
+              </div>
+              <Switch
+                id="telemetry"
+                checked={telemetryEnabled}
+                onCheckedChange={handleTelemetryChange}
+              />
             </div>
-            <Switch
-              id="telemetry"
-              checked={telemetryQuery.data?.enabled ?? true}
-              onCheckedChange={handleTelemetryChange}
-            />
-          </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="data-location">

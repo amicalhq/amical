@@ -615,13 +615,14 @@ export class SettingsService extends EventEmitter {
   }
 
   /**
-   * Get telemetry settings
+   * Get telemetry settings. `enabled` is undefined until the user opts in,
+   * opts out, or signs in; undefined counts as off.
    */
   async getTelemetrySettings(): Promise<
     NonNullable<AppSettingsData["telemetry"]>
   > {
     const telemetry = await getSettingsSection("telemetry");
-    return telemetry ?? { enabled: true }; // Default to enabled
+    return telemetry ?? {};
   }
 
   /**

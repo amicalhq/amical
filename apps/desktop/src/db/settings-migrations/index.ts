@@ -13,11 +13,12 @@ import { migrateToV12 } from "./v12";
 import { migrateToV13 } from "./v13";
 import { migrateToV14 } from "./v14";
 import { migrateToV15 } from "./v15";
+import { migrateToV16 } from "./v16";
 
 export type MigrationFn = (data: unknown) => unknown;
 
 // Current settings schema version - increment when making breaking changes
-export const CURRENT_SETTINGS_VERSION = 15;
+export const CURRENT_SETTINGS_VERSION = 16;
 
 const migrations: Record<number, MigrationFn> = {
   2: migrateToV2,
@@ -34,6 +35,7 @@ const migrations: Record<number, MigrationFn> = {
   13: migrateToV13,
   14: migrateToV14,
   15: migrateToV15,
+  16: migrateToV16,
 };
 
 /**

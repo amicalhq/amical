@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  CURRENT_SETTINGS_VERSION,
-  migrateSettings,
-} from "../../src/db/settings-migrations";
+import { migrateSettings } from "../../src/db/settings-migrations";
 import { migrateToV15 } from "../../src/db/settings-migrations/v15";
 
 describe("migrateToV15", () => {
@@ -49,8 +46,7 @@ describe("migrateToV15", () => {
     });
   });
 
-  it("is registered as the current migration", () => {
-    expect(CURRENT_SETTINGS_VERSION).toBe(15);
+  it("is registered in the migration chain", () => {
     expect(
       migrateSettings(
         {

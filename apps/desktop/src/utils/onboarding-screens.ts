@@ -14,6 +14,9 @@ const BASE_ORDER: OnboardingScreen[] = [
   OnboardingScreen.DiscoverySource,
   OnboardingScreen.ModelSelection,
   OnboardingScreen.SignIn, // cloud-only setup
+  // Local users decide on telemetry right after choosing, before the setup
+  // steps where they most often drop off. Cloud users get it on with sign-in.
+  OnboardingScreen.Telemetry, // local-only setup
   OnboardingScreen.Download, // local-only setup
   // Permissions open the Configure phase: both grants are exercised seconds
   // later (mic -> meter, accessibility -> keycap/PTT), and asking after the
@@ -46,6 +49,7 @@ const CLOUD_ONLY = new Set<OnboardingScreen>([
 ]);
 
 const LOCAL_ONLY = new Set<OnboardingScreen>([
+  OnboardingScreen.Telemetry,
   OnboardingScreen.Download,
   OnboardingScreen.DictationLocal,
 ]);
@@ -76,6 +80,7 @@ export const SCREEN_PHASE: Record<OnboardingScreen, OnboardingPhase> = {
   [OnboardingScreen.DiscoverySource]: "getStarted",
   [OnboardingScreen.ModelSelection]: "setUp",
   [OnboardingScreen.SignIn]: "setUp",
+  [OnboardingScreen.Telemetry]: "setUp",
   [OnboardingScreen.Download]: "setUp",
   [OnboardingScreen.MicTest]: "configure",
   [OnboardingScreen.Shortcut]: "configure",
@@ -111,6 +116,9 @@ export function getActiveOnboardingScreens(opts: {
   modelType: ModelType | undefined;
   flags: OnboardingFeatureFlags | undefined;
   skipped: OnboardingScreen[];
+  /** A sign-in turns telemetry on with no opt-out, so the telemetry step is
+   *  only for users who are not signed in. */
+  signedIn?: boolean;
 }): OnboardingScreen[] {
   const skipped = new Set(opts.skipped);
   const isCloud = opts.modelType === ModelType.Cloud;
@@ -120,6 +128,7 @@ export function getActiveOnboardingScreens(opts: {
     if (skipped.has(screen)) return false;
     if (CLOUD_ONLY.has(screen) && !isCloud) return false;
     if (LOCAL_ONLY.has(screen) && !isLocal) return false;
+    if (screen === OnboardingScreen.Telemetry && opts.signedIn) return false;
 
     if (opts.flags) {
       if (screen === OnboardingScreen.Welcome && opts.flags.skipWelcome)
