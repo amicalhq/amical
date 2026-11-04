@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SettingsSyncIdSchema } from "@amical/types";
+import { SyncIdSchema } from "@amical/api-contracts/apps/v1";
 import { createRouter, procedure } from "../trpc";
 import {
   getVocabulary,
@@ -103,7 +103,7 @@ export const vocabularyRouter = createRouter({
 
   // Get vocabulary by ID
   getVocabularyById: procedure
-    .input(z.object({ id: SettingsSyncIdSchema }))
+    .input(z.object({ id: SyncIdSchema }))
     .query(async ({ input }) => {
       return await getVocabularyById(input.id);
     }),
@@ -151,7 +151,7 @@ export const vocabularyRouter = createRouter({
   updateVocabulary: procedure
     .input(
       z.object({
-        id: SettingsSyncIdSchema,
+        id: SyncIdSchema,
         data: UpdateVocabularySchema,
       }),
     )
@@ -162,7 +162,7 @@ export const vocabularyRouter = createRouter({
   updateOrganizationVocabulary: procedure
     .input(
       z.object({
-        id: SettingsSyncIdSchema,
+        id: SyncIdSchema,
         data: UpdateVocabularySchema,
       }),
     )
@@ -172,7 +172,7 @@ export const vocabularyRouter = createRouter({
 
   // Delete vocabulary word
   deleteVocabulary: procedure
-    .input(z.object({ id: SettingsSyncIdSchema }))
+    .input(z.object({ id: SyncIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const deleted = await deleteVocabulary(input.id);
       if (deleted?.source === "auto") {
@@ -190,9 +190,7 @@ export const vocabularyRouter = createRouter({
   undoLearned: procedure
     .input(
       z.object({
-        entries: z.array(
-          z.object({ id: SettingsSyncIdSchema, word: z.string() }),
-        ),
+        entries: z.array(z.object({ id: SyncIdSchema, word: z.string() })),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -208,7 +206,7 @@ export const vocabularyRouter = createRouter({
     }),
 
   deleteOrganizationVocabulary: procedure
-    .input(z.object({ id: SettingsSyncIdSchema }))
+    .input(z.object({ id: SyncIdSchema }))
     .mutation(async ({ input }) => {
       return await deleteOrganizationVocabulary(input.id);
     }),

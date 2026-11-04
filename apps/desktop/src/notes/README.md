@@ -101,8 +101,8 @@ an editor detail, not an additional persistent note format.
 Notes use the `note` collection through the existing authenticated sync service.
 Bootstrap must advertise `note`; older servers continue to sync vocabulary and
 snippets. Organization requests never include notes. Bodies use `markdown-v1`
-and map to the version-1 Markdown payload defined by `NoteSyncPayloadSchema` in
-[`packages/types/src/schemas/settings-sync.ts`](../../../../packages/types/src/schemas/settings-sync.ts).
+and map to the version-1 Markdown payload defined by `NotePayloadSchema` in
+[`packages/api-contracts/src/apps/v1/sync.ts`](../../../../packages/api-contracts/src/apps/v1/sync.ts).
 Legacy bodies and recovery blobs are never uploaded.
 
 The pending schema migrations run in order: `0011_notes_ids`,

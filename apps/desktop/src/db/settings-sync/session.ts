@@ -22,8 +22,8 @@ import {
   replaceActiveScopes,
 } from "./active-state";
 import { discardPendingScopeMutations } from "./canonical";
+import { SETTINGS_SYNC_COLLECTIONS } from "../../types/settings-sync";
 import {
-  SYNC_COLLECTIONS,
   type AdvertisedSyncScope,
   type ReconciledSyncScopes,
   type SyncContext,
@@ -46,7 +46,7 @@ export async function beginUserSyncSession(
       })
       .run();
 
-    for (const collection of SYNC_COLLECTIONS) {
+    for (const collection of SETTINGS_SYNC_COLLECTIONS) {
       tx.insert(syncCollectionState)
         .values({ ...scope, collection, cursor: 0 })
         .onConflictDoNothing()
@@ -194,7 +194,7 @@ export async function reconcileSyncScopes(
           canWrite: scope.canWrite,
         })
         .run();
-      for (const collection of SYNC_COLLECTIONS) {
+      for (const collection of SETTINGS_SYNC_COLLECTIONS) {
         if (scope.scopeType === "org" && collection === "note") continue;
         tx.insert(syncCollectionState)
           .values({

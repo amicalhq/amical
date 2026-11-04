@@ -1,4 +1,4 @@
-import { VOCABULARY_CLASSIFY_LIMITS } from "@amical/types";
+import { VOCABULARY_CLASSIFY_LIMITS } from "@amical/api-contracts/apps/v1";
 
 import { normalizeVocabularyKey } from "../../utils/vocabulary-keys";
 import type {

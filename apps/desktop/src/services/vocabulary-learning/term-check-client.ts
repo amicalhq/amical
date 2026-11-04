@@ -3,7 +3,7 @@ import {
   VocabularyClassifyResponseSchema,
   type VocabularyClassifyRequest,
   type VocabularyClassifyResponse,
-} from "@amical/types";
+} from "@amical/api-contracts/apps/v1";
 import { Cause, Data, Effect } from "effect";
 
 import type { AuthService } from "../auth-service";

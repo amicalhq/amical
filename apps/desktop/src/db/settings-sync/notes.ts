@@ -1,5 +1,5 @@
 import { and, eq, isNull, or } from "drizzle-orm";
-import { NoteSyncPayloadSchema } from "@amical/types";
+import { NotePayloadSchema } from "@amical/api-contracts/apps/v1";
 import {
   notes,
   syncOutbox,
@@ -50,7 +50,7 @@ export function noteSyncPayload(note: Note): NoteSyncPayload {
 }
 
 export function notePayloadError(payload: unknown): string | null {
-  const result = NoteSyncPayloadSchema.safeParse(payload);
+  const result = NotePayloadSchema.safeParse(payload);
   return result.success
     ? null
     : result.error.issues.map((issue) => issue.message).join("; ");

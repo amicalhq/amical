@@ -3,11 +3,13 @@ import { Effect, Fiber } from "effect";
 
 import {
   NOTE_SYNC_LIMITS,
-  NoteSyncPayloadSchema,
+  NotePayloadSchema,
+} from "@amical/api-contracts/apps/v1";
+import {
   SettingsSyncPullRequestSchema,
   SettingsSyncPullCollectionRequestSchema,
   SettingsSyncPushRequestSchema,
-} from "@amical/types";
+} from "../../src/types/settings-sync";
 import type { AuthService } from "../../src/services/auth-service";
 import { SettingsSyncClient } from "../../src/services/settings-sync-client";
 import { SettingsSyncContractFailure } from "../../src/services/settings-sync-errors";
@@ -53,18 +55,18 @@ describe("SettingsSyncClient", () => {
       NOTE_SYNC_LIMITS.maxPayloadBytes -
       Buffer.byteLength(JSON.stringify(payload));
     payload.body.content = "x".repeat(freeBytes);
-    expect(NoteSyncPayloadSchema.safeParse(payload).success).toBe(true);
+    expect(NotePayloadSchema.safeParse(payload).success).toBe(true);
     expect(
-      NoteSyncPayloadSchema.safeParse({ ...payload, title: "x" }).success,
+      NotePayloadSchema.safeParse({ ...payload, title: "x" }).success,
     ).toBe(false);
     expect(
-      NoteSyncPayloadSchema.safeParse({
+      NotePayloadSchema.safeParse({
         ...payload,
         body: { format: "markdown", content: "\u0000" },
       }).success,
     ).toBe(false);
     expect(
-      NoteSyncPayloadSchema.safeParse({
+      NotePayloadSchema.safeParse({
         ...payload,
         body: { format: "markdown", content: "\ud800" },
       }).success,
@@ -420,7 +422,7 @@ describe("SettingsSyncClient", () => {
         scopeId: "user-1",
         collections: [
           {
-            collection: "notes",
+            collection: "snippet",
             items: [],
             cursor: 0,
             hasMore: false,

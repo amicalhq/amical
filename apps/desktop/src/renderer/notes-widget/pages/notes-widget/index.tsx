@@ -1,4 +1,4 @@
-import { SettingsSyncIdSchema } from "@amical/types";
+import { SyncIdSchema } from "@amical/api-contracts/apps/v1";
 import { useMemo } from "react";
 import { NotesWindowPanel } from "../../components/NotesWindowPanel";
 
@@ -15,7 +15,7 @@ export function NotesWidgetPage() {
     if (hashParams.has("noteId")) {
       const rawNoteId = hashParams.get("noteId");
       if (rawNoteId && rawNoteId.trim().length > 0) {
-        const parsedNoteId = SettingsSyncIdSchema.safeParse(rawNoteId);
+        const parsedNoteId = SyncIdSchema.safeParse(rawNoteId);
         if (parsedNoteId.success) {
           initialNoteId = parsedNoteId.data;
         } else {

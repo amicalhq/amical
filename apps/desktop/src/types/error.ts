@@ -1,12 +1,9 @@
+import type { ApiLocalizedErrorMessage } from "@amical/api-contracts/error";
+
 /**
  * Structured error response from the cloud API
  * Shape: { error: { code, message, localizedMessage?, details?, traceId?, requestId?, ui? } }
  */
-export interface CloudLocalizedMessage {
-  locale: string;
-  message: string;
-}
-
 export interface CloudErrorResponse {
   /** Legacy trace alias from dictation API responses. */
   id?: string;
@@ -16,37 +13,16 @@ export interface CloudErrorResponse {
   /** English developer-readable fallback. */
   message?: string;
   /** Display-ready text in the locale identified by this object. */
-  localizedMessage?: CloudLocalizedMessage;
+  localizedMessage?: ApiLocalizedErrorMessage;
   details?: Readonly<Record<string, unknown>>;
   ui?: { title?: string; message?: string };
 }
 
-/** Application-level error codes emitted by the cloud dictation service. */
-export const DictationErrorCodes = {
-  AUTH_REQUIRED: "AUTH_REQUIRED",
-  FORBIDDEN: "FORBIDDEN",
-  QUOTA_EXCEEDED: "QUOTA_EXCEEDED",
-  RATE_LIMIT_EXCEEDED: "RATE_LIMIT_EXCEEDED",
-  RESOURCE_EXHAUSTED: "RESOURCE_EXHAUSTED",
-  AUDIO_BUFFER_EXCEEDED: "AUDIO_BUFFER_EXCEEDED",
-  INVALID_REQUEST: "INVALID_REQUEST",
-  FAILED_PRECONDITION: "FAILED_PRECONDITION",
-  REQUEST_CANCELED: "REQUEST_CANCELED",
-  DEADLINE_EXCEEDED: "DEADLINE_EXCEEDED",
-  NOT_FOUND: "NOT_FOUND",
-  CONFLICT: "CONFLICT",
-  SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
-  INTERNAL_SERVER_ERROR: "INTERNAL_SERVER_ERROR",
-} as const;
-
-export type DictationErrorCode =
-  (typeof DictationErrorCodes)[keyof typeof DictationErrorCodes];
-
-export const isDictationErrorCode = (
-  value: unknown,
-): value is DictationErrorCode =>
-  typeof value === "string" &&
-  Object.values(DictationErrorCodes).includes(value as DictationErrorCode);
+export {
+  DictationErrorCode as DictationErrorCodes,
+  isDictationErrorCode,
+  type DictationErrorCodeType as DictationErrorCode,
+} from "@amical/api-contracts/dictation/v1";
 
 /**
  * Error code constants for type safety

@@ -1,17 +1,10 @@
 import {
-  SETTINGS_SYNC_COLLECTIONS,
   NOTE_SYNC_LIMITS,
-  NoteSyncPayloadSchema,
-  SettingsSyncBootstrapResponseSchema,
-  SettingsSyncCollectionSchema,
-  SettingsSyncPullRequestSchema,
-  SettingsSyncPullResponseSchema,
-  SettingsSyncPushRequestSchema,
-  SettingsSyncPushResponseSchema,
-  SnippetSyncPayloadSchema,
-  VocabularySyncPayloadSchema,
-  type SettingsSyncCanonicalItem,
-} from "@amical/types";
+  SyncBootstrapResponseSchema,
+  SyncPullResponseSchema,
+  SyncPushResponseSchema,
+  parseSyncPayload,
+} from "@amical/api-contracts/apps/v1";
 import { Cause, Effect } from "effect";
 
 import type { AuthService } from "./auth-service";
@@ -31,15 +24,17 @@ import {
   CloudNetworkFailure,
   decodeCloudHttpFailure,
 } from "../types/errors/cloud-request";
+import {
+  SETTINGS_SYNC_COLLECTIONS,
+  SettingsSyncPullRequestSchema,
+  SettingsSyncPushRequestSchema,
+} from "../types/settings-sync";
 import type {
   CanonicalSyncItem,
   PullCollectionCursor,
   PushSyncResult,
 } from "../db/sync";
 import type { SyncCollection, SyncPayload, SyncScopeType } from "../db/schema";
-
-export const DESKTOP_SYNC_COLLECTIONS =
-  SETTINGS_SYNC_COLLECTIONS satisfies readonly SyncCollection[];
 
 export interface SyncBootstrap {
   scopes: SyncBootstrapScope[];
@@ -82,18 +77,13 @@ export interface SyncPushMutation {
   payload: SyncPayload | null;
 }
 
-function parseCanonicalItem(raw: SettingsSyncCanonicalItem): CanonicalSyncItem {
-  const collection = SettingsSyncCollectionSchema.parse(raw.collection);
-  if (raw.payload === null) {
-    return { ...raw, collection, payload: null };
+// The response schemas parse the payload. Only this check adds the blank-key rule.
+function parseCanonicalItem(item: CanonicalSyncItem): CanonicalSyncItem {
+  if (item.payload !== null) {
+    const parsed = parseSyncPayload(item.collection, item.payload);
+    if (!parsed.ok) throw new Error(parsed.error);
   }
-  const payload =
-    collection === "vocabulary"
-      ? VocabularySyncPayloadSchema.parse(raw.payload)
-      : collection === "snippet"
-        ? SnippetSyncPayloadSchema.parse(raw.payload)
-        : NoteSyncPayloadSchema.parse(raw.payload);
-  return { ...raw, collection, payload };
+  return item;
 }
 
 function payloadKey(
@@ -120,7 +110,10 @@ export class SettingsSyncClient {
       );
       return yield* Effect.try({
         try: () => {
-          const body = SettingsSyncBootstrapResponseSchema.parse(raw);
+          const body = SyncBootstrapResponseSchema.parse(raw);
+          if (!body.capabilities.oneScopePerPush) {
+            throw new Error("Bootstrap must allow one scope per push");
+          }
           const userScope = body.scopes.find(
             (scope) =>
               scope.scopeType === "user" &&
@@ -139,7 +132,7 @@ export class SettingsSyncClient {
             );
           }
           const advertisedCollections = new Set(body.capabilities.collections);
-          const collections = DESKTOP_SYNC_COLLECTIONS.filter((collection) =>
+          const collections = SETTINGS_SYNC_COLLECTIONS.filter((collection) =>
             advertisedCollections.has(collection),
           );
 
@@ -214,7 +207,7 @@ export class SettingsSyncClient {
 
       return yield* Effect.try({
         try: () => {
-          const raw = SettingsSyncPullResponseSchema.parse(response);
+          const raw = SyncPullResponseSchema.parse(response);
           if (raw.scopeType !== scopeType || raw.scopeId !== scopeId) {
             throw new Error("Pull response scope does not match request");
           }
@@ -236,22 +229,17 @@ export class SettingsSyncClient {
             SyncPullCollectionPage
           >();
           for (const block of raw.collections) {
-            const collection = SettingsSyncCollectionSchema.safeParse(
-              block.collection,
-            );
-            if (
-              !collection.success ||
-              !cursorByCollection.has(collection.data)
-            ) {
+            const { collection } = block;
+            if (!cursorByCollection.has(collection)) {
               throw new Error(
                 "Pull response contains an unrequested collection",
               );
             }
-            if (pageByCollection.has(collection.data)) {
+            if (pageByCollection.has(collection)) {
               throw new Error("Pull response contains a duplicate collection");
             }
 
-            const inputCursor = cursorByCollection.get(collection.data)!;
+            const inputCursor = cursorByCollection.get(collection)!;
             if (block.cursor < inputCursor) {
               throw new Error("Pull response cursor moved backwards");
             }
@@ -264,7 +252,7 @@ export class SettingsSyncClient {
 
             let previousVersion = inputCursor;
             const items = block.items.map((item) => {
-              if (item.collection !== collection.data) {
+              if (item.collection !== collection) {
                 throw new Error(
                   "Pull item collection does not match its block",
                 );
@@ -285,8 +273,8 @@ export class SettingsSyncClient {
               throw new Error("Pull cursor does not match the last item");
             }
 
-            pageByCollection.set(collection.data, {
-              collection: collection.data,
+            pageByCollection.set(collection, {
+              collection,
               items,
               cursor: block.cursor,
               hasMore: block.hasMore,
@@ -322,7 +310,7 @@ export class SettingsSyncClient {
 
       return yield* Effect.try({
         try: () => {
-          const raw = SettingsSyncPushResponseSchema.parse(response);
+          const raw = SyncPushResponseSchema.parse(response);
           if (raw.results.length !== mutations.length) {
             throw new Error(
               "Push response result count does not match request",

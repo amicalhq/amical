@@ -1,4 +1,4 @@
-import { NOTE_SYNC_LIMITS } from "@amical/types";
+import { NOTE_SYNC_LIMITS } from "@amical/api-contracts/apps/v1";
 import { Cause, Effect, Exit, Option, Ref } from "effect";
 
 import {

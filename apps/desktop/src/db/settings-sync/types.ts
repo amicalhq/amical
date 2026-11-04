@@ -1,12 +1,19 @@
+import type {
+  SyncCanonicalItem,
+  SyncPushResult,
+} from "@amical/api-contracts/apps/v1";
 import type { db } from "..";
 import type { SyncCollection, SyncPayload, SyncScopeType } from "../schema";
+
+export type {
+  SyncCanonicalItem as CanonicalSyncItem,
+  SyncPushResult as PushSyncResult,
+} from "@amical/api-contracts/apps/v1";
 
 export type SyncDatabase = Pick<
   typeof db,
   "select" | "insert" | "update" | "delete"
 >;
-
-export { SETTINGS_SYNC_COLLECTIONS as SYNC_COLLECTIONS } from "@amical/types";
 
 export const PERSONAL_SCOPE_ID = "";
 
@@ -16,13 +23,6 @@ export interface SyncContext {
   scopeId: string;
 }
 
-export interface CanonicalSyncItem {
-  collection: SyncCollection;
-  syncId: string;
-  syncVersion: number;
-  payload: SyncPayload | null;
-}
-
 export interface CapturedSyncHead extends SyncContext {
   collection: SyncCollection;
   syncId: string;
@@ -30,27 +30,6 @@ export interface CapturedSyncHead extends SyncContext {
   headExpectedSyncVersion: number | null;
   headSequence: number;
 }
-
-export type PushSyncResult =
-  | {
-      status: "ok";
-      syncId: string;
-      syncVersion: number;
-      applied: boolean;
-    }
-  | {
-      status: "conflict";
-      reason: "version_conflict" | "duplicate_key_conflict";
-      syncId: string;
-      canonical: CanonicalSyncItem | null;
-      conflictingItem?: CanonicalSyncItem;
-    }
-  | {
-      status: "error";
-      syncId: string | null;
-      reason: "unauthorized_scope" | "invalid_payload" | "invalid_mutation";
-      message: string;
-    };
 
 export interface AdvertisedSyncScope {
   scopeType: SyncScopeType;
@@ -74,7 +53,7 @@ export interface LocalSyncMutation {
 
 export interface PullCollectionPage {
   collection: SyncCollection;
-  items: CanonicalSyncItem[];
+  items: SyncCanonicalItem[];
   cursor: number;
 }
 

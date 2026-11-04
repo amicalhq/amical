@@ -23,7 +23,7 @@ import { clearUserData } from "@/db/user-data";
 import { noteSyncPayload } from "@/db/settings-sync/notes";
 import { NoteSyncProvider } from "@/renderer/main/providers/sync-provider";
 import type { NoteBodyChange } from "@/notes/types";
-import type { NoteSyncPayload } from "@amical/types";
+import type { NoteSyncPayload } from "@/db/schema";
 
 let testDb: TestDatabase;
 const REMOTE_ID = "11111111-1111-4111-8111-111111111111";

@@ -1,3 +1,11 @@
+import {
+  DICTATION_ACTIVITY_LIMITS,
+  DictationActivityIdSchema,
+  DictationActivityReportItemSchema,
+  DictationActivityReportRequestSchema,
+  DictationExecutionSchema,
+  type DictationExecution,
+} from "@amical/api-contracts/apps/v1";
 import { z } from "zod";
 
 import {
@@ -8,26 +16,27 @@ import {
 import type { DictationSkill } from "../pipeline/providers/transcription/dictation-skill";
 import { parseModelSelectionKey } from "../utils/model-selection";
 
-export const ACTIVITY_MAX_BATCH_SIZE = 500;
-export const ACTIVITY_MAX_REQUEST_BYTES = 512 * 1024;
-export const ACTIVITY_FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
+export const ACTIVITY_MAX_BATCH_SIZE = DICTATION_ACTIVITY_LIMITS.maxReportBatch;
+export const ACTIVITY_MAX_REQUEST_BYTES =
+  DICTATION_ACTIVITY_LIMITS.maxReportBytes;
+export const ACTIVITY_FUTURE_TOLERANCE_MS =
+  DICTATION_ACTIVITY_LIMITS.futureToleranceMs;
 export const DEFAULT_ACTIVITY_APP_TYPE = "default";
 
+export const ActivityIdSchema = DictationActivityIdSchema;
+export const DictationActivitySchema = DictationActivityReportItemSchema;
+export const ActivityBatchSchema = DictationActivityReportRequestSchema;
+
+// Metadata saved with each dictation. These local schemas do not apply the
+// report's length limits: a long custom model name must not fail a dictation.
+// The report schemas above apply the limits when the activity is queued.
 const ActivityMetadataTextSchema = z.string().trim().min(1);
-
-export const ModelExecutionSchema = z.enum([
-  "local",
-  "amical_cloud",
-  "provider_cloud",
-]);
-
-export const ActivityIdSchema = z.string().uuid();
 
 export const ActivityModelSchema = z
   .object({
     provider: ActivityMetadataTextSchema,
     model: ActivityMetadataTextSchema,
-    execution: ModelExecutionSchema,
+    execution: DictationExecutionSchema,
   })
   .strict();
 
@@ -53,32 +62,6 @@ export const CompletedDictationActivityMetadataSchema = z
   })
   .strict();
 
-export const DictationActivitySchema = z
-  .object({
-    activityId: ActivityIdSchema,
-    occurredAt: z
-      .string()
-      .datetime({ offset: true })
-      .refine((value) => value.endsWith("Z"), "Timestamp must be UTC"),
-    wordCount: z.number().int().nonnegative(),
-    audioDurationMs: z.number().int().positive().nullable(),
-    appType: z.string().min(1).max(200).nullable(),
-    skills: ActivitySkillsSchema,
-    transcription: ActivityModelSchema.nullable(),
-    formatting: ActivityModelSchema.nullable(),
-  })
-  .strict();
-
-export const ActivityBatchSchema = z
-  .object({
-    activities: z
-      .array(DictationActivitySchema)
-      .min(1)
-      .max(ACTIVITY_MAX_BATCH_SIZE),
-  })
-  .strict();
-
-export type ModelExecution = z.infer<typeof ModelExecutionSchema>;
 export type ActivityModel = z.infer<typeof ActivityModelSchema>;
 export type ActivitySkill = z.infer<typeof ActivitySkillSchema>;
 export type CompletedDictationActivityMetadata = z.infer<
@@ -129,7 +112,7 @@ export function sanitizeActivitySkills(
 
 export function executionForProviderType(
   providerType: FixedExecutionProviderType,
-): ModelExecution {
+): DictationExecution {
   switch (providerType) {
     case PROVIDER_TYPES.localWhisper:
       return "local";
@@ -159,7 +142,7 @@ export function activityModelForEndpointProvider(
   model: string,
   endpoint: unknown,
 ): ActivityModel {
-  let execution: ModelExecution = "provider_cloud";
+  let execution: DictationExecution = "provider_cloud";
   if (typeof endpoint === "string") {
     try {
       const hostname = new URL(endpoint).hostname.toLowerCase();

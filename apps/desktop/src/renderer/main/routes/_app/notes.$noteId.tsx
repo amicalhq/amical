@@ -1,4 +1,4 @@
-import { SettingsSyncIdSchema } from "@amical/types";
+import { SyncIdSchema } from "@amical/api-contracts/apps/v1";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { z } from "zod";
@@ -24,7 +24,7 @@ function NotePageWrapper() {
   const { noteId } = Route.useParams();
   const { autoRecord } = Route.useSearch();
   const { setActions } = useSettingsHeaderActions();
-  const validNoteId = SettingsSyncIdSchema.safeParse(noteId).success;
+  const validNoteId = SyncIdSchema.safeParse(noteId).success;
 
   useEffect(() => {
     if (!validNoteId) {

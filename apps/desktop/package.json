@@ -112,6 +112,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.20",
+    "@amical/api-contracts": "workspace:*",
     "@amical/eslint-config": "workspace:*",
     "@amical/types": "workspace:*",
     "@amical/whisper-wrapper": "workspace:*",

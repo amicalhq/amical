@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
-import { parseCloudUsage } from "@amical/types";
+import { parseCloudUsage } from "../../src/types/usage";
 import type { AuthService } from "../../src/services/auth-service";
 import { UsageService } from "../../src/services/usage-service";
 

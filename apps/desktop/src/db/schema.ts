@@ -1,4 +1,5 @@
 import { createEntityId } from "@amical/types";
+import type { SyncPayload } from "@amical/api-contracts/apps/v1";
 import { sql } from "drizzle-orm";
 import {
   sqliteTable,
@@ -133,22 +134,14 @@ export const snippets = sqliteTable(
   ],
 );
 
-export type SyncScopeType = "user" | "org";
-export type { SettingsSyncCollection as SyncCollection } from "@amical/types";
-export type VocabularySyncPayload = {
-  word: string;
-  replacement: string | null;
-};
-export type SnippetSyncPayload = {
-  trigger: string;
-  content: string;
-};
-export type { NoteSyncPayload } from "@amical/types";
-import type { NoteSyncPayload } from "@amical/types";
-export type SyncPayload =
-  | VocabularySyncPayload
-  | SnippetSyncPayload
-  | NoteSyncPayload;
+export type { SyncPayload };
+export type {
+  NotePayload as NoteSyncPayload,
+  SnippetPayload as SnippetSyncPayload,
+  SyncCollection,
+  SyncScopeType,
+  VocabularyPayload as VocabularySyncPayload,
+} from "@amical/api-contracts/apps/v1";
 
 // Singleton sequence allocator shared by every synchronized collection.
 export const syncClientState = sqliteTable("sync_client_state", {

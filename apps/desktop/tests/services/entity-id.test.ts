@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  createEntityId,
-  SettingsSyncIdSchema,
-  SettingsSyncPushMutationSchema,
-  SettingsSyncCanonicalItemSchema,
-} from "@amical/types";
+  SyncCanonicalItemSchema,
+  SyncIdSchema,
+  SyncPushMutationSchema,
+} from "@amical/api-contracts/apps/v1";
+import { createEntityId } from "@amical/types";
 
 const legacyId = "11111111-1111-4111-8111-111111111111";
 
@@ -18,9 +18,9 @@ describe("sync entity IDs", () => {
     (collection, prefix) => {
       const id = createEntityId(collection);
       expect(id).toMatch(new RegExp(`^${prefix}_[a-z][a-z0-9]{23}$`));
-      expect(SettingsSyncIdSchema.parse(id)).toBe(id);
+      expect(SyncIdSchema.parse(id)).toBe(id);
       expect(
-        SettingsSyncPushMutationSchema.parse({
+        SyncPushMutationSchema.parse({
           collection,
           scopeType: "user",
           scopeId: "alice",
@@ -30,7 +30,7 @@ describe("sync entity IDs", () => {
         }).syncId,
       ).toBe(id);
       expect(
-        SettingsSyncCanonicalItemSchema.parse({
+        SyncCanonicalItemSchema.parse({
           collection,
           syncId: id,
           syncVersion: 2,
@@ -41,9 +41,9 @@ describe("sync entity IDs", () => {
   );
 
   it("keeps existing UUID identities unchanged", () => {
-    expect(SettingsSyncIdSchema.parse(legacyId)).toBe(legacyId);
+    expect(SyncIdSchema.parse(legacyId)).toBe(legacyId);
     expect(
-      SettingsSyncPushMutationSchema.parse({
+      SyncPushMutationSchema.parse({
         collection: "vocabulary",
         scopeType: "user",
         scopeId: "alice",
@@ -63,6 +63,6 @@ describe("sync entity IDs", () => {
     "nt_" + "a".repeat(23) + "/",
     " nt_" + "a".repeat(24),
   ])("rejects malformed or truncated IDs: %s", (id) => {
-    expect(SettingsSyncIdSchema.safeParse(id).success).toBe(false);
+    expect(SyncIdSchema.safeParse(id).success).toBe(false);
   });
 });

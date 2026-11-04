@@ -1,4 +1,4 @@
-import { DictationActivitySummarySchema } from "@amical/types";
+import { DictationActivitySummarySchema } from "@amical/api-contracts/apps/v1";
 import type { AuthService } from "./auth-service";
 import { getAccountResource } from "./account-request";
 

@@ -1,8 +1,5 @@
-import {
-  VOCABULARY_CLASSIFY_LIMITS,
-  type HelperEvent,
-  type StartEditWatchResult,
-} from "@amical/types";
+import { VOCABULARY_CLASSIFY_LIMITS } from "@amical/api-contracts/apps/v1";
+import type { HelperEvent, StartEditWatchResult } from "@amical/types";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { v4 as uuid } from "uuid";
 
@@ -66,11 +63,7 @@ const DISABLED_PAUSE_MS = 24 * 60 * 60 * 1000;
 
 type LearningBridge = Pick<
   NativeBridge,
-  | "startEditWatch"
-  | "readEditWatch"
-  | "stopEditWatch"
-  | "on"
-  | "off"
+  "startEditWatch" | "readEditWatch" | "stopEditWatch" | "on" | "off"
 >;
 
 type LearningLifecycle = Pick<

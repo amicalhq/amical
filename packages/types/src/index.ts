@@ -18,22 +18,4 @@ export * from "./schemas/methods/edit-watch.js";
 // Event Schemas
 export * from "./schemas/events/helper-events.js";
 
-// Remote config (server-controlled surfaces + future config domains)
-export * from "./schemas/remote-config.js";
-
-// Settings sync HTTP contract
-export * from "./schemas/settings-sync.js";
-
-// Vocabulary learning (term check) HTTP contract
-export * from "./schemas/vocabulary-learning.js";
-
-// Activity summary HTTP contract
-export * from "./schemas/activity-summary.js";
-
-// Cloud usage (sidebar meter) HTTP contract
-export * from "./schemas/usage.js";
-
-// Shared cloud HTTP error envelope
-export * from "./schemas/cloud-http-error.js";
-
 export * from "./entity-id.js";

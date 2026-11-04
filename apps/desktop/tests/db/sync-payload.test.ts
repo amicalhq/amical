@@ -3,10 +3,11 @@ import {
   cloudSyncKeySchema,
   cloudSyncOptionalTextSchema,
   cloudSyncRequiredTextSchema,
-  SYNC_KEY_MAX_LENGTH,
-  SYNC_TEXT_MAX_LENGTH,
   trimmedSyncKeySchema,
 } from "../../src/db/sync-payload";
+
+const SYNC_KEY_MAX_LENGTH = 60;
+const SYNC_TEXT_MAX_LENGTH = 4000;
 
 describe("settings sync payload bounds", () => {
   it("accepts exact authored keys without trimming or changing case", () => {

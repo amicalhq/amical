@@ -5,8 +5,8 @@ import { syncCollectionState, type SyncCollection } from "../schema";
 import { contextIsActive } from "./active-state";
 import { applyCanonicalItem } from "./canonical";
 import { collectionWhere } from "./query";
+import { SETTINGS_SYNC_COLLECTIONS } from "../../types/settings-sync";
 import {
-  SYNC_COLLECTIONS,
   type PullCollectionCursor,
   type PullCollectionPage,
   type SyncContext,
@@ -38,7 +38,7 @@ export async function applyPullPages(
 
 export async function getPullCursors(
   fence: SyncContext,
-  collections: readonly SyncCollection[] = SYNC_COLLECTIONS,
+  collections: readonly SyncCollection[] = SETTINGS_SYNC_COLLECTIONS,
   database: SyncDatabase = db,
 ): Promise<PullCollectionCursor[] | null> {
   collections = collections.filter(

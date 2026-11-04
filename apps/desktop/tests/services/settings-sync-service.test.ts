@@ -149,7 +149,7 @@ class InMemorySyncClient {
             syncId: mutation.syncId,
             syncVersion: this.version,
             payload: mutation.payload,
-          });
+          } as CanonicalSyncItem);
           return {
             status: "ok" as const,
             syncId: mutation.syncId,

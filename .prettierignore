@@ -12,6 +12,9 @@ build/
 # Dependencies
 node_modules/
 
+# Byte copies of the cloud API contracts
+packages/api-contracts/src/
+
 # Generated files
 *.log
 *.lock

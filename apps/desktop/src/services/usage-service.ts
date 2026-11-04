@@ -1,5 +1,4 @@
 import { Effect, Layer, Scope } from "effect";
-import { parseCloudUsage, type CloudUsage } from "@amical/types";
 import { logger } from "../main/logger";
 import { addRelease, up } from "../main/runtime/layer-helpers";
 import {
@@ -14,6 +13,7 @@ import {
   type AuthState,
 } from "./auth-service";
 import { cloudUsageEvents } from "./cloud-usage-events";
+import { parseCloudUsage, type CloudUsage } from "../types/usage";
 
 // The server writes dictation word counts to the database every 10 s, so a
 // read right after a dictation returns the old number.

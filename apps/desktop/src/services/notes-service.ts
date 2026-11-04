@@ -1,4 +1,4 @@
-import { SettingsSyncIdSchema } from "@amical/types";
+import { SyncIdSchema } from "@amical/api-contracts/apps/v1";
 import { BrowserWindow, ipcMain } from "electron";
 import { z } from "zod";
 import {
@@ -12,9 +12,8 @@ import { loadNoteBody, saveNoteBody } from "../db/note-body";
 import type { NoteBodyChange } from "../notes/types";
 import { logger } from "../main/logger";
 
-const noteIdSchema = SettingsSyncIdSchema;
 const saveSchema = z.object({
-  noteId: noteIdSchema,
+  noteId: SyncIdSchema,
   markdown: z.string(),
   expectedRemoteVersion: z
     .number()
@@ -58,7 +57,7 @@ class NotesService {
   private setupIPCHandlers(): void {
     ipcMain.on("notes:loadBody", (event, noteId: unknown) => {
       try {
-        event.returnValue = { body: loadNoteBody(noteIdSchema.parse(noteId)) };
+        event.returnValue = { body: loadNoteBody(SyncIdSchema.parse(noteId)) };
       } catch (error) {
         logger.main.error("Failed to load note body", error);
         event.returnValue = { error: "Failed to load note" };

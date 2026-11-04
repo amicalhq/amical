@@ -1,24 +1,37 @@
-// The remote-config contract lives in @amical/types so desktop, native, and www
-// all conform to one source of truth (it also feeds that package's JSON-Schema /
-// Swift / C# generators). Re-exported here so desktop code keeps importing from
-// "@/types/remote-config".
-export {
-  DEFAULT_RESHOW_AFTER_DAYS,
-  UpdateRequirementSchema,
-  RemoteConfigSchema,
-  RemoteConfigSurfaceSchema,
-  RemoteConfigContentSchema,
-  RemoteConfigCtaSchema,
-  RemoteConfigToneSchema,
-} from "@amical/types";
+import {
+  RemoteConfigResponseSchema,
+  type RemoteConfigSurface,
+} from "@amical/api-contracts/apps/v1";
+import { z } from "zod";
+
+export { RemoteConfigSurfaceSchema } from "@amical/api-contracts/apps/v1";
 export type {
   UpdateRequirement,
-  RemoteConfig,
   RemoteConfigSurface,
-  RemoteConfigBannerSurface,
-  RemoteConfigSideSlotSurface,
   RemoteConfigContent,
   RemoteConfigCta,
-  RemoteConfigIconName,
-  RemoteConfigTone,
-} from "@amical/types";
+} from "@amical/api-contracts/apps/v1";
+
+// Every domain is optional and `version` is open, so a response or a cached
+// payload without a domain still parses.
+export const RemoteConfigSchema = RemoteConfigResponseSchema.partial({
+  surfaces: true,
+  flags: true,
+}).extend({ version: z.number() });
+export type RemoteConfig = z.infer<typeof RemoteConfigSchema>;
+
+export type RemoteConfigBannerSurface = RemoteConfigSurface & {
+  kind: "banner";
+};
+export type RemoteConfigSideSlotSurface = RemoteConfigSurface & {
+  kind: "side_slot";
+};
+export type RemoteConfigTone = NonNullable<RemoteConfigSurface["tone"]>;
+
+// Any lucide-react icon name, kebab-case (e.g. "sparkles", "triangle-alert").
+// The client resolves the name to a bundled lucide glyph and falls back to the
+// tone's default glyph if it isn't a real icon.
+export type RemoteConfigIconName = string;
+
+// Reshow window when a surface omits `reshowAfterDays`.
+export const DEFAULT_RESHOW_AFTER_DAYS = 30;

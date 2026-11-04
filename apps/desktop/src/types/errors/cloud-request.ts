@@ -1,8 +1,8 @@
+import { AppsV1ErrorCodeSchema } from "@amical/api-contracts/apps/v1";
 import {
-  CloudAppsV1ErrorCodeSchema,
-  CloudHttpErrorResponseSchema,
-  type CloudLocalizedErrorMessage,
-} from "@amical/types";
+  ApiErrorResponseSchema,
+  type ApiLocalizedErrorMessage,
+} from "@amical/api-contracts/error";
 import { Data } from "effect";
 
 export interface CloudRequestMeta {
@@ -12,7 +12,7 @@ export interface CloudRequestMeta {
   grpcStatus?: number;
   traceId?: string;
   requestId?: string;
-  localizedMessage?: CloudLocalizedErrorMessage;
+  localizedMessage?: ApiLocalizedErrorMessage;
   retryAfter?: string;
   serverUi?: { title?: string; message?: string };
 }
@@ -80,10 +80,10 @@ export const decodeCloudHttpFailure = ({
   CloudRequestError,
   CloudNetworkFailure
 > => {
-  const parsed = CloudHttpErrorResponseSchema.safeParse(body);
+  const parsed = ApiErrorResponseSchema.safeParse(body);
   const details = parsed.success ? parsed.data.error : undefined;
   const recognizedCode = details
-    ? CloudAppsV1ErrorCodeSchema.safeParse(details.code)
+    ? AppsV1ErrorCodeSchema.safeParse(details.code)
     : undefined;
   const message =
     details?.message ??
