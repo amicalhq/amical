@@ -12,9 +12,9 @@ const CloudWordsAllowanceSchema = z.object({
   resetsAt: z.iso.datetime({ offset: true }),
 });
 
-/** An upgrade exists for the org's plan. Copy selector only. */
-const UsageUpgradeOfferSchema = z.object({
-  kind: z.enum(["unlimited"]),
+const UsageOffersSchema = z.object({
+  /** Premium can be bought for the org's plan. */
+  premiumUpgrade: z.boolean(),
 });
 
 const UsageBillingSchema = z.object({
@@ -25,13 +25,14 @@ const UsageBillingSchema = z.object({
 export interface CloudUsage {
   /** null = draw no meter. */
   cloudWords: z.output<typeof CloudWordsAllowanceSchema> | null;
-  upgrade: z.output<typeof UsageUpgradeOfferSchema> | null;
+  offers: z.output<typeof UsageOffersSchema>;
   billing: z.output<typeof UsageBillingSchema>;
 }
 
 /**
- * Parse each field separately. An invalid or unknown `cloudWords` or
- * `upgrade` becomes null; an invalid `billing` becomes `canManage: false`.
+ * Parse each field separately. An invalid or unknown `cloudWords` becomes null;
+ * invalid `offers` mean no offer; an invalid `billing` becomes
+ * `canManage: false`.
  */
 export function parseCloudUsage(body: unknown): CloudUsage {
   const record =
@@ -39,11 +40,11 @@ export function parseCloudUsage(body: unknown): CloudUsage {
       ? (body as Record<string, unknown>)
       : {};
   const cloudWords = CloudWordsAllowanceSchema.safeParse(record.cloudWords);
-  const upgrade = UsageUpgradeOfferSchema.safeParse(record.upgrade);
+  const offers = UsageOffersSchema.safeParse(record.offers);
   const billing = UsageBillingSchema.safeParse(record.billing);
   return {
     cloudWords: cloudWords.success ? cloudWords.data : null,
-    upgrade: upgrade.success ? upgrade.data : null,
+    offers: offers.success ? offers.data : { premiumUpgrade: false },
     billing: billing.success ? billing.data : { canManage: false },
   };
 }

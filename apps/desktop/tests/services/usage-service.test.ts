@@ -6,7 +6,7 @@ import { UsageService } from "../../src/services/usage-service";
 
 const freeUsage = (used: number, resetsAt = "2099-01-05T00:00:00.000Z") => ({
   cloudWords: { used, limit: 2000, resetsAt },
-  upgrade: { kind: "unlimited" },
+  offers: { premiumUpgrade: true, enterpriseRow: true },
   billing: { canManage: true },
 });
 
@@ -15,12 +15,12 @@ describe("parseCloudUsage", () => {
     expect(
       parseCloudUsage({
         cloudWords: { used: 10, limit: 2000, resetsAt: "2099-01-05T00:00:00Z" },
-        upgrade: { kind: "someFutureOffer" },
+        offers: { premiumUpgrade: "yes", futureOffer: true },
         billing: { canManage: "yes" },
       }),
     ).toEqual({
       cloudWords: { used: 10, limit: 2000, resetsAt: "2099-01-05T00:00:00Z" },
-      upgrade: null,
+      offers: { premiumUpgrade: false },
       billing: { canManage: false },
     });
   });
@@ -160,7 +160,7 @@ describe("UsageService", () => {
     fetchMock.mockImplementation(async () =>
       Response.json({
         cloudWords: null,
-        upgrade: null,
+        offers: { premiumUpgrade: false, enterpriseRow: false },
         billing: { canManage: true },
       }),
     );

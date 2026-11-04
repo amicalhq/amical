@@ -129,7 +129,7 @@ function CloudUsageMeter() {
       ? ["text-warn", "[&>[data-slot=progress-indicator]]:bg-warn"]
       : ["text-muted-foreground", undefined];
   const canManage = usage.billing.canManage;
-  const showUpgrade = canManage && usage.upgrade?.kind === "unlimited";
+  const showUpgrade = canManage && usage.offers.premiumUpgrade;
 
   const fullNumber = new Intl.NumberFormat(i18n.language);
   const leftNumber =
