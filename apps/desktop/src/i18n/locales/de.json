@@ -101,7 +101,7 @@
       "microphone": {
         "title": "Mikrofon",
         "description": "Damit Amical dein Diktat hören kann",
-        "windowsBlocked": "Windows blockiert den Mikrofonzugriff für Amical. Öffne die Einstellungen und erlaube Amical den Zugriff auf das Mikrofon."
+        "windowsBlocked": "Windows blockiert den Mikrofonzugriff für Amical. Öffne die Einstellungen und erlaube Amical den Zugriff auf das Mikrofon. Wenn Amical mehrmals aufgeführt ist, schalte jeden Eintrag ein."
       },
       "accessibility": {
         "title": "Bedienungshilfen",

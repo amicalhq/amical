@@ -101,7 +101,7 @@
       "microphone": {
         "title": "麥克風",
         "description": "讓 Amical 能接收您的聽寫語音",
-        "windowsBlocked": "Windows 已封鎖 Amical 使用麥克風。請開啟設定，允許 Amical 存取麥克風。"
+        "windowsBlocked": "Windows 已封鎖 Amical 使用麥克風。請開啟設定，允許 Amical 存取麥克風。如果 Amical 出現多次，請將每一項都開啟。"
       },
       "accessibility": {
         "title": "輔助使用",

@@ -101,7 +101,7 @@
       "microphone": {
         "title": "마이크",
         "description": "말하는 내용을 Amical이 들을 수 있도록 합니다",
-        "windowsBlocked": "Windows에서 Amical의 마이크 사용을 차단하고 있습니다. 설정을 열고 Amical이 마이크에 액세스하도록 허용하세요."
+        "windowsBlocked": "Windows에서 Amical의 마이크 사용을 차단하고 있습니다. 설정을 열고 Amical이 마이크에 액세스하도록 허용하세요. Amical이 여러 개 표시되면 모두 켜세요."
       },
       "accessibility": {
         "title": "손쉬운 사용",

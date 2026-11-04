@@ -61,10 +61,9 @@ export function PermissionsScreen({
     setIsRequestingMic(true);
     try {
       if (isWindows) {
-        // Electron cannot ask Windows for mic access. Windows asks (or adds
-        // the app to its mic settings) only when the app opens the mic, and
-        // it treats each installed version as a new app. So open the mic
-        // once, close it, and let the status check decide what the row shows.
+        // Electron cannot ask Windows for mic access. Windows may show its
+        // prompt only when an app opens the mic, so open it once, close it,
+        // and let the status check decide what the row shows.
         await navigator.mediaDevices
           .getUserMedia({ audio: true })
           .then((stream) => stream.getTracks().forEach((track) => track.stop()))
