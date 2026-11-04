@@ -14,8 +14,8 @@ import { useDocumentVisible } from "@/renderer/main/hooks/use-document-visible";
 import { api } from "@/trpc/react";
 import { BILLING_RETURN_PATH } from "@/constants/web-app";
 
-/** Below this share of the allowance left, the meter warns. */
-const LOW_REMAINING_RATIO = 0.1;
+/** From this share of the allowance used, the meter warns. */
+const NEAR_LIMIT_RATIO = 0.8;
 /** At and above this many words left, the line uses compact numbers. */
 const COMPACT_FROM = 10_000;
 const HOUR_MS = 3_600_000;
@@ -118,7 +118,7 @@ function CloudUsageMeter() {
   const used = Math.min(cloudWords.used, limit);
   const remaining = limit - used;
   const exhausted = remaining === 0;
-  const low = !exhausted && remaining / limit < LOW_REMAINING_RATIO;
+  const low = !exhausted && used >= limit * NEAR_LIMIT_RATIO;
   // Literal class names, so Tailwind finds them.
   const [textTone, barTone] = exhausted
     ? [
