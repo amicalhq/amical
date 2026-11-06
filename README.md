@@ -192,6 +192,7 @@ Contributions are welcome! Reach out to the team in our [Discord server](https:/
 
 - **🐛 [Report an Issue][issues]**: Found a bug? Let us know!
 - **💬 [Start a Discussion][discussions]**: Have ideas or suggestions? We'd love to hear from you.
+- **⭐ [Star Amical on GitHub][repo]**: A star helps other people find Amical.
 
 ## 🎗 License
 
@@ -199,6 +200,7 @@ Released under [MIT][license].
 
 <!-- REFERENCE LINKS -->
 
+[repo]: https://github.com/amicalhq/amical
 [license]: https://github.com/amicalhq/amical/blob/main/LICENSE
 [discussions]: https://amical.ai/community
 [issues]: https://github.com/amicalhq/amical/issues

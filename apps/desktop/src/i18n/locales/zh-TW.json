@@ -487,6 +487,11 @@
         "detailRelative": "已使用 {{used}} / {{limit}} 字 - {{when}}重設",
         "upgradeUnlimited": "升級至無限制",
         "openFailed": "無法在瀏覽器中開啟"
+      },
+      "starNudge": {
+        "title": "您已用 Amical 聽寫 {{words}} 字",
+        "body": "Amical 是開放原始碼軟體。如果您使用 GitHub，給顆星能幫助更多人找到它。",
+        "cta": "在 GitHub 上給顆星"
       }
     },
     "search": {
@@ -687,7 +692,7 @@
           "description": "查看發布紀錄和更新"
         },
         "github": {
-          "title": "GitHub 儲存庫",
+          "title": "在 GitHub 上給 Amical 一顆星",
           "description": "原始碼與問題追蹤",
           "alt": "GitHub"
         },

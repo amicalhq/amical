@@ -94,7 +94,7 @@ function toneOf(surface: RemoteConfigSurface): RemoteConfigTone {
 
 // Dismissals are local + per-device (store lives in remote-config-dismissals).
 // Re-read on the in-renderer change event and the cross-window "storage" event.
-function useDismissals() {
+export function useDismissals() {
   const [dismissedUntil, setDismissedUntil] =
     React.useState(readDismissedUntil);
 
@@ -386,7 +386,7 @@ function RemoteConfigBanner({
   );
 }
 
-function RemoteConfigSideSlot({
+export function RemoteConfigSideSlot({
   surface,
   onDismiss,
   onCta,
@@ -487,7 +487,12 @@ export function RemoteConfigSurfaces({
   );
 }
 
-export function RemoteConfigSidebarSlot() {
+// `fallback` renders only when no remote card holds the slot.
+export function RemoteConfigSidebarSlot({
+  fallback,
+}: {
+  fallback: React.ReactNode;
+}) {
   const { surfaces, dismiss, handleCta } = useActiveRemoteConfigSurfaces();
 
   const sideSlot = surfaces.find(
@@ -496,7 +501,7 @@ export function RemoteConfigSidebarSlot() {
   );
 
   if (!sideSlot) {
-    return null;
+    return fallback;
   }
 
   return (

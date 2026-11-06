@@ -33,5 +33,7 @@ export type RemoteConfigTone = NonNullable<RemoteConfigSurface["tone"]>;
 // tone's default glyph if it isn't a real icon.
 export type RemoteConfigIconName = string;
 
+export const DESKTOP_STAR_NUDGE_FLAG = "desktop-star-nudge";
+
 // Reshow window when a surface omits `reshowAfterDays`.
 export const DEFAULT_RESHOW_AFTER_DAYS = 30;

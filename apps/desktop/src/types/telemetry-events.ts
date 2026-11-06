@@ -182,6 +182,12 @@ export type WidgetNotificationShownEvent = z.infer<
   typeof widgetNotificationShownSchema
 >;
 
+export const starNudgeSchema = z.object({
+  outcome: z.enum(["shown", "clicked", "dismissed"]),
+});
+
+export type StarNudgeEvent = z.infer<typeof starNudgeSchema>;
+
 // ============================================================================
 // Edit Watch and Vocabulary Learning Events
 // ============================================================================

@@ -487,6 +487,11 @@
         "detailRelative": "{{used}} von {{limit}} Wörtern genutzt – wird {{when}} zurückgesetzt",
         "upgradeUnlimited": "Upgrade auf unbegrenzt",
         "openFailed": "Konnte nicht im Browser geöffnet werden"
+      },
+      "starNudge": {
+        "title": "Du hast {{words}} Wörter mit Amical diktiert",
+        "body": "Amical ist Open Source. Wenn du GitHub nutzt, hilft ein Stern anderen, Amical zu finden.",
+        "cta": "GitHub-Stern geben"
       }
     },
     "search": {
@@ -687,7 +692,7 @@
           "description": "Versionshinweise und Updates anzeigen"
         },
         "github": {
-          "title": "GitHub-Repository",
+          "title": "Amical auf GitHub einen Stern geben",
           "description": "Quellcode und Issue-Tracking",
           "alt": "GitHub"
         },

@@ -36,6 +36,7 @@ import { CreateNoteButton } from "./create-note-button";
 import { NavCloud } from "./nav-cloud";
 import { RemoteConfigSidebarSlot } from "./remote-config-surfaces";
 import { SettingsNavigationControls } from "./settings-navigation-controls";
+import { StarNudge } from "./star-nudge";
 import { UsageMeter } from "./usage-meter";
 import { APP_NAV_ITEMS, SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
@@ -200,7 +201,7 @@ export function SettingsSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter className="p-0">
-        <RemoteConfigSidebarSlot />
+        <RemoteConfigSidebarSlot fallback={<StarNudge />} />
         <NavSecondary
           cta={navSecondaryCta}
           items={helpLinks}

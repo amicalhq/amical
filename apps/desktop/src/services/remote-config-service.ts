@@ -2,6 +2,7 @@ import { app } from "electron";
 
 import { logger } from "../main/logger";
 import {
+  DESKTOP_STAR_NUDGE_FLAG,
   RemoteConfigSchema,
   RemoteConfigSurfaceSchema,
   type UpdateRequirement,
@@ -145,6 +146,7 @@ export type DesktopRemoteConfig = Omit<RemoteConfig, "flags"> & {
       | typeof DESKTOP_BACKGROUND_UPDATES_FLAG
       | typeof DESKTOP_AUTO_VOCABULARY_FLAG
       | typeof DESKTOP_EDIT_METRICS_FLAG
+      | typeof DESKTOP_STAR_NUDGE_FLAG
       | typeof DESKTOP_STEREO_MIC_DOWNMIX_FLAG
       | typeof DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG,
       boolean
@@ -157,6 +159,7 @@ const resolveRemoteConfig = (config: RemoteConfig): DesktopRemoteConfig => ({
     [DESKTOP_BACKGROUND_UPDATES_FLAG]: true,
     [DESKTOP_AUTO_VOCABULARY_FLAG]: true,
     [DESKTOP_EDIT_METRICS_FLAG]: true,
+    [DESKTOP_STAR_NUDGE_FLAG]: true,
     [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: true,
     [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: false,
     ...(config.flags ?? {}),

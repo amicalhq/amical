@@ -47,12 +47,12 @@ export function isRemoteConfigSurfaceActive(
 
 // A surface is dismissed only until its stored reshow window (computed from
 // `reshowAfterDays` at dismiss time) elapses.
-function isSurfaceDismissed(
-  surface: RemoteConfigSurface,
+export function isSurfaceDismissed(
+  id: string,
   dismissedUntil: Record<string, number>,
-  now: Date,
+  now: Date = new Date(),
 ): boolean {
-  const until = dismissedUntil[surface.id];
+  const until = dismissedUntil[id];
   return until != null && now.getTime() < until;
 }
 
@@ -64,7 +64,7 @@ export function getActiveRemoteConfigSurfaces(
   return (config.surfaces ?? [])
     .filter(
       (surface) =>
-        !isSurfaceDismissed(surface, dismissedUntil, now) &&
+        !isSurfaceDismissed(surface.id, dismissedUntil, now) &&
         isRemoteConfigSurfaceActive(surface, now),
     )
     .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));

@@ -484,6 +484,11 @@
         "detailRelative": "{{used}} of {{limit}} words used - resets {{when}}",
         "upgradeUnlimited": "Upgrade to unlimited",
         "openFailed": "Couldn't open in browser"
+      },
+      "starNudge": {
+        "title": "You've dictated {{words}} words with Amical",
+        "body": "Amical is open source. If you use GitHub, a star helps other people find it.",
+        "cta": "Star on GitHub"
       }
     },
     "search": {
@@ -684,7 +689,7 @@
           "description": "View release notes and updates"
         },
         "github": {
-          "title": "GitHub Repository",
+          "title": "Star Amical on GitHub",
           "description": "Source code and issue tracking",
           "alt": "GitHub"
         },

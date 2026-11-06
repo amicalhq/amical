@@ -31,6 +31,7 @@ import type {
   WidgetNotificationShownEvent,
   CloudGrpcFallbackEvent,
   TranscriptionEditWatchCompletedEvent,
+  StarNudgeEvent,
   VocabularyLearningCompletedEvent,
   VocabularyAutoUndoneEvent,
 } from "../types/telemetry-events";
@@ -695,6 +696,16 @@ export class TelemetryService extends EventEmitter {
     this.captureEvent("widget_notification_shown", props);
 
     logger.main.debug("Tracked widget notification shown", props);
+  }
+
+  // ============================================================================
+  // Star Nudge Events
+  // ============================================================================
+
+  trackStarNudge(props: StarNudgeEvent): void {
+    this.captureEvent("star_nudge", props);
+
+    logger.main.debug("Tracked star nudge", props);
   }
 
   // ============================================================================

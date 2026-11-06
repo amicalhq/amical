@@ -487,6 +487,11 @@
         "detailRelative": "{{limit}}단어 중 {{used}}단어 사용 - {{when}} 초기화",
         "upgradeUnlimited": "무제한으로 업그레이드",
         "openFailed": "브라우저에서 열 수 없습니다"
+      },
+      "starNudge": {
+        "title": "Amical로 {{words}}단어를 받아썼습니다",
+        "body": "Amical은 오픈 소스입니다. GitHub를 사용하신다면 스타를 눌러 주세요. 다른 사람들이 Amical을 찾는 데 도움이 됩니다.",
+        "cta": "GitHub에서 스타 누르기"
       }
     },
     "search": {
@@ -687,7 +692,7 @@
           "description": "릴리스 노트 및 업데이트 보기"
         },
         "github": {
-          "title": "GitHub 저장소",
+          "title": "GitHub에서 Amical에 스타 누르기",
           "description": "소스 코드 확인 및 문제 보고",
           "alt": "GitHub"
         },

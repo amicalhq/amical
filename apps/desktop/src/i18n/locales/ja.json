@@ -487,6 +487,11 @@
         "detailRelative": "{{limit}}語中{{used}}語を使用 - {{when}}にリセット",
         "upgradeUnlimited": "無制限にアップグレード",
         "openFailed": "ブラウザで開けませんでした"
+      },
+      "starNudge": {
+        "title": "Amicalで{{words}}語を音声入力しました",
+        "body": "Amicalはオープンソースです。GitHubをご利用でしたら、スターを付けていただくと他の方がAmicalを見つけやすくなります。",
+        "cta": "GitHubでスターする"
       }
     },
     "search": {
@@ -687,7 +692,7 @@
           "description": "リリースノートとアップデートを表示"
         },
         "github": {
-          "title": "GitHubリポジトリ",
+          "title": "GitHubでAmicalにスターを付ける",
           "description": "ソースコードと課題管理",
           "alt": "GitHub"
         },
