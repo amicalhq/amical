@@ -326,6 +326,24 @@ const BROWSER_BUNDLE_IDS = [
   "com.brave.Browser",
   "com.operasoftware.Opera",
   "com.vivaldi.Vivaldi",
+  "org.chromium.Chromium",
+  "company.thebrowser.Browser", // Arc
+  "app.zen-browser.zen",
+];
+
+// Windows browser process names. On Windows the helper reports the process
+// name (no path, no .exe) instead of a bundle id, and it resolves a URL only
+// for these browsers. Keep in sync with UrlResolver.AddressBarClassNames in
+// the Windows helper.
+const WINDOWS_BROWSER_PROCESS_NAMES = [
+  "chrome",
+  "msedge",
+  "brave",
+  "opera",
+  "vivaldi",
+  "chromium",
+  "firefox",
+  "zen",
 ];
 
 // URL patterns for web applications (general has no patterns, falls through)
@@ -349,7 +367,7 @@ const URL_PATTERNS: Partial<Record<AppType, RegExp[]>> = {
     /messenger\.com/,
     /chat\.openai\.com/,
     /claude\.ai/,
-    /chat\.google\com/,
+    /chat\.google\.com/,
   ],
   notes: [
     /notion\.so/,
@@ -390,9 +408,9 @@ export function detectApplicationType(
   }
 
   // Check if it's a browser
-  const isBrowser = BROWSER_BUNDLE_IDS.some(
-    (browserId) => bundleId.includes(browserId) || browserId.includes(bundleId),
-  );
+  const isBrowser =
+    WINDOWS_BROWSER_PROCESS_NAMES.includes(bundleId.toLowerCase()) ||
+    BROWSER_BUNDLE_IDS.some((browserId) => bundleId.includes(browserId));
 
   if (isBrowser && accessibilityContext.context?.windowInfo?.url) {
     // Try to detect type from URL
