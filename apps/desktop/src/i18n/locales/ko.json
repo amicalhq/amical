@@ -478,6 +478,12 @@
       "logoAlt": "Amical 로고",
       "brand": "Amical",
       "backToApp": "앱으로 돌아가기",
+      "mobileApp": {
+        "label": "모바일 앱 받기",
+        "title": "휴대폰에서 Amical 사용하기",
+        "description": "휴대폰 카메라로 스캔하여 iPhone 또는 Android용 Amical을 다운로드하세요.",
+        "qrAlt": "Amical 모바일 앱 다운로드용 QR 코드"
+      },
       "usage": {
         "label": "클라우드 받아쓰기",
         "wordsLeft_one": "{{words}}단어 남음",

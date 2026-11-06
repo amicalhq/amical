@@ -478,6 +478,12 @@
       "logoAlt": "Amical 標誌",
       "brand": "Amical",
       "backToApp": "返回應用程式",
+      "mobileApp": {
+        "label": "取得行動應用程式",
+        "title": "在手機上使用 Amical",
+        "description": "使用手機相機掃描，即可下載 iPhone 或 Android 版 Amical。",
+        "qrAlt": "下載 Amical 行動應用程式的 QR Code"
+      },
       "usage": {
         "label": "雲端聽寫",
         "wordsLeft_one": "剩餘 {{words}} 字",

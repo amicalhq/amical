@@ -478,6 +478,12 @@
       "logoAlt": "Amical-Logo",
       "brand": "Amical",
       "backToApp": "Zurück zur App",
+      "mobileApp": {
+        "label": "Mobile App herunterladen",
+        "title": "Hol dir Amical aufs Handy",
+        "description": "Scanne den Code mit deiner Handykamera, um Amical für iPhone oder Android herunterzuladen.",
+        "qrAlt": "QR-Code zum Herunterladen der mobilen Amical-App"
+      },
       "usage": {
         "label": "Cloud-Diktat",
         "wordsLeft_one": "{{words}} Wort übrig",

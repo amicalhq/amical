@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sidebar";
 import { AuthButton } from "@/components/auth-button";
 import { FeedbackButton } from "@/components/feedback-button";
+import { MobileAppButton } from "@/components/mobile-app-dialog";
 import { SidebarIconButton } from "@/components/sidebar-icon-button";
 import { isInternalUrl } from "@/utils/url";
 export type { NavSecondaryItem } from "@/components/nav-secondary-item-button";
@@ -64,6 +65,7 @@ export function NavSecondary({
                 <item.icon />
               </SidebarIconButton>
             ))}
+            <MobileAppButton />
             <FeedbackButton />
             {process.env.NODE_ENV === "development" && <DevMenu />}
           </SidebarMenuItem>

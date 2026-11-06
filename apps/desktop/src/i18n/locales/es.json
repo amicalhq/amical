@@ -478,6 +478,12 @@
       "logoAlt": "Logo de Amical",
       "brand": "Amical",
       "backToApp": "Volver a la app",
+      "mobileApp": {
+        "label": "Obtener la app móvil",
+        "title": "Consigue Amical en tu teléfono",
+        "description": "Escanea el código con la cámara de tu teléfono para descargar Amical en iPhone o Android.",
+        "qrAlt": "Código QR para descargar la app móvil de Amical"
+      },
       "usage": {
         "label": "Dictado en la nube",
         "wordsLeft_one": "Queda {{words}} palabra",

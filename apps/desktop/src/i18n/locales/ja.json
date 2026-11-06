@@ -478,6 +478,12 @@
       "logoAlt": "Amical ロゴ",
       "brand": "Amical",
       "backToApp": "アプリに戻る",
+      "mobileApp": {
+        "label": "モバイルアプリを入手",
+        "title": "スマートフォンでAmicalを使う",
+        "description": "スマートフォンのカメラでスキャンして、iPhoneまたはAndroid版のAmicalをダウンロードしてください。",
+        "qrAlt": "AmicalモバイルアプリをダウンロードするためのQRコード"
+      },
       "usage": {
         "label": "クラウド音声入力",
         "wordsLeft_one": "残り{{words}}語",

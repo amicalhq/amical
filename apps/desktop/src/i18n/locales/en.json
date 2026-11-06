@@ -475,6 +475,12 @@
       "logoAlt": "Amical Logo",
       "brand": "Amical",
       "backToApp": "Back to app",
+      "mobileApp": {
+        "label": "Get the mobile app",
+        "title": "Get Amical on your phone",
+        "description": "Scan with your phone's camera to download Amical for iPhone or Android.",
+        "qrAlt": "QR code to download the Amical mobile app"
+      },
       "usage": {
         "label": "Cloud dictation",
         "wordsLeft_one": "{{words}} word left",

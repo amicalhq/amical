@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { LogIn, LogOut, Loader2 } from "lucide-react";
+import { LogIn, LogOut, Loader2, Smartphone } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,6 +13,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
+import { Dialog } from "@/components/ui/dialog";
+import { MobileAppDialogContent } from "@/components/mobile-app-dialog";
 import { useLogout } from "@/hooks/useLogout";
 
 // Helper function to generate initials from email or name
@@ -33,7 +36,9 @@ function getInitials(email?: string | null, name?: string | null): string {
 }
 
 export function AuthButton() {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
+  const [mobileAppOpen, setMobileAppOpen] = useState(false);
   const logout = useLogout();
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -150,6 +155,10 @@ export function AuthButton() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setMobileAppOpen(true)}>
+              <Smartphone className="mr-2 h-4 w-4" />
+              {t("settings.sidebar.mobileApp.label")}
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => logout.requestLogout(accountButtonRef)}
               disabled={isBusy}
@@ -164,6 +173,14 @@ export function AuthButton() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Dialog open={mobileAppOpen} onOpenChange={setMobileAppOpen}>
+          <MobileAppDialogContent
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              accountButtonRef.current?.focus();
+            }}
+          />
+        </Dialog>
       </SidebarMenuItem>
     );
   }
