@@ -478,6 +478,36 @@
       "logoAlt": "Amical 로고",
       "brand": "Amical",
       "backToApp": "앱으로 돌아가기",
+      "account": "계정",
+      "signOut": "로그아웃",
+      "signIn": "로그인",
+      "accountLoading": "불러오는 중...",
+      "signInToast": {
+        "opening": "로그인을 위해 브라우저를 여는 중...",
+        "failed": "로그인을 시작하지 못했습니다",
+        "success": "로그인되었습니다"
+      },
+      "signOutFailed": "로그아웃하지 못했습니다",
+      "sessionExpired": {
+        "title": "세션이 만료되었습니다",
+        "description": "계속하려면 <strong>{{account}}</strong>(으)로 다시 로그인하세요.",
+        "existingAccount": "기존 계정",
+        "signInFailed": "로그인하지 못했습니다. 다시 시도해 주세요.",
+        "signOut": "로그아웃",
+        "signingOut": "로그아웃 중…",
+        "signIn": "다시 로그인",
+        "openingBrowser": "브라우저를 여는 중…"
+      },
+      "logoutDialog": {
+        "loggingOutTitle": "로그아웃 중…",
+        "loggingOutDescription": "Amical이 곧 재시작됩니다.",
+        "unsyncedTitle": "동기화되지 않은 변경 사항이 있습니다",
+        "unsyncedDescription": "동기화하지 않고 로그아웃하면 이 변경 사항이 영구적으로 삭제됩니다. 다시 로그인해도 복원되지 않습니다.",
+        "syncingTitle": "저장되지 않은 변경 사항을 동기화하는 중…",
+        "syncingDescription": "최대 15초가 걸릴 수 있습니다. 동기화가 끝나면 로그아웃되고 Amical이 재시작됩니다.",
+        "cancel": "취소",
+        "discardAndLogOut": "변경 사항 삭제 후 로그아웃"
+      },
       "mobileApp": {
         "label": "모바일 앱 받기",
         "title": "휴대폰에서 Amical 사용하기",

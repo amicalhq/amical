@@ -1,5 +1,6 @@
 import { useEffect, useState, type RefObject } from "react";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/trpc/react";
 import {
   AlertDialog,
@@ -23,6 +24,7 @@ export function LogoutDialog({
   onLogout: () => void;
   isLoggingOut: boolean;
 }) {
+  const { t } = useTranslation();
   const [syncFailed, setSyncFailed] = useState(false);
   const { mutateAsync: syncBeforeLogout } =
     api.auth.syncBeforeLogout.useMutation();
@@ -63,21 +65,23 @@ export function LogoutDialog({
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
             )}
             {isLoggingOut
-              ? "Logging out…"
+              ? t("settings.sidebar.logoutDialog.loggingOutTitle")
               : syncFailed
-                ? "You have unsynced changes"
-                : "Syncing unsaved changes…"}
+                ? t("settings.sidebar.logoutDialog.unsyncedTitle")
+                : t("settings.sidebar.logoutDialog.syncingTitle")}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {isLoggingOut
-              ? "Amical will restart shortly."
+              ? t("settings.sidebar.logoutDialog.loggingOutDescription")
               : syncFailed
-                ? "Logging out without syncing will permanently discard these changes. They won’t be restored when you sign back in."
-                : "This can take up to 15 seconds. Amical will log out and restart when syncing finishes."}
+                ? t("settings.sidebar.logoutDialog.unsyncedDescription")
+                : t("settings.sidebar.logoutDialog.syncingDescription")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isLoggingOut}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isLoggingOut}>
+            {t("settings.sidebar.logoutDialog.cancel")}
+          </AlertDialogCancel>
           {syncFailed && (
             <AlertDialogAction
               disabled={isLoggingOut}
@@ -86,7 +90,7 @@ export function LogoutDialog({
                 onLogout();
               }}
             >
-              Discard changes and log out
+              {t("settings.sidebar.logoutDialog.discardAndLogOut")}
             </AlertDialogAction>
           )}
         </AlertDialogFooter>

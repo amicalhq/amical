@@ -468,7 +468,7 @@ export class AmicalCloudHttpTransport {
                       Effect.fail(
                         new AuthenticationRequired({
                           message:
-                            "Authentication failed - please log in again",
+                            "Authentication failed - please sign in again",
                           meta: authenticationError.meta,
                         }),
                       ),

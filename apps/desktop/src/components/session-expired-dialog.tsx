@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { api } from "@/trpc/react";
 import { useLogout } from "@/hooks/useLogout";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export function SessionExpiredDialog() {
+  const { t } = useTranslation();
   const authStatus = api.auth.getAuthStatus.useQuery();
   const [error, setError] = useState<string | null>(null);
   const signInButtonRef = useRef<HTMLButtonElement>(null);
@@ -25,7 +27,9 @@ export function SessionExpiredDialog() {
   api.auth.onAuthStateChange.useSubscription(undefined, {
     onData: (event) => {
       if (event.eventType === "auth-error") {
-        setError(event.error ?? "Could not sign in. Please try again.");
+        setError(
+          event.error ?? t("settings.sidebar.sessionExpired.signInFailed"),
+        );
       } else {
         setError(null);
       }
@@ -46,13 +50,19 @@ export function SessionExpiredDialog() {
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>Your session expired</AlertDialogTitle>
+          <AlertDialogTitle>
+            {t("settings.sidebar.sessionExpired.title")}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            Sign in again with{" "}
-            <strong>
-              {authStatus.data.userEmail || "your existing account"}
-            </strong>{" "}
-            to continue.
+            <Trans
+              i18nKey="settings.sidebar.sessionExpired.description"
+              values={{
+                account:
+                  authStatus.data.userEmail ||
+                  t("settings.sidebar.sessionExpired.existingAccount"),
+              }}
+              components={{ strong: <strong /> }}
+            />
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error && (
@@ -67,14 +77,18 @@ export function SessionExpiredDialog() {
             disabled={login.isPending || logout.isBusy}
             onClick={() => logout.requestLogout(logoutButtonRef)}
           >
-            {logout.isLoggingOut ? "Logging out…" : "Log out"}
+            {logout.isLoggingOut
+              ? t("settings.sidebar.sessionExpired.signingOut")
+              : t("settings.sidebar.sessionExpired.signOut")}
           </Button>
           <Button
             ref={signInButtonRef}
             disabled={login.isPending || logout.isBusy}
             onClick={() => login.mutate()}
           >
-            {login.isPending ? "Opening browser…" : "Sign in again"}
+            {login.isPending
+              ? t("settings.sidebar.sessionExpired.openingBrowser")
+              : t("settings.sidebar.sessionExpired.signIn")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

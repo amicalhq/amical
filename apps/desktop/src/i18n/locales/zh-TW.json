@@ -478,6 +478,36 @@
       "logoAlt": "Amical 標誌",
       "brand": "Amical",
       "backToApp": "返回應用程式",
+      "account": "帳戶",
+      "signOut": "登出",
+      "signIn": "登入",
+      "accountLoading": "載入中...",
+      "signInToast": {
+        "opening": "正在開啟瀏覽器以登入...",
+        "failed": "無法開始登入",
+        "success": "登入成功"
+      },
+      "signOutFailed": "無法登出",
+      "sessionExpired": {
+        "title": "您的工作階段已過期",
+        "description": "請使用 <strong>{{account}}</strong> 重新登入以繼續。",
+        "existingAccount": "現有帳戶",
+        "signInFailed": "無法登入。請再試一次。",
+        "signOut": "登出",
+        "signingOut": "正在登出…",
+        "signIn": "重新登入",
+        "openingBrowser": "正在開啟瀏覽器…"
+      },
+      "logoutDialog": {
+        "loggingOutTitle": "正在登出…",
+        "loggingOutDescription": "Amical 即將重新啟動。",
+        "unsyncedTitle": "您有尚未同步的變更",
+        "unsyncedDescription": "若未同步就登出，這些變更將被永久捨棄，重新登入後也無法復原。",
+        "syncingTitle": "正在同步尚未儲存的變更…",
+        "syncingDescription": "最多可能需要 15 秒。同步完成後，Amical 將會登出並重新啟動。",
+        "cancel": "取消",
+        "discardAndLogOut": "捨棄變更並登出"
+      },
       "mobileApp": {
         "label": "取得行動應用程式",
         "title": "在手機上使用 Amical",

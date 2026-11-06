@@ -436,7 +436,7 @@ export class AuthService extends EventEmitter {
         return yield* Effect.fail(
           authFailure(
             new Error(
-              `Please sign in with ${previous.userInfo.email || "your existing account"}, or log out first to switch accounts.`,
+              `Please sign in with ${previous.userInfo.email || "your existing account"}, or sign out first to switch accounts.`,
             ),
             "Account change requires logout",
           ),
@@ -575,7 +575,7 @@ export class AuthService extends EventEmitter {
         return yield* Effect.fail(
           authFailure(
             new Error(
-              "Authentication changed during logout. Please try again.",
+              "Authentication changed during sign-out. Please try again.",
             ),
             "Logout interrupted",
           ),
@@ -928,8 +928,8 @@ export class AuthService extends EventEmitter {
           this.emit("token-refresh-failed", expired);
           return yield* Effect.fail(
             authFailure(
-              new Error("Refresh token expired - please log in again"),
-              "Refresh token expired - please log in again",
+              new Error("Refresh token expired - please sign in again"),
+              "Refresh token expired - please sign in again",
             ),
           );
         }

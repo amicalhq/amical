@@ -117,7 +117,7 @@ async function startLogout() {
   fireEvent.keyDown(screen.getByRole("button", { name: /user@example.com/ }), {
     key: "Enter",
   });
-  fireEvent.click(screen.getByText("Sign Out"));
+  fireEvent.click(screen.getByText("settings.sidebar.signOut"));
   await waitFor(() => expect(mocks.getLogoutStatus).toHaveBeenCalled());
 }
 
@@ -178,7 +178,11 @@ describe("onboarding account switch", () => {
     startAccountSwitch();
     await screen.findByRole("alertdialog");
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.logoutDialog.cancel",
+      }),
+    );
     await act(async () => sync.resolve({ synced: true }));
 
     expect(mocks.logout).not.toHaveBeenCalled();
@@ -200,9 +204,13 @@ describe("logout dialog", () => {
     await startLogout();
 
     expect(screen.getByRole("alertdialog").textContent).toContain(
-      "Syncing unsaved changes…",
+      "settings.sidebar.logoutDialog.syncingTitle",
     );
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "settings.sidebar.logoutDialog.cancel",
+      }),
+    ).toBeTruthy();
     expect(mocks.syncBeforeLogout).toHaveBeenCalledOnce();
     expect(mocks.logout).not.toHaveBeenCalled();
 
@@ -234,16 +242,18 @@ describe("logout dialog", () => {
 
       await startLogout();
 
-      expect(await screen.findByText("You have unsynced changes")).toBeTruthy();
       expect(
-        screen.getByText(
-          "Logging out without syncing will permanently discard these changes. They won’t be restored when you sign back in.",
-        ),
+        await screen.findByText("settings.sidebar.logoutDialog.unsyncedTitle"),
+      ).toBeTruthy();
+      expect(
+        screen.getByText("settings.sidebar.logoutDialog.unsyncedDescription"),
       ).toBeTruthy();
       expect(mocks.logout).not.toHaveBeenCalled();
 
       fireEvent.click(
-        screen.getByRole("button", { name: "Discard changes and log out" }),
+        screen.getByRole("button", {
+          name: "settings.sidebar.logoutDialog.discardAndLogOut",
+        }),
       );
 
       expect(mocks.logout).toHaveBeenCalledOnce();
@@ -260,14 +270,20 @@ describe("logout dialog", () => {
     render(React.createElement(AuthButton));
     await startLogout();
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.logoutDialog.cancel",
+      }),
+    );
     expect(screen.queryByRole("alertdialog")).toBeNull();
 
     await startLogout();
     await act(async () => first.resolve({ synced: true }));
 
     expect(mocks.logout).not.toHaveBeenCalled();
-    expect(screen.getByText("Syncing unsaved changes…")).toBeTruthy();
+    expect(
+      screen.getByText("settings.sidebar.logoutDialog.syncingTitle"),
+    ).toBeTruthy();
 
     await act(async () => second.resolve({ synced: true }));
     expect(mocks.logout).toHaveBeenCalledOnce();
@@ -289,9 +305,13 @@ describe("logout dialog", () => {
     mocks.syncBeforeLogout.mockResolvedValue({ synced: false });
     render(React.createElement(AuthButton));
     await startLogout();
-    await screen.findByText("You have unsynced changes");
+    await screen.findByText("settings.sidebar.logoutDialog.unsyncedTitle");
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.logoutDialog.cancel",
+      }),
+    );
 
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(mocks.logout).not.toHaveBeenCalled();
@@ -317,9 +337,12 @@ describe("logout dialog", () => {
       mocks.logoutCallbacks.onError(new Error("Could not clear data"));
     });
 
-    expect(mocks.toastError).toHaveBeenCalledWith("Failed to sign out", {
-      description: "Could not clear data",
-    });
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "settings.sidebar.signOutFailed",
+      {
+        description: "Could not clear data",
+      },
+    );
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).toBeNull();
     await startLogout();
@@ -338,7 +361,7 @@ describe("logout dialog", () => {
     );
 
     expect(mocks.toastSuccess).toHaveBeenCalledExactlyOnceWith(
-      "Signed in successfully",
+      "settings.sidebar.signInToast.success",
     );
   });
 
@@ -357,10 +380,15 @@ describe("logout dialog", () => {
       }),
     );
 
-    expect(screen.getByText("Logging out…")).toBeTruthy();
     expect(
-      (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
-        .disabled,
+      screen.getByText("settings.sidebar.logoutDialog.loggingOutTitle"),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "settings.sidebar.logoutDialog.cancel",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 });

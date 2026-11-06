@@ -478,6 +478,36 @@
       "logoAlt": "Logo de Amical",
       "brand": "Amical",
       "backToApp": "Volver a la app",
+      "account": "Cuenta",
+      "signOut": "Cerrar sesión",
+      "signIn": "Iniciar sesión",
+      "accountLoading": "Cargando...",
+      "signInToast": {
+        "opening": "Abriendo el navegador para iniciar sesión...",
+        "failed": "No se pudo iniciar el proceso de inicio de sesión",
+        "success": "Sesión iniciada correctamente"
+      },
+      "signOutFailed": "No se pudo cerrar sesión",
+      "sessionExpired": {
+        "title": "Tu sesión ha caducado",
+        "description": "Vuelve a iniciar sesión con <strong>{{account}}</strong> para continuar.",
+        "existingAccount": "tu cuenta actual",
+        "signInFailed": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+        "signOut": "Cerrar sesión",
+        "signingOut": "Cerrando sesión…",
+        "signIn": "Volver a iniciar sesión",
+        "openingBrowser": "Abriendo el navegador…"
+      },
+      "logoutDialog": {
+        "loggingOutTitle": "Cerrando sesión…",
+        "loggingOutDescription": "Amical se reiniciará en breve.",
+        "unsyncedTitle": "Tienes cambios sin sincronizar",
+        "unsyncedDescription": "Si cierras sesión sin sincronizar, estos cambios se descartarán de forma permanente. No se restaurarán cuando vuelvas a iniciar sesión.",
+        "syncingTitle": "Sincronizando los cambios sin guardar…",
+        "syncingDescription": "Esto puede tardar hasta 15 segundos. Amical cerrará sesión y se reiniciará cuando termine la sincronización.",
+        "cancel": "Cancelar",
+        "discardAndLogOut": "Descartar cambios y cerrar sesión"
+      },
       "mobileApp": {
         "label": "Obtener la app móvil",
         "title": "Consigue Amical en tu teléfono",

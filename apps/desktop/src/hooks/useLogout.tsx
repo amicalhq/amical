@@ -6,6 +6,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { api } from "@/trpc/react";
 import { LogoutDialog } from "@/components/logout-dialog";
@@ -20,6 +21,7 @@ const LogoutContext = createContext<{
 } | null>(null);
 
 export function LogoutProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const [isChecking, setIsChecking] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const returnFocusRef = useRef<RefObject<HTMLButtonElement | null>>({
@@ -30,7 +32,9 @@ export function LogoutProvider({ children }: { children: ReactNode }) {
     onSuccess: () => setDialogOpen(false),
     onError: (error) => {
       setDialogOpen(false);
-      toast.error("Failed to sign out", { description: error.message });
+      toast.error(t("settings.sidebar.signOutFailed"), {
+        description: error.message,
+      });
     },
   });
 
@@ -45,7 +49,7 @@ export function LogoutProvider({ children }: { children: ReactNode }) {
       if (hasPendingChanges) setDialogOpen(true);
       else mutation.mutate();
     } catch (error) {
-      toast.error("Failed to sign out", {
+      toast.error(t("settings.sidebar.signOutFailed"), {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {

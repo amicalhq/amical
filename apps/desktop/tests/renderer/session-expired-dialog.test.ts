@@ -41,6 +41,17 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
+vi.mock("react-i18next", () => ({
+  Trans: ({
+    i18nKey,
+    values,
+  }: {
+    i18nKey: string;
+    values: { account: string };
+  }) => `${i18nKey} ${values.account}`,
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 vi.mock("sonner", () => ({
   toast: { error: mocks.toastError, success: vi.fn(), info: vi.fn() },
 }));
@@ -125,10 +136,12 @@ describe("session expired dialog", () => {
     render(React.createElement(SessionExpiredDialog));
 
     expect(screen.getByRole("alertdialog").textContent).toContain(
-      "Sign in again with user@example.com to continue.",
+      "settings.sidebar.sessionExpired.description user@example.com",
     );
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Sign in again" }),
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signIn",
+      }),
     );
 
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });
@@ -148,12 +161,18 @@ describe("session expired dialog", () => {
     expect(mocks.refetch).toHaveBeenCalledOnce();
     mocks.authStatus.isAuthenticated = false;
     view.rerender(React.createElement(SessionExpiredDialog));
-    expect(screen.getByText("Your session expired")).toBeTruthy();
+    expect(
+      screen.getByText("settings.sidebar.sessionExpired.title"),
+    ).toBeTruthy();
   });
 
   it("stays open during the browser handoff and allows another attempt once the browser opens", () => {
     const view = render(React.createElement(SessionExpiredDialog));
-    fireEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signIn",
+      }),
+    );
     expect(mocks.login).toHaveBeenCalledOnce();
 
     mocks.loginPending = true;
@@ -162,14 +181,18 @@ describe("session expired dialog", () => {
     expect(
       (
         screen.getByRole("button", {
-          name: "Opening browser…",
+          name: "settings.sidebar.sessionExpired.openingBrowser",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
 
     mocks.loginPending = false;
     view.rerender(React.createElement(SessionExpiredDialog));
-    fireEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signIn",
+      }),
+    );
 
     expect(mocks.login).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("alertdialog")).toBeTruthy();
@@ -178,7 +201,7 @@ describe("session expired dialog", () => {
   it("shows a rejected account's error inside the dialog and clears it on retry", () => {
     render(React.createElement(SessionExpiredDialog));
     const message =
-      "Please sign in with user@example.com, or log out first to switch accounts.";
+      "Please sign in with user@example.com, or sign out first to switch accounts.";
 
     act(() =>
       mocks.authCallbacks.onData({ eventType: "auth-error", error: message }),
@@ -188,7 +211,11 @@ describe("session expired dialog", () => {
     expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
     expect(mocks.logout).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signIn",
+      }),
+    );
 
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("alertdialog")).toBeTruthy();
@@ -196,7 +223,11 @@ describe("session expired dialog", () => {
 
   it("shows browser launch errors inline and leaves sign-in available", () => {
     render(React.createElement(SessionExpiredDialog));
-    fireEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signIn",
+      }),
+    );
 
     act(() =>
       mocks.loginCallbacks.onError(new Error("Could not open browser")),
@@ -205,7 +236,11 @@ describe("session expired dialog", () => {
     expect(screen.getByRole("alert").textContent).toBe(
       "Could not open browser",
     );
-    expect(screen.getByRole("button", { name: "Sign in again" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signIn",
+      }),
+    ).toBeTruthy();
   });
 
   it("closes when the same account has successfully signed in", () => {
@@ -221,7 +256,11 @@ describe("session expired dialog", () => {
 
   it("logs out directly when nothing is pending and stays open while logout runs", async () => {
     const view = render(React.createElement(SessionExpiredDialog));
-    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signOut",
+      }),
+    );
 
     await waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
     expect(mocks.syncBeforeLogout).not.toHaveBeenCalled();
@@ -231,7 +270,7 @@ describe("session expired dialog", () => {
     expect(
       (
         screen.getByRole("button", {
-          name: "Logging out…",
+          name: "settings.sidebar.sessionExpired.signingOut",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -241,14 +280,20 @@ describe("session expired dialog", () => {
     mocks.getLogoutStatus.mockResolvedValue({ hasPendingChanges: true });
     mocks.syncBeforeLogout.mockResolvedValue({ synced: false });
     render(React.createElement(SessionExpiredDialog));
-    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signOut",
+      }),
+    );
 
-    await screen.findByText("You have unsynced changes");
+    await screen.findByText("settings.sidebar.logoutDialog.unsyncedTitle");
     expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
     expect(mocks.logout).not.toHaveBeenCalled();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Discard changes and log out" }),
+      screen.getByRole("button", {
+        name: "settings.sidebar.logoutDialog.discardAndLogOut",
+      }),
     );
 
     expect(mocks.logout).toHaveBeenCalledOnce();
@@ -259,30 +304,55 @@ describe("session expired dialog", () => {
     mocks.getLogoutStatus.mockResolvedValue({ hasPendingChanges: true });
     mocks.syncBeforeLogout.mockReturnValue(sync.promise);
     render(React.createElement(SessionExpiredDialog));
-    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
-    await screen.findByText("Syncing unsaved changes…");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signOut",
+      }),
+    );
+    await screen.findByText("settings.sidebar.logoutDialog.syncingTitle");
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.logoutDialog.cancel",
+      }),
+    );
     await act(async () => sync.resolve({ synced: true }));
 
-    expect(screen.getByText("Your session expired")).toBeTruthy();
+    expect(
+      screen.getByText("settings.sidebar.sessionExpired.title"),
+    ).toBeTruthy();
     expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
     expect(mocks.logout).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signIn",
+      }),
+    );
     expect(mocks.login).toHaveBeenCalledOnce();
   });
 
   it("keeps sign-in available if logout fails", async () => {
     render(React.createElement(SessionExpiredDialog));
-    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signOut",
+      }),
+    );
     await waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
 
     act(() => mocks.logoutCallbacks.onError(new Error("Could not clear data")));
 
-    expect(mocks.toastError).toHaveBeenCalledWith("Failed to sign out", {
-      description: "Could not clear data",
-    });
-    expect(screen.getByRole("button", { name: "Sign in again" })).toBeTruthy();
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "settings.sidebar.signOutFailed",
+      {
+        description: "Could not clear data",
+      },
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "settings.sidebar.sessionExpired.signIn",
+      }),
+    ).toBeTruthy();
   });
 
   it("keeps one logout dialog when its sync attempt discovers expired credentials", async () => {
@@ -304,21 +374,31 @@ describe("session expired dialog", () => {
         key: "Enter",
       },
     );
-    fireEvent.click(screen.getByText("Sign Out"));
-    await screen.findByText("Syncing unsaved changes…");
+    fireEvent.click(screen.getByText("settings.sidebar.signOut"));
+    await screen.findByText("settings.sidebar.logoutDialog.syncingTitle");
 
     mocks.authStatus.isAuthenticated = false;
     view.rerender(content());
     await act(async () => sync.resolve({ synced: false }));
 
     expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
-    expect(screen.getByText("You have unsynced changes")).toBeTruthy();
-    expect(screen.queryByText("Your session expired")).toBeNull();
+    expect(
+      screen.getByText("settings.sidebar.logoutDialog.unsyncedTitle"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("settings.sidebar.sessionExpired.title"),
+    ).toBeNull();
     expect(mocks.syncBeforeLogout).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.sidebar.logoutDialog.cancel",
+      }),
+    );
 
-    expect(screen.getByText("Your session expired")).toBeTruthy();
+    expect(
+      screen.getByText("settings.sidebar.sessionExpired.title"),
+    ).toBeTruthy();
     expect(screen.getAllByRole("alertdialog")).toHaveLength(1);
     expect(mocks.logout).not.toHaveBeenCalled();
   });

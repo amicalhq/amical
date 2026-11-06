@@ -384,7 +384,7 @@ describe("AuthService refresh fencing", () => {
     const clear = vi.fn();
     const logout = runAuthEffect(authService.logout(false, clear));
     const rejected = expect(logout).rejects.toThrow(
-      "Authentication changed during logout",
+      "Authentication changed during sign-out",
     );
     await vi.waitFor(() => expect(release).toBeTypeOf("function"));
     await runAuthEffect(authService.login());
@@ -502,7 +502,7 @@ describe("AuthService refresh fencing", () => {
         ...owner,
         userInfo: { ...owner.userInfo!, email },
       });
-      const message = `Please sign in with ${email || "your existing account"}, or log out first to switch accounts.`;
+      const message = `Please sign in with ${email || "your existing account"}, or sign out first to switch accounts.`;
       if (expired) await runAuthEffect(authService.logout(true));
       await runAuthEffect(authService.login());
       const pending = (

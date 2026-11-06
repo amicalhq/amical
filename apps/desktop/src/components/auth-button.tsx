@@ -72,11 +72,11 @@ export function AuthButton() {
       }, 5000);
     },
     onSuccess: () => {
-      toast.info("Opening browser for sign in...");
+      toast.info(t("settings.sidebar.signInToast.opening"));
     },
     onError: (error) => {
       clearLoadingTimeout();
-      toast.error("Failed to initiate login", {
+      toast.error(t("settings.sidebar.signInToast.failed"), {
         description: error.message,
       });
       setIsLoading(false);
@@ -96,7 +96,7 @@ export function AuthButton() {
         data.isAuthenticated &&
         !authStatusQuery.data?.isAuthenticated
       ) {
-        toast.success("Signed in successfully");
+        toast.success(t("settings.sidebar.signInToast.success"));
       }
     },
     onError: (error) => {
@@ -118,7 +118,7 @@ export function AuthButton() {
       <SidebarMenuItem>
         <SidebarMenuButton disabled>
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Loading...</span>
+          <span>{t("settings.sidebar.accountLoading")}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
     );
@@ -126,7 +126,7 @@ export function AuthButton() {
 
   if (isAuthenticated || authStatusQuery.data?.userId) {
     const initials = getInitials(userEmail, userName);
-    const displayName = userName || userEmail || "Account";
+    const displayName = userName || userEmail || t("settings.sidebar.account");
 
     return (
       <SidebarMenuItem>
@@ -169,7 +169,7 @@ export function AuthButton() {
               ) : (
                 <LogOut className="mr-2 h-4 w-4" />
               )}
-              Sign Out
+              {t("settings.sidebar.signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -193,7 +193,7 @@ export function AuthButton() {
         ) : (
           <LogIn className="h-4 w-4" />
         )}
-        <span>Sign In</span>
+        <span>{t("settings.sidebar.signIn")}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

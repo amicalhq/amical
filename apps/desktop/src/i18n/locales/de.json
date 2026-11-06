@@ -478,6 +478,36 @@
       "logoAlt": "Amical-Logo",
       "brand": "Amical",
       "backToApp": "Zurück zur App",
+      "account": "Konto",
+      "signOut": "Abmelden",
+      "signIn": "Anmelden",
+      "accountLoading": "Wird geladen...",
+      "signInToast": {
+        "opening": "Browser wird zur Anmeldung geöffnet...",
+        "failed": "Anmeldung konnte nicht gestartet werden",
+        "success": "Erfolgreich angemeldet"
+      },
+      "signOutFailed": "Abmeldung konnte nicht abgeschlossen werden",
+      "sessionExpired": {
+        "title": "Deine Sitzung ist abgelaufen",
+        "description": "Melde dich erneut mit <strong>{{account}}</strong> an, um fortzufahren.",
+        "existingAccount": "deinem bestehenden Konto",
+        "signInFailed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
+        "signOut": "Abmelden",
+        "signingOut": "Wird abgemeldet…",
+        "signIn": "Erneut anmelden",
+        "openingBrowser": "Browser wird geöffnet…"
+      },
+      "logoutDialog": {
+        "loggingOutTitle": "Wird abgemeldet…",
+        "loggingOutDescription": "Amical wird gleich neu gestartet.",
+        "unsyncedTitle": "Du hast nicht synchronisierte Änderungen",
+        "unsyncedDescription": "Wenn du dich ohne Synchronisierung abmeldest, werden diese Änderungen endgültig verworfen. Sie werden nicht wiederhergestellt, wenn du dich erneut anmeldest.",
+        "syncingTitle": "Nicht gespeicherte Änderungen werden synchronisiert…",
+        "syncingDescription": "Das kann bis zu 15 Sekunden dauern. Amical meldet dich ab und startet neu, sobald die Synchronisierung abgeschlossen ist.",
+        "cancel": "Abbrechen",
+        "discardAndLogOut": "Änderungen verwerfen und abmelden"
+      },
       "mobileApp": {
         "label": "Mobile App herunterladen",
         "title": "Hol dir Amical aufs Handy",

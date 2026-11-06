@@ -329,7 +329,7 @@
         "recordingAutoStopped": "Max dictation duration reached. Start a new dictation if needed."
       },
       "action": {
-        "logIn": "Log In",
+        "logIn": "Sign In",
         "support": "Support",
         "viewUsage": "View Usage",
         "viewHistory": "View History",
@@ -363,8 +363,8 @@
       },
       "errorCode": {
         "authRequired": {
-          "title": "Login required",
-          "description": "Please log in to use cloud transcription"
+          "title": "Sign-in required",
+          "description": "Please sign in to use cloud transcription"
         },
         "rateLimitExceeded": {
           "title": "Rate limit exceeded",
@@ -475,6 +475,36 @@
       "logoAlt": "Amical Logo",
       "brand": "Amical",
       "backToApp": "Back to app",
+      "account": "Account",
+      "signOut": "Sign Out",
+      "signIn": "Sign In",
+      "accountLoading": "Loading...",
+      "signInToast": {
+        "opening": "Opening browser for sign in...",
+        "failed": "Failed to initiate sign-in",
+        "success": "Signed in successfully"
+      },
+      "signOutFailed": "Failed to sign out",
+      "sessionExpired": {
+        "title": "Your session expired",
+        "description": "Sign in again with <strong>{{account}}</strong> to continue.",
+        "existingAccount": "your existing account",
+        "signInFailed": "Could not sign in. Please try again.",
+        "signOut": "Sign out",
+        "signingOut": "Signing out…",
+        "signIn": "Sign in again",
+        "openingBrowser": "Opening browser…"
+      },
+      "logoutDialog": {
+        "loggingOutTitle": "Signing out…",
+        "loggingOutDescription": "Amical will restart shortly.",
+        "unsyncedTitle": "You have unsynced changes",
+        "unsyncedDescription": "Signing out without syncing will permanently discard these changes. They won’t be restored when you sign back in.",
+        "syncingTitle": "Syncing unsaved changes…",
+        "syncingDescription": "This can take up to 15 seconds. Amical will sign out and restart when syncing finishes.",
+        "cancel": "Cancel",
+        "discardAndLogOut": "Discard changes and sign out"
+      },
       "mobileApp": {
         "label": "Get the mobile app",
         "title": "Get Amical on your phone",
@@ -845,8 +875,8 @@
         "syncLanguageModels": "Sync language models",
         "toast": {
           "saveFailed": "Failed to save formatting settings. Please try again.",
-          "loginInBrowser": "Complete login in your browser",
-          "loginStartFailed": "Failed to start login process"
+          "loginInBrowser": "Complete sign-in in your browser",
+          "loginStartFailed": "Failed to start sign-in process"
         }
       }
     },
@@ -1227,7 +1257,7 @@
         "loginDialog": {
           "title": "Sign In Required",
           "description": "To use Amical Cloud transcription, you need to sign in with your Amical account. This enables secure cloud-based transcription with high accuracy.",
-          "browserNotice": "After clicking \"Sign In\", you'll be redirected to your browser to complete the login process.",
+          "browserNotice": "After clicking \"Sign In\", you'll be redirected to your browser to complete the sign-in process.",
           "cloudBenefit": "Fast, accurate cloud transcription",
           "cancel": "Cancel",
           "openingBrowser": "Opening Browser...",
@@ -1239,10 +1269,10 @@
           "deleteFailed": "Failed to delete model",
           "cloudSelected": "Amical Cloud selected. Cloud formatting enabled.",
           "selectFailed": "Failed to select model",
-          "loginInBrowser": "Please complete login in your browser",
-          "loginStartFailed": "Failed to start login process",
+          "loginInBrowser": "Please complete sign-in in your browser",
+          "loginStartFailed": "Failed to start sign-in process",
           "downloadFailed": "Download failed: {{message}}",
-          "loginSuccess": "Login successful!"
+          "loginSuccess": "Sign-in successful!"
         }
       }
     }
