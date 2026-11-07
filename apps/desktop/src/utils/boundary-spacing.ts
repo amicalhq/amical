@@ -17,7 +17,7 @@ const STARTS_WITH_BOUNDARY_WHITESPACE_RE = /^[ \t\r\n]/;
 const IGNORABLE_FORMAT_CHARS_RE =
   /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
 
-function stripIgnorableFormatChars(text: string): string {
+export function stripIgnorableFormatChars(text: string): string {
   return text.replace(IGNORABLE_FORMAT_CHARS_RE, "");
 }
 

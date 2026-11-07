@@ -1,29 +1,16 @@
-import * as Y from "yjs";
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { logger } from "../logger";
 import { db } from "../../db";
 import { getAppSettings, updateAppSettings } from "../../db/app-settings";
-import { seedDailyStats } from "../../db/daily-stats";
+import { migrateLegacyNotes } from "../../db/note-body";
+import { snippets, vocabulary } from "../../db/schema";
 import {
-  getUniqueNoteIds,
-  getYjsUpdatesByNoteId,
-  replaceYjsUpdates,
-} from "../../db/notes";
-import { snippets, transcriptions, vocabulary } from "../../db/schema";
-import {
-  axisSyncKeySchema,
-  axisSyncOptionalTextSchema,
-  axisSyncRequiredTextSchema,
+  cloudSyncKeySchema,
+  cloudSyncOptionalTextSchema,
+  cloudSyncRequiredTextSchema,
 } from "../../db/sync-payload";
-import {
-  isLexicalEditorStateJsonString,
-  serializePlainTextToLexicalEditorStateJson,
-} from "../../services/notes/lexical-editor-state";
-import { countWords, toLocalStatsDate } from "../../utils/dictation-stats";
 
-const NOTES_LEXICAL_MIGRATION_VERSION = 1;
-const DICTATION_DAILY_STATS_MIGRATION_VERSION = 2;
 const SETTINGS_SYNC_BOUNDS_MIGRATION_VERSION = 1;
 
 async function persistDataMigrationVersion(
@@ -43,116 +30,6 @@ async function persistDataMigrationVersion(
   return nextDataMigrations;
 }
 
-async function migrateNotesToLexicalEditorState(): Promise<{
-  notesChecked: number;
-  notesMigrated: number;
-}> {
-  const noteIds = await getUniqueNoteIds();
-  let notesMigrated = 0;
-
-  for (const noteId of noteIds) {
-    const updates = await getYjsUpdatesByNoteId(noteId);
-    if (updates.length === 0) continue;
-
-    const ydoc = new Y.Doc();
-    for (const update of updates) {
-      const updateArray = new Uint8Array(update.updateData as Buffer);
-      Y.applyUpdate(ydoc, updateArray);
-    }
-
-    const yText = ydoc.getText("content");
-    const storedContent = yText.toString();
-
-    if (!storedContent) continue;
-    if (isLexicalEditorStateJsonString(storedContent)) continue;
-
-    const migratedJson =
-      serializePlainTextToLexicalEditorStateJson(storedContent);
-
-    ydoc.transact(() => {
-      yText.delete(0, yText.length);
-      yText.insert(0, migratedJson);
-    }, "notes-lexical-migration");
-
-    const stateUpdate = Y.encodeStateAsUpdate(ydoc);
-    await replaceYjsUpdates(noteId, stateUpdate);
-    notesMigrated++;
-  }
-
-  return {
-    notesChecked: noteIds.length,
-    notesMigrated,
-  };
-}
-
-async function migrateDictationDailyStats(): Promise<{
-  transcriptionsChecked: number;
-  statsDaysWritten: number;
-}> {
-  const existingTranscriptions = await db
-    .select({
-      text: transcriptions.text,
-      timestamp: transcriptions.timestamp,
-      language: transcriptions.language,
-    })
-    .from(transcriptions);
-
-  const statsByDate = new Map<
-    string,
-    {
-      wordCount: number;
-      transcriptionCount: number;
-      createdAt: Date;
-      updatedAt: Date;
-    }
-  >();
-
-  for (const transcription of existingTranscriptions) {
-    const wordCount = countWords(transcription.text, transcription.language);
-
-    const timestamp =
-      transcription.timestamp instanceof Date
-        ? transcription.timestamp
-        : new Date(transcription.timestamp);
-    const date = toLocalStatsDate(timestamp);
-    const existingBucket = statsByDate.get(date);
-
-    if (existingBucket) {
-      existingBucket.wordCount += wordCount;
-      existingBucket.transcriptionCount += 1;
-      if (timestamp < existingBucket.createdAt) {
-        existingBucket.createdAt = timestamp;
-      }
-      if (timestamp > existingBucket.updatedAt) {
-        existingBucket.updatedAt = timestamp;
-      }
-      continue;
-    }
-
-    statsByDate.set(date, {
-      wordCount,
-      transcriptionCount: 1,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
-  }
-
-  await seedDailyStats(
-    Array.from(statsByDate.entries()).map(([date, bucket]) => ({
-      date,
-      wordCount: bucket.wordCount,
-      transcriptionCount: bucket.transcriptionCount,
-      createdAt: bucket.createdAt,
-      updatedAt: bucket.updatedAt,
-    })),
-  );
-
-  return {
-    transcriptionsChecked: existingTranscriptions.length,
-    statsDaysWritten: statsByDate.size,
-  };
-}
-
 async function migrateSettingsSyncBounds(): Promise<{
   vocabularyDeleted: number;
   snippetsDeleted: number;
@@ -170,50 +47,67 @@ async function migrateSettingsSyncBounds(): Promise<{
       trigger: row.trigger.trim(),
     }));
 
-    const vocabularyIdsToDelete: string[] = [];
+    const vocabularyRowsToDelete: typeof normalizedVocabulary = [];
     const keptVocabulary: typeof normalizedVocabulary = [];
     const seenWords = new Set<string>();
     for (const row of normalizedVocabulary.sort((a, b) =>
       a.id.localeCompare(b.id),
     )) {
+      const scopedWord = `${row.scopeType}\0${row.scopeId}\0${row.word}`;
       if (
-        !axisSyncKeySchema.safeParse(row.word).success ||
+        !cloudSyncKeySchema.safeParse(row.word).success ||
         (row.replacementWord !== null &&
-          !axisSyncOptionalTextSchema.safeParse(row.replacementWord).success) ||
-        seenWords.has(row.word)
+          !cloudSyncOptionalTextSchema.safeParse(row.replacementWord)
+            .success) ||
+        seenWords.has(scopedWord)
       ) {
-        vocabularyIdsToDelete.push(row.id);
+        vocabularyRowsToDelete.push(row);
         continue;
       }
-      seenWords.add(row.word);
+      seenWords.add(scopedWord);
       keptVocabulary.push(row);
     }
 
-    const snippetIdsToDelete: string[] = [];
+    const snippetRowsToDelete: typeof normalizedSnippets = [];
     const keptSnippets: typeof normalizedSnippets = [];
     const seenTriggers = new Set<string>();
     for (const row of normalizedSnippets.sort((a, b) =>
       a.id.localeCompare(b.id),
     )) {
+      const scopedTrigger = `${row.scopeType}\0${row.scopeId}\0${row.trigger}`;
       if (
-        !axisSyncKeySchema.safeParse(row.trigger).success ||
-        !axisSyncRequiredTextSchema.safeParse(row.content).success ||
-        seenTriggers.has(row.trigger)
+        !cloudSyncKeySchema.safeParse(row.trigger).success ||
+        !cloudSyncRequiredTextSchema.safeParse(row.content).success ||
+        seenTriggers.has(scopedTrigger)
       ) {
-        snippetIdsToDelete.push(row.id);
+        snippetRowsToDelete.push(row);
         continue;
       }
-      seenTriggers.add(row.trigger);
+      seenTriggers.add(scopedTrigger);
       keptSnippets.push(row);
     }
 
-    if (vocabularyIdsToDelete.length > 0) {
+    for (const row of vocabularyRowsToDelete) {
       tx.delete(vocabulary)
-        .where(inArray(vocabulary.id, vocabularyIdsToDelete))
+        .where(
+          and(
+            eq(vocabulary.id, row.id),
+            eq(vocabulary.scopeType, row.scopeType),
+            eq(vocabulary.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
-    if (snippetIdsToDelete.length > 0) {
-      tx.delete(snippets).where(inArray(snippets.id, snippetIdsToDelete)).run();
+    for (const row of snippetRowsToDelete) {
+      tx.delete(snippets)
+        .where(
+          and(
+            eq(snippets.id, row.id),
+            eq(snippets.scopeType, row.scopeType),
+            eq(snippets.scopeId, row.scopeId),
+          ),
+        )
+        .run();
     }
 
     // Move retained keys through unique temporary values so trimming can safely
@@ -221,13 +115,25 @@ async function migrateSettingsSyncBounds(): Promise<{
     for (const row of keptVocabulary) {
       tx.update(vocabulary)
         .set({ word: randomUUID() })
-        .where(eq(vocabulary.id, row.id))
+        .where(
+          and(
+            eq(vocabulary.id, row.id),
+            eq(vocabulary.scopeType, row.scopeType),
+            eq(vocabulary.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
     for (const row of keptSnippets) {
       tx.update(snippets)
         .set({ trigger: randomUUID() })
-        .where(eq(snippets.id, row.id))
+        .where(
+          and(
+            eq(snippets.id, row.id),
+            eq(snippets.scopeType, row.scopeType),
+            eq(snippets.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
 
@@ -237,7 +143,13 @@ async function migrateSettingsSyncBounds(): Promise<{
           word: row.word,
           replacementWord: row.replacementWord,
         })
-        .where(eq(vocabulary.id, row.id))
+        .where(
+          and(
+            eq(vocabulary.id, row.id),
+            eq(vocabulary.scopeType, row.scopeType),
+            eq(vocabulary.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
     for (const row of keptSnippets) {
@@ -246,13 +158,19 @@ async function migrateSettingsSyncBounds(): Promise<{
           trigger: row.trigger,
           content: row.content,
         })
-        .where(eq(snippets.id, row.id))
+        .where(
+          and(
+            eq(snippets.id, row.id),
+            eq(snippets.scopeType, row.scopeType),
+            eq(snippets.scopeId, row.scopeId),
+          ),
+        )
         .run();
     }
 
     return {
-      vocabularyDeleted: vocabularyIdsToDelete.length,
-      snippetsDeleted: snippetIdsToDelete.length,
+      vocabularyDeleted: vocabularyRowsToDelete.length,
+      snippetsDeleted: snippetRowsToDelete.length,
     };
   });
 }
@@ -300,59 +218,10 @@ export async function runDataMigrations(): Promise<void> {
 
   try {
     const settings = await getAppSettings();
-    let currentDataMigrations = settings.dataMigrations ?? {};
+    const currentDataMigrations = settings.dataMigrations ?? {};
 
-    if (
-      (currentDataMigrations.notesLexical ?? 0) <
-      NOTES_LEXICAL_MIGRATION_VERSION
-    ) {
-      const startTime = Date.now();
-      logger.db.info("Running notes lexical data migration", {
-        notesLexicalFrom: currentDataMigrations.notesLexical ?? 0,
-        notesLexicalTo: NOTES_LEXICAL_MIGRATION_VERSION,
-      });
-
-      const { notesChecked, notesMigrated } =
-        await migrateNotesToLexicalEditorState();
-
-      currentDataMigrations = await persistDataMigrationVersion(
-        currentDataMigrations,
-        "notesLexical",
-        NOTES_LEXICAL_MIGRATION_VERSION,
-      );
-
-      logger.db.info("Notes lexical migration complete", {
-        notesChecked,
-        notesMigrated,
-        durationMs: Date.now() - startTime,
-      });
-    }
-
-    if (
-      (currentDataMigrations.dictationDailyStats ?? 0) <
-      DICTATION_DAILY_STATS_MIGRATION_VERSION
-    ) {
-      const startTime = Date.now();
-      logger.db.info("Running dictation daily stats migration", {
-        dictationDailyStatsFrom: currentDataMigrations.dictationDailyStats ?? 0,
-        dictationDailyStatsTo: DICTATION_DAILY_STATS_MIGRATION_VERSION,
-      });
-
-      const { transcriptionsChecked, statsDaysWritten } =
-        await migrateDictationDailyStats();
-
-      currentDataMigrations = await persistDataMigrationVersion(
-        currentDataMigrations,
-        "dictationDailyStats",
-        DICTATION_DAILY_STATS_MIGRATION_VERSION,
-      );
-
-      logger.db.info("Dictation daily stats migration complete", {
-        transcriptionsChecked,
-        statsDaysWritten,
-        durationMs: Date.now() - startTime,
-      });
-    }
+    // Markdown migration has per-note state and never rewrites legacy blobs.
+    migrateLegacyNotes((currentDataMigrations.notesLexical ?? 0) < 1);
   } catch (error) {
     logger.db.error("Data migrations failed", error);
   }

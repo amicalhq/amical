@@ -1,0 +1,366 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  OpenTranscriptionSessionOptions,
+  TranscribeContext,
+  TranscribeParams,
+  TranscriptionOutput,
+} from "../../src/pipeline/core/pipeline-types";
+import { ErrorCodes } from "../../src/types/error";
+import { NetworkFailure } from "../../src/types/errors";
+import { projectionOf } from "../helpers/error-projection";
+
+const providerMocks = vi.hoisted(() => {
+  const makeSession = (
+    name: string,
+    options: OpenTranscriptionSessionOptions,
+  ) => ({
+    name,
+    sessionId: options.sessionId,
+    transcribe: vi.fn<
+      (params: TranscribeParams) => Promise<TranscriptionOutput>
+    >(async () => ({ text: "" })),
+    flush: vi.fn<
+      (
+        context: TranscribeContext,
+        signal?: AbortSignal,
+      ) => Promise<TranscriptionOutput>
+    >(async () => ({ text: "resolved final" })),
+    cancel: vi.fn<() => void>(),
+    updateSessionContext: vi.fn<(context: TranscribeContext) => Promise<void>>(
+      async () => undefined,
+    ),
+    emitTerminalFailure: (error: Error) => options.onTerminalFailure?.(error),
+  });
+
+  const makeProvider = (name: string) => {
+    const sessions = new Map<string, ReturnType<typeof makeSession>>();
+    return {
+      name,
+      sessions,
+      openSession: vi.fn((options: OpenTranscriptionSessionOptions) => {
+        const session = makeSession(name, options);
+        sessions.set(options.sessionId, session);
+        return session;
+      }),
+      warmup: vi.fn(async () => undefined),
+      dispose: vi.fn(async () => undefined),
+      preloadModel: vi.fn(async () => undefined),
+    };
+  };
+  return {
+    provider: makeProvider("whisper-local"),
+    cloudProvider: makeProvider("amical-cloud"),
+  };
+});
+
+vi.mock("../../src/db/transcriptions", () => ({
+  getTranscriptionById: vi.fn(),
+  updateTranscription: vi.fn(async () => undefined),
+}));
+
+vi.mock("../../src/services/transcription/load-dictation-context", () => ({
+  loadDictationContext: vi.fn(),
+}));
+
+vi.mock(
+  "../../src/services/transcription/prepare-transcript-text",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../src/services/transcription/prepare-transcript-text")
+    >()),
+    prepareTranscriptText: vi.fn(),
+  }),
+);
+
+vi.mock("../../src/pipeline/providers/transcription/whisper-provider", () => ({
+  WhisperProvider: vi.fn(function () {
+    return providerMocks.provider;
+  }),
+}));
+
+vi.mock(
+  "../../src/pipeline/providers/transcription/amical-cloud-provider",
+  () => ({
+    AmicalCloudProvider: vi.fn(function () {
+      return providerMocks.cloudProvider;
+    }),
+  }),
+);
+
+import { updateTranscription } from "../../src/db/transcriptions";
+import type { AuthService } from "../../src/services/auth-service";
+import type { ModelService } from "../../src/services/model-service";
+import type { SettingsService } from "../../src/services/settings-service";
+import type { TelemetryService } from "../../src/services/telemetry-service";
+import { TranscriptionService } from "../../src/services/transcription-service";
+import { loadDictationContext } from "../../src/services/transcription/load-dictation-context";
+import { prepareTranscriptText } from "../../src/services/transcription/prepare-transcript-text";
+import type { DictationContext } from "../../src/services/transcription/types";
+import type { VADService } from "../../src/services/vad-service";
+
+const dictationContext = (sessionId: string): DictationContext => ({
+  sessionId,
+  vocabulary: [],
+  replacements: new Map(),
+  formattingStyle: "formal",
+  audio: { source: "microphone" },
+  accessibilityContext: null,
+  cloudFormattingEnabled: false,
+  isInstruct: false,
+});
+
+describe("TranscriptionService — lifecycle resolve", () => {
+  let service: TranscriptionService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    providerMocks.provider.sessions.clear();
+    providerMocks.cloudProvider.sessions.clear();
+
+    service = TranscriptionService.createForTests(
+      {
+        getSelectedModel: vi.fn(async () => "whisper-tiny"),
+      } as unknown as ModelService,
+      {
+        processAudioFrame: vi.fn(async () => ({
+          probability: 1,
+          isSpeaking: true,
+        })),
+        reset: vi.fn(),
+      } as unknown as VADService,
+      {
+        getFormatterConfig: vi.fn(async () => ({ enabled: false })),
+      } as unknown as SettingsService,
+      new Proxy({}, { get: () => vi.fn() }) as unknown as TelemetryService,
+      {
+        isAuthenticated: vi.fn(),
+        getIdToken: vi.fn(),
+        refreshTokenIfNeeded: vi.fn(),
+      } as unknown as AuthService,
+      null,
+      null,
+    );
+    vi.mocked(loadDictationContext).mockImplementation(async (options) =>
+      dictationContext(options.sessionId ?? "resolve-session"),
+    );
+    vi.mocked(prepareTranscriptText).mockImplementation(
+      async ({ text, detectedLanguage }) => ({
+        text: text ? `${text} (prepared)` : text,
+        language: "en",
+        detectedLanguage: detectedLanguage?.trim() || undefined,
+        wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+        formattingUsed: false,
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const feed = (sessionId: string) =>
+    service.processStreamingChunk({
+      sessionId,
+      audioChunk: new Float32Array([0.5]),
+    });
+
+  it("returns the prepared transcript without persisting anything", async () => {
+    service.beginStreamingSession("s1");
+    await feed("s1");
+
+    const resolvedSession = await service.resolveStreamingSession({
+      sessionId: "s1",
+    });
+
+    expect(resolvedSession).toMatchObject({
+      text: "resolved final (prepared)",
+      language: "en",
+      speechModel: "whisper-tiny",
+      meta: {
+        source: "microphone",
+        vocabularySize: 0,
+        activity: {
+          wordCount: 2,
+          appType: "default",
+          skills: null,
+          transcription: {
+            provider: "whisper-cpp",
+            model: "whisper-tiny",
+            execution: "local",
+          },
+          formatting: null,
+        },
+      },
+    });
+    expect(updateTranscription).not.toHaveBeenCalled();
+
+    // The live session is retired: a second resolve has nothing to work on.
+    await expect(
+      service.resolveStreamingSession({ sessionId: "s1" }),
+    ).resolves.toBeNull();
+  });
+
+  it("reports Amical Cloud transcription and instruct formatting metadata", async () => {
+    const cloud = TranscriptionService.createForTests(
+      {
+        getSelectedModel: vi.fn(async () => "amical-cloud"),
+      } as unknown as ModelService,
+      {
+        processAudioFrame: vi.fn(async () => ({
+          probability: 1,
+          isSpeaking: true,
+        })),
+        reset: vi.fn(),
+      } as unknown as VADService,
+      {
+        getFormatterConfig: vi.fn(async () => ({
+          enabled: true,
+          modelId: "amical-cloud",
+        })),
+      } as unknown as SettingsService,
+      new Proxy({}, { get: () => vi.fn() }) as unknown as TelemetryService,
+      {
+        isAuthenticated: vi.fn(),
+        getIdToken: vi.fn(),
+        refreshTokenIfNeeded: vi.fn(),
+      } as unknown as AuthService,
+      null,
+      null,
+    );
+    vi.mocked(loadDictationContext).mockResolvedValue({
+      ...dictationContext("cloud"),
+      isInstruct: true,
+    });
+
+    cloud.beginStreamingSession("cloud");
+    await cloud.processStreamingChunk({
+      sessionId: "cloud",
+      audioChunk: new Float32Array([0.5]),
+      isInstruct: true,
+    });
+    const resolved = await cloud.resolveStreamingSession({
+      sessionId: "cloud",
+    });
+
+    expect(resolved?.meta.activity).toEqual({
+      wordCount: 2,
+      appType: "default",
+      skills: [{ kind: "preset", presetId: "instruct" }],
+      transcription: {
+        provider: "amical",
+        model: "amical-cloud",
+        execution: "amical_cloud",
+      },
+      formatting: {
+        provider: "amical",
+        model: "amical-cloud",
+        execution: "amical_cloud",
+      },
+    });
+  });
+
+  it("returns null for never-fed and unknown sessions", async () => {
+    service.beginStreamingSession("never-fed");
+    await expect(
+      service.resolveStreamingSession({ sessionId: "never-fed" }),
+    ).resolves.toBeNull();
+
+    await expect(
+      service.resolveStreamingSession({ sessionId: "unknown" }),
+    ).resolves.toBeNull();
+    expect(updateTranscription).not.toHaveBeenCalled();
+  });
+
+  it("a VAD failure degrades the chunk to assumed speech, not a dead session", async () => {
+    const vad = {
+      processAudioFrame: vi.fn(async () => {
+        throw new Error("vad worker died");
+      }),
+      reset: vi.fn(),
+    };
+    const local = TranscriptionService.createForTests(
+      {
+        getSelectedModel: vi.fn(async () => "whisper-tiny"),
+      } as unknown as ModelService,
+      vad as unknown as VADService,
+      {
+        getFormatterConfig: vi.fn(async () => ({ enabled: false })),
+      } as unknown as SettingsService,
+      new Proxy({}, { get: () => vi.fn() }) as unknown as TelemetryService,
+      {
+        isAuthenticated: vi.fn(),
+        getIdToken: vi.fn(),
+        refreshTokenIfNeeded: vi.fn(),
+      } as unknown as AuthService,
+      null,
+      null,
+    );
+    const onTerminalFailure = vi.fn();
+    local.beginStreamingSession("vad-fail", onTerminalFailure);
+    await local.processStreamingChunk({
+      sessionId: "vad-fail",
+      audioChunk: new Float32Array([0.5]),
+    });
+
+    expect(vad.processAudioFrame).toHaveBeenCalled();
+    expect(onTerminalFailure).not.toHaveBeenCalled();
+    // The chunk still transcribed, under the same assumed-speech fallback
+    // used when VAD is unavailable at boot.
+    expect(
+      providerMocks.provider.sessions.get("vad-fail")?.transcribe,
+    ).toHaveBeenCalledWith(expect.objectContaining({ speechProbability: 1 }));
+    await expect(
+      local.resolveStreamingSession({ sessionId: "vad-fail" }),
+    ).resolves.toMatchObject({ text: "resolved final (prepared)" });
+  });
+
+  it("a terminal failure retires the session; a successor can begin", async () => {
+    const failure = new NetworkFailure({ message: "provider down" });
+    const listener = vi.fn();
+    service.beginStreamingSession("s1", listener);
+    await feed("s1");
+    providerMocks.provider.sessions.get("s1")!.emitTerminalFailure(failure);
+
+    // The stream reported terminal and retired itself: the lifecycle heard
+    // the failure through the callback, and nothing is left to resolve.
+    expect(listener).toHaveBeenCalledWith(failure);
+    await expect(
+      service.resolveStreamingSession({ sessionId: "s1" }),
+    ).resolves.toBeNull();
+    expect(updateTranscription).not.toHaveBeenCalled();
+
+    // The slot is free — one dead stream must not poison the next session.
+    expect(service.beginStreamingSession("s2")).toBe(true);
+  });
+
+  it("an abort during the flush rejects the resolve and persists nothing", async () => {
+    service.beginStreamingSession("s1");
+    await feed("s1");
+    const providerSession = providerMocks.provider.sessions.get("s1")!;
+    providerSession.flush.mockImplementation(
+      (_context, signal?: AbortSignal) =>
+        new Promise((_, reject) => {
+          const abort = () =>
+            reject(new NetworkFailure({ message: "aborted" }));
+          if (signal?.aborted) return abort();
+          signal?.addEventListener("abort", abort);
+        }),
+    );
+
+    const pending = service.resolveStreamingSession({ sessionId: "s1" });
+    await vi.waitFor(() => expect(providerSession.flush).toHaveBeenCalled());
+    await service.cancelStreamingSession("s1");
+
+    const rejection = await pending.then(
+      () => {
+        throw new Error("expected resolve to reject");
+      },
+      (error: unknown) => error,
+    );
+    expect(projectionOf(rejection)).toMatchObject({
+      code: ErrorCodes.NETWORK_ERROR,
+      tag: "NetworkFailure",
+    });
+    expect(updateTranscription).not.toHaveBeenCalled();
+  });
+});

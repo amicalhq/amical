@@ -3,7 +3,14 @@
     "loading": "Loading Amical..."
   },
   "errors": {
-    "generic": "Something went wrong. Please try again."
+    "generic": "Something went wrong. Please try again.",
+    "renderer": {
+      "title": "Something went wrong",
+      "description": "Amical encountered an unexpected error.",
+      "tryAgain": "Try again",
+      "reload": "Reload window",
+      "supportNote": "If this keeps happening, contact support."
+    }
   },
   "menu": {
     "file": "File",
@@ -27,6 +34,17 @@
   "updater": {
     "updateAvailable": "Update Available",
     "requiredUpdate": "Required Update",
+    "appBlocked": "This version of Amical is no longer supported. Please update now to continue.",
+    "finishingRecording": "Finish your current recording. Amical will save it before you update.",
+    "requiredUpdateFailed": "The update could not complete. Please try again.",
+    "checking": "Checking…",
+    "downloading": "Downloading…",
+    "restarting": "Restarting…",
+    "tryAgain": "Try again",
+    "updateNow": "Update now",
+    "manualDownload": "Download manually",
+    "manualDownloadFailed": "Couldn’t open the download page. Please try again.",
+    "quit": "Quit Amical",
     "versionAvailable": "Version {{version}} is available.",
     "versionRequired": "Version {{version}} is required.",
     "restartAndUpdate": "Restart & Update",
@@ -50,13 +68,6 @@
       "completeFailed": "Couldn't finish setup. Please try again.",
       "resetSuccess": "Onboarding reset successfully",
       "resetFailed": "Failed to reset onboarding"
-    },
-    "errorBoundary": {
-      "title": "Something went wrong",
-      "description": "An unexpected error interrupted setup. Please try again.",
-      "tryAgain": "Try again",
-      "restart": "Restart setup",
-      "supportNote": "If this keeps happening, contact support."
     },
     "welcome": {
       "title": "How will you use Amical?",
@@ -89,7 +100,8 @@
       },
       "microphone": {
         "title": "Microphone",
-        "description": "So Amical can hear your dictation"
+        "description": "So Amical can hear your dictation",
+        "windowsBlocked": "Windows blocks Amical from using the microphone. Open settings and allow microphone access for Amical. If Amical is listed more than once, turn on each entry."
       },
       "accessibility": {
         "title": "Accessibility",
@@ -162,6 +174,12 @@
       "error": {
         "loginStartFailed": "Couldn't open the sign-in page. Please try again."
       }
+    },
+    "telemetry": {
+      "title": "Help improve Amical",
+      "subtitle": "Usage data and crash reports help us find problems and make Amical better.",
+      "share": "Share anonymous usage data",
+      "decline": "Don't share"
     },
     "download": {
       "title": "Getting your model ready",
@@ -311,14 +329,16 @@
         "recordingAutoStopped": "Max dictation duration reached. Start a new dictation if needed."
       },
       "action": {
-        "logIn": "Log In",
+        "logIn": "Sign In",
         "support": "Support",
         "viewUsage": "View Usage",
         "viewHistory": "View History",
         "settings": "Settings",
         "aiModels": "AI Models",
         "configureMicrophone": "Configure Microphone",
-        "upgradePlan": "Upgrade plan"
+        "upgradePlan": "Upgrade plan",
+        "undo": "Undo",
+        "view": "View"
       },
       "type": {
         "noAudio": {
@@ -336,12 +356,15 @@
         "recordingAutoStopped": {
           "title": "Dictation auto-stopped",
           "description": "Max dictation duration reached. Start a new dictation if needed."
+        },
+        "vocabularyLearned": {
+          "title": "Added {{terms}} to your vocabulary"
         }
       },
       "errorCode": {
         "authRequired": {
-          "title": "Login required",
-          "description": "Please log in to use cloud transcription"
+          "title": "Sign-in required",
+          "description": "Please sign in to use cloud transcription"
         },
         "rateLimitExceeded": {
           "title": "Rate limit exceeded",
@@ -349,7 +372,7 @@
         },
         "quotaExceeded": {
           "title": "Plan limit reached",
-          "description": "You've used all the transcription minutes on your current plan. Upgrade to keep dictating."
+          "description": "You've used all the transcription words on your current plan. Upgrade to keep dictating."
         },
         "internalServerError": {
           "title": "Server error",
@@ -370,6 +393,10 @@
         "modelMissing": {
           "title": "No Model Selected",
           "description": "Please select a transcription model."
+        },
+        "retryInProgress": {
+          "title": "Retry in progress",
+          "description": "Wait for the retry to finish before starting a new recording."
         },
         "workerInitializationFailed": {
           "title": "Initialization failed",
@@ -447,7 +474,58 @@
       "discordAlt": "Discord",
       "logoAlt": "Amical Logo",
       "brand": "Amical",
-      "backToApp": "Back to app"
+      "backToApp": "Back to app",
+      "account": "Account",
+      "signOut": "Sign Out",
+      "signIn": "Sign In",
+      "accountLoading": "Loading...",
+      "signInToast": {
+        "opening": "Opening browser for sign in...",
+        "failed": "Failed to initiate sign-in",
+        "success": "Signed in successfully"
+      },
+      "signOutFailed": "Failed to sign out",
+      "sessionExpired": {
+        "title": "Your session expired",
+        "description": "Sign in again with <strong>{{account}}</strong> to continue.",
+        "existingAccount": "your existing account",
+        "signInFailed": "Could not sign in. Please try again.",
+        "signOut": "Sign out",
+        "signingOut": "Signing out…",
+        "signIn": "Sign in again",
+        "openingBrowser": "Opening browser…"
+      },
+      "logoutDialog": {
+        "loggingOutTitle": "Signing out…",
+        "loggingOutDescription": "Amical will restart shortly.",
+        "unsyncedTitle": "You have unsynced changes",
+        "unsyncedDescription": "Signing out without syncing will permanently discard these changes. They won’t be restored when you sign back in.",
+        "syncingTitle": "Syncing unsaved changes…",
+        "syncingDescription": "This can take up to 15 seconds. Amical will sign out and restart when syncing finishes.",
+        "cancel": "Cancel",
+        "discardAndLogOut": "Discard changes and sign out"
+      },
+      "mobileApp": {
+        "label": "Get the mobile app",
+        "title": "Get Amical on your phone",
+        "description": "Scan with your phone's camera to download Amical for iPhone or Android.",
+        "qrAlt": "QR code to download the Amical mobile app"
+      },
+      "usage": {
+        "label": "Cloud dictation",
+        "wordsLeft_one": "{{words}} word left",
+        "wordsLeft_other": "{{words}} words left",
+        "noWordsLeft": "No words left",
+        "detail": "{{used}} of {{limit}} words used - resets {{date}}",
+        "detailRelative": "{{used}} of {{limit}} words used - resets {{when}}",
+        "upgradeUnlimited": "Upgrade to unlimited",
+        "openFailed": "Couldn't open in browser"
+      },
+      "starNudge": {
+        "title": "You've dictated {{words}} words with Amical",
+        "body": "Amical is open source. If you use GitHub, a star helps other people find it.",
+        "cta": "Star on GitHub"
+      }
     },
     "search": {
       "buttonLabel": "Search",
@@ -498,6 +576,7 @@
           "de": "Deutsch",
           "es": "Español",
           "ja": "日本語",
+          "ko": "한국어",
           "zh-TW": "繁體中文"
         },
         "restartDialog": {
@@ -646,7 +725,7 @@
           "description": "View release notes and updates"
         },
         "github": {
-          "title": "GitHub Repository",
+          "title": "Star Amical on GitHub",
           "description": "Source code and issue tracking",
           "alt": "GitHub"
         },
@@ -678,6 +757,8 @@
         "downloadAudio": "Download Audio",
         "delete": "Delete",
         "retry": "Retry transcription",
+        "retryDisabledRecording": "Finish the current recording before retrying a transcription.",
+        "retryDisabledInProgress": "Wait for the current retry to finish.",
         "report": "Report issue",
         "reportDisabledTelemetry": "Enable telemetry in Advanced settings to report issues"
       },
@@ -742,7 +823,8 @@
         },
         "languagesLabel": "Languages",
         "languagesPlaceholder": "Select languages...",
-        "noResults": "No languages found."
+        "noResults": "No languages found.",
+        "cloudOnlyHint": "Cloud only. Local models use the base language."
       },
       "microphone": {
         "label": "Microphone",
@@ -793,8 +875,8 @@
         "syncLanguageModels": "Sync language models",
         "toast": {
           "saveFailed": "Failed to save formatting settings. Please try again.",
-          "loginInBrowser": "Complete login in your browser",
-          "loginStartFailed": "Failed to start login process"
+          "loginInBrowser": "Complete sign-in in your browser",
+          "loginStartFailed": "Failed to start sign-in process"
         }
       }
     },
@@ -838,18 +920,24 @@
         "noKeysDetected": "No keys detected",
         "tooManyKeys": "Too many keys - use {{max}} or fewer",
         "invalidKeyCombination": "Invalid key combination",
-        "alreadyAssigned": "Shortcut already assigned to another action",
+        "alreadyAssigned": "Shortcut already assigned",
         "conflictsWithSystem": "{{shortcut}} conflicts with a system shortcut",
-        "addModifier": "Add a modifier key like Cmd, Ctrl, or Fn",
+        "addModifier": "Add a modifier key like {{mod1}}, {{mod2}}, or {{mod3}}",
         "duplicateModifierPairs": "Can't use both left and right {{modifier}} together",
         "overlapsWithPushToTalk": "This overlaps with your Push-to-talk shortcut and may cause issues"
       },
       "input": {
-        "pressKeys": "Press keys..."
+        "pressKeys": "Press keys...",
+        "unassigned": "Not assigned",
+        "edit": "Edit shortcut",
+        "clear": "Clear shortcut",
+        "cancel": "Cancel editing",
+        "add": "Add shortcut"
       }
     },
     "notes": {
       "create": "Create note",
+      "loading": "Loading note...",
       "defaultTitleWithDate": "Note - {{date}}",
       "untitledTitle": "Untitled Note",
       "empty": {
@@ -895,12 +983,35 @@
           "description": "Connect your calendar to get started",
           "button": "Connect calendar"
         }
+      },
+      "recovery": {
+        "loadFailed": "The note could not be loaded. Close and reopen it to try again.",
+        "blocked": "This note could not be converted. Its original data is preserved for recovery.",
+        "details": "Recovery details",
+        "deletedNote": "This note was deleted or is not available in this account.",
+        "recovered": "This note was deleted on another device. Your changes were saved as a conflict copy in your notes.",
+        "format": "This formatting cannot be saved as Markdown. Use bold, italic, strikethrough, or code. Undo unsupported pasted formatting to save.",
+        "error": "Changes could not be saved. Keep this window open and try editing again."
+      },
+      "cloud": {
+        "error": "Saved on this device. Cloud sync needs attention: {{reason}}"
       }
     },
     "vocabulary": {
       "title": "Vocabulary",
       "description": "Manage your custom vocabulary and word replacements for dictation.",
       "addButton": "Add Word",
+      "scope": {
+        "label": "Vocabulary scope",
+        "all": "All",
+        "user": "Personal",
+        "org": "Organisation",
+        "personalBadge": "Personal",
+        "organizationBadge": "Organisation",
+        "addOrganization": "Add organisation word",
+        "readOnly": "Organisation vocabulary is read-only for your current role.",
+        "unavailable": "No organisation vocabulary is available."
+      },
       "loading": "Loading vocabulary...",
       "empty": "No vocabulary words found. Add your first word to get started.",
       "toast": {
@@ -929,12 +1040,27 @@
         "cancel": "Cancel",
         "deleting": "Deleting...",
         "confirm": "Delete"
+      },
+      "learned": {
+        "badge": "Learned",
+        "tooltip": "Added from your correction. Heard as “{{heard}}”."
       }
     },
     "snippets": {
       "title": "Snippets",
       "description": "Create short triggers that expand into longer text while you dictate.",
       "addButton": "Add new",
+      "scope": {
+        "label": "Snippet scope",
+        "all": "All",
+        "user": "Personal",
+        "org": "Organisation",
+        "personalBadge": "Personal",
+        "organizationBadge": "Organisation",
+        "addOrganization": "Add organisation snippet",
+        "readOnly": "Organisation snippets are read-only for your current role.",
+        "unavailable": "No organisation snippets are available."
+      },
       "loading": "Loading snippets...",
       "empty": "No snippets yet. Add your first snippet to get started.",
       "noResults": "No snippets match \"{{query}}\".",
@@ -1131,7 +1257,7 @@
         "loginDialog": {
           "title": "Sign In Required",
           "description": "To use Amical Cloud transcription, you need to sign in with your Amical account. This enables secure cloud-based transcription with high accuracy.",
-          "browserNotice": "After clicking \"Sign In\", you'll be redirected to your browser to complete the login process.",
+          "browserNotice": "After clicking \"Sign In\", you'll be redirected to your browser to complete the sign-in process.",
           "cloudBenefit": "Fast, accurate cloud transcription",
           "cancel": "Cancel",
           "openingBrowser": "Opening Browser...",
@@ -1143,10 +1269,10 @@
           "deleteFailed": "Failed to delete model",
           "cloudSelected": "Amical Cloud selected. Cloud formatting enabled.",
           "selectFailed": "Failed to select model",
-          "loginInBrowser": "Please complete login in your browser",
-          "loginStartFailed": "Failed to start login process",
+          "loginInBrowser": "Please complete sign-in in your browser",
+          "loginStartFailed": "Failed to start sign-in process",
           "downloadFailed": "Download failed: {{message}}",
-          "loginSuccess": "Login successful!"
+          "loginSuccess": "Sign-in successful!"
         }
       }
     }

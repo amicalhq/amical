@@ -176,6 +176,11 @@ const descriptor = {
                     LANGUAGE_CY: 97,
                     LANGUAGE_YI: 98,
                     LANGUAGE_YO: 99,
+                    LANGUAGE_EN_GB: 100,
+                    LANGUAGE_DE_CH: 101,
+                    LANGUAGE_ZH_HANS: 102,
+                    LANGUAGE_EN_CA: 103,
+                    LANGUAGE_YUE: 104,
                   },
                 },
                 LanguageList: {
@@ -376,6 +381,11 @@ const descriptor = {
                   },
                 },
                 FinalTranscript: {
+                  oneofs: {
+                    _language: {
+                      oneof: ["language"],
+                    },
+                  },
                   fields: {
                     rawTranscript: {
                       type: "string",
@@ -388,6 +398,13 @@ const descriptor = {
                     throughSeq: {
                       type: "uint64",
                       id: 3,
+                    },
+                    language: {
+                      type: "string",
+                      id: 4,
+                      options: {
+                        proto3_optional: true,
+                      },
                     },
                   },
                 },

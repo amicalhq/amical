@@ -23,8 +23,13 @@ import {
   lstatSync,
   readlinkSync,
   copyFileSync,
+  chmodSync,
 } from "node:fs";
-import { join, normalize } from "node:path";
+import { dirname, join, normalize } from "node:path";
+import {
+  downloadNodeBinary,
+  PLATFORMS,
+} from "./scripts/download-node-binaries";
 import { stageBetterSqlite3ForElectron } from "./scripts/stage-better-sqlite3";
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
 // flora-colossus is maintained by MarshallOfSound (a top electron-forge contributor)
@@ -33,11 +38,12 @@ import { stageBetterSqlite3ForElectron } from "./scripts/stage-better-sqlite3";
 import { Walker, DepType, type Module } from "flora-colossus";
 
 let nativeModuleDependenciesToPackage: string[] = [];
+let sqlitePrebuildsToPackage = new Set<string>();
 
 const isBundledNodeBinaryForSigning = (filePath: string): boolean => {
   const normalizedPath = filePath.replace(/\\/g, "/");
 
-  // extraResource copies the selected binary into Contents/Resources/node.
+  // packageAfterCopy places the binary in Contents/Resources/node.
   return normalizedPath.endsWith("/Contents/Resources/node");
 };
 
@@ -67,29 +73,28 @@ const config: ForgeConfig = {
       }
 
       // The start script stages the same physical copy before Forge loads.
-      // Refresh it here too so packaging never reuses stale ABI metadata.
+      // Refresh it here too so packaging never reuses a stale package version.
       stageBetterSqlite3ForElectron();
-
-      // Copy platform-specific Node.js binary
-      console.log(`Copying Node.js binary for ${platform}-${arch}...`);
-      const nodeBinarySource = join(
-        projectRoot,
-        "node-binaries",
-        `${platform}-${arch}`,
-        platform === "win32" ? "node.exe" : "node",
+      const sqliteArches =
+        arch === "universal" || arch === "all"
+          ? ["x64", "arm64"]
+          : arch.split(",");
+      sqlitePrebuildsToPackage = new Set(
+        sqliteArches.flatMap((targetArch) =>
+          platform === "linux"
+            ? [`linux-${targetArch}.node`, `linuxmusl-${targetArch}.node`]
+            : [`${platform}-${targetArch}.node`],
+        ),
       );
-
-      // Check if the binary exists
-      if (existsSync(nodeBinarySource)) {
-        console.log(`✓ Node.js binary found for ${platform}-${arch}`);
-      } else {
-        console.error(
-          `✗ Node.js binary not found for ${platform}-${arch} at ${nodeBinarySource}`,
+      for (const prebuild of sqlitePrebuildsToPackage) {
+        const prebuildPath = join(
+          projectRoot,
+          "node_modules/better-sqlite3/prebuilds",
+          prebuild,
         );
-        console.error(
-          `  Please run 'pnpm download-node' or 'pnpm download-node:all' first`,
-        );
-        throw new Error(`Missing Node.js binary for ${platform}-${arch}`);
+        if (!existsSync(prebuildPath)) {
+          throw new Error(`better-sqlite3 has no prebuild for ${prebuild}`);
+        }
       }
 
       const getExternalNestedDependencies = async (
@@ -289,6 +294,43 @@ const config: ForgeConfig = {
         );
       }
     },
+    packageAfterCopy: async (
+      _forgeConfig,
+      buildPath,
+      _electronVersion,
+      platform,
+      arch,
+    ) => {
+      const nodePlatform = PLATFORMS.find(
+        (candidate) =>
+          candidate.platform === platform && candidate.arch === arch,
+      );
+      if (!nodePlatform) {
+        throw new Error(
+          `Unsupported Node.js binary target: ${platform}-${arch}`,
+        );
+      }
+
+      await downloadNodeBinary(nodePlatform);
+
+      const binaryName = platform === "win32" ? "node.exe" : "node";
+      const binarySource = join(
+        __dirname,
+        "node-binaries",
+        `${platform}-${arch}`,
+        binaryName,
+      );
+      const binaryDestination = join(dirname(buildPath), binaryName);
+
+      copyFileSync(binarySource, binaryDestination);
+      if (platform !== "win32") {
+        chmodSync(binaryDestination, 0o755);
+      }
+
+      console.log(
+        `✓ Node.js binary prepared for ${platform}-${arch} at ${binaryDestination}`,
+      );
+    },
     // NOTE: This hook does NOT run when prune: false is set in packagerConfig (line 467).
     // The empty directory cleanup code below is currently dead code.
     // DLL bundling has been moved to postPackage which always runs.
@@ -383,7 +425,7 @@ const config: ForgeConfig = {
       // not reliably beat System32 for native binding dependencies.
       //
       // REQUIREMENTS:
-      // - Build machine must have VC++ runtime (GitHub Actions windows-2022 has VS2022)
+      // - Build machine must have VC++ runtime (GitHub Actions VS 2026 images have it)
       // - Target: Windows 10+ (ucrtbase.dll is built into the OS)
       //
       // DLLs needed by onnxruntime_binding.node:
@@ -584,10 +626,6 @@ const config: ForgeConfig = {
     extraResource: [
       `${process.platform === "win32" ? "../../packages/native-helpers/windows-helper/bin" : "../../packages/native-helpers/swift-helper/bin"}`,
       "./src/db/migrations",
-      // Only include the platform-specific node binary
-      `./node-binaries/${process.platform}-${process.arch}/node${
-        process.platform === "win32" ? ".exe" : ""
-      }`,
       "./models",
       "./assets",
     ],
@@ -645,6 +683,17 @@ const config: ForgeConfig = {
     ignore: (file: string) => {
       try {
         const filePath = file.toLowerCase();
+        // Keep all prebuilds in the staged dev copy, but only ship the target's
+        // binaries. Squirrel cannot sign foreign-platform native modules.
+        const sqlitePrebuildPrefix = "/node_modules/better-sqlite3/prebuilds/";
+        if (
+          filePath.startsWith(sqlitePrebuildPrefix) &&
+          !sqlitePrebuildsToPackage.has(
+            filePath.slice(sqlitePrebuildPrefix.length),
+          )
+        ) {
+          return true;
+        }
         // Foreign-platform native binaries must not ship in the Windows
         // package: Squirrel's releasify signs every .exe/.dll/.node it packs
         // and aborts on Mach-O/ELF files — and they're dead weight anyway.
@@ -730,7 +779,8 @@ const config: ForgeConfig = {
       }
     },
   },
-  rebuildConfig: {},
+  // better-sqlite3 13 ships N-API prebuilds that also run under Electron.
+  rebuildConfig: { ignoreModules: ["better-sqlite3"] },
   makers: [
     new MakerSquirrel({
       name: "Amical",
@@ -764,7 +814,6 @@ const config: ForgeConfig = {
     ), // Required for macOS auto-updates
     new MakerDMG(
       {
-        //! @see https://github.com/electron/forge/issues/3517#issuecomment-2428129194
         // macOS DMG files will be named like: Amical-0.0.1-arm64.dmg
         icon: "./assets/logo.icns",
         background: "./assets/dmg_bg.tiff",

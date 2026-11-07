@@ -1,21 +1,26 @@
 import { z } from "zod";
-import { SettingsSyncUuidSchema } from "@amical/types";
+import { SyncIdSchema } from "@amical/api-contracts/apps/v1";
 import { createRouter, procedure } from "../trpc";
 import {
   getVocabulary,
   getVocabularyById,
   getVocabularyByWord,
   createVocabularyWord,
+  createOrganizationVocabularyWord,
   updateVocabulary,
+  updateOrganizationVocabulary,
   deleteVocabulary,
+  deleteOrganizationVocabulary,
   getVocabularyCount,
   searchVocabulary,
   bulkImportVocabulary,
   trackWordUsage,
   getMostUsedWords,
+  undoLearnedVocabulary,
 } from "../../db/vocabulary";
+import { getActiveOrganizationAccess } from "../../db/sync";
 import {
-  axisSyncOptionalTextSchema,
+  cloudSyncOptionalTextSchema,
   trimmedSyncKeySchema,
 } from "../../db/sync-payload";
 
@@ -26,12 +31,13 @@ const GetVocabularySchema = z.object({
   sortBy: z.enum(["word", "dateAdded", "usageCount"]).optional(),
   sortOrder: z.enum(["asc", "desc"]).optional(),
   search: z.string().optional(),
+  scope: z.enum(["all", "user", "org"]).optional(),
 });
 
 const CreateVocabularySchema = z
   .object({
     word: trimmedSyncKeySchema,
-    replacementWord: axisSyncOptionalTextSchema.nullable().optional(),
+    replacementWord: cloudSyncOptionalTextSchema.nullable().optional(),
   })
   .refine(
     (data) => {
@@ -50,7 +56,7 @@ const CreateVocabularySchema = z
 const UpdateVocabularySchema = z
   .object({
     word: trimmedSyncKeySchema.optional(),
-    replacementWord: axisSyncOptionalTextSchema.nullable().optional(),
+    replacementWord: cloudSyncOptionalTextSchema.nullable().optional(),
   })
   .refine(
     (data) => {
@@ -83,14 +89,21 @@ export const vocabularyRouter = createRouter({
 
   // Get vocabulary count
   getVocabularyCount: procedure
-    .input(z.object({ search: z.string().optional() }))
+    .input(
+      z.object({
+        search: z.string().optional(),
+        scope: z.enum(["all", "user", "org"]).optional(),
+      }),
+    )
     .query(async ({ input }) => {
-      return await getVocabularyCount(input.search);
+      return await getVocabularyCount(input.search, input.scope);
     }),
+
+  getScopeAccess: procedure.query(async () => getActiveOrganizationAccess()),
 
   // Get vocabulary by ID
   getVocabularyById: procedure
-    .input(z.object({ id: SettingsSyncUuidSchema }))
+    .input(z.object({ id: SyncIdSchema }))
     .query(async ({ input }) => {
       return await getVocabularyById(input.id);
     }),
@@ -128,11 +141,17 @@ export const vocabularyRouter = createRouter({
       return await createVocabularyWord(input);
     }),
 
+  createOrganizationVocabularyWord: procedure
+    .input(CreateVocabularySchema)
+    .mutation(async ({ input }) => {
+      return await createOrganizationVocabularyWord(input);
+    }),
+
   // Update vocabulary word
   updateVocabulary: procedure
     .input(
       z.object({
-        id: SettingsSyncUuidSchema,
+        id: SyncIdSchema,
         data: UpdateVocabularySchema,
       }),
     )
@@ -140,11 +159,56 @@ export const vocabularyRouter = createRouter({
       return await updateVocabulary(input.id, input.data);
     }),
 
+  updateOrganizationVocabulary: procedure
+    .input(
+      z.object({
+        id: SyncIdSchema,
+        data: UpdateVocabularySchema,
+      }),
+    )
+    .mutation(async ({ input }) => {
+      return await updateOrganizationVocabulary(input.id, input.data);
+    }),
+
   // Delete vocabulary word
   deleteVocabulary: procedure
-    .input(z.object({ id: SettingsSyncUuidSchema }))
+    .input(z.object({ id: SyncIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const deleted = await deleteVocabulary(input.id);
+      if (deleted?.source === "auto") {
+        ctx.services.telemetryService.trackVocabularyAutoUndone({
+          count: 1,
+          via: "settings",
+          age_ms: Date.now() - deleted.createdAt.getTime(),
+        });
+      }
+      return deleted;
+    }),
+
+  // Undo a learning pass from the toast: removes the rows while they still
+  // hold source "auto" and the inserted word.
+  undoLearned: procedure
+    .input(
+      z.object({
+        entries: z.array(z.object({ id: SyncIdSchema, word: z.string() })),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const removed = await undoLearnedVocabulary(input.entries);
+      if (removed.length > 0) {
+        ctx.services.telemetryService.trackVocabularyAutoUndone({
+          count: removed.length,
+          via: "toast",
+          age_ms: Date.now() - removed[0].createdAt.getTime(),
+        });
+      }
+      return { removed: removed.length };
+    }),
+
+  deleteOrganizationVocabulary: procedure
+    .input(z.object({ id: SyncIdSchema }))
     .mutation(async ({ input }) => {
-      return await deleteVocabulary(input.id);
+      return await deleteOrganizationVocabulary(input.id);
     }),
 
   // Track word usage

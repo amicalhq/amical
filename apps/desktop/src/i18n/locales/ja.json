@@ -3,7 +3,14 @@
     "loading": "Amicalを読み込み中..."
   },
   "errors": {
-    "generic": "問題が発生しました。もう一度お試しください。"
+    "generic": "問題が発生しました。もう一度お試しください。",
+    "renderer": {
+      "title": "問題が発生しました",
+      "description": "Amical で予期しないエラーが発生しました。",
+      "tryAgain": "再試行",
+      "reload": "ウィンドウを再読み込み",
+      "supportNote": "繰り返し発生する場合は、サポートにお問い合わせください。"
+    }
   },
   "menu": {
     "file": "ファイル",
@@ -27,6 +34,17 @@
   "updater": {
     "updateAvailable": "アップデートがあります",
     "requiredUpdate": "必須アップデート",
+    "appBlocked": "このバージョンのAmicalはサポートが終了しています。続行するには今すぐアップデートしてください。",
+    "finishingRecording": "現在の録音を終了してください。Amicalはアップデート前に録音を保存します。",
+    "requiredUpdateFailed": "アップデートを完了できませんでした。もう一度お試しください。",
+    "checking": "確認中…",
+    "downloading": "ダウンロード中…",
+    "restarting": "再起動中…",
+    "tryAgain": "再試行",
+    "updateNow": "今すぐアップデート",
+    "manualDownload": "手動でダウンロード",
+    "manualDownloadFailed": "ダウンロードページを開けませんでした。もう一度お試しください。",
+    "quit": "Amicalを終了",
     "versionAvailable": "バージョン {{version}} が利用可能です。",
     "versionRequired": "バージョン {{version}} が必要です。",
     "restartAndUpdate": "再起動してアップデート",
@@ -50,13 +68,6 @@
       "completeFailed": "オンボーディングの完了に失敗しました。もう一度お試しください。",
       "resetSuccess": "オンボーディングをリセットしました",
       "resetFailed": "オンボーディングのリセットに失敗しました"
-    },
-    "errorBoundary": {
-      "title": "問題が発生しました",
-      "description": "オンボーディング中にエラーが発生しました。もう一度お試しください。",
-      "tryAgain": "再試行",
-      "restart": "オンボーディングをやり直す",
-      "supportNote": "繰り返し発生する場合は、サポートにお問い合わせください。"
     },
     "welcome": {
       "title": "Amicalをどのように使いますか？",
@@ -89,7 +100,8 @@
       },
       "microphone": {
         "title": "マイク",
-        "description": "Amicalがディクテーションを聞き取るために必要です"
+        "description": "Amicalがディクテーションを聞き取るために必要です",
+        "windowsBlocked": "WindowsがAmicalのマイク使用をブロックしています。設定を開いて、Amicalにマイクへのアクセスを許可してください。Amicalが複数表示されている場合は、すべてオンにしてください。"
       },
       "accessibility": {
         "title": "アクセシビリティ",
@@ -165,6 +177,12 @@
       "error": {
         "loginStartFailed": "ログインを開けませんでした。もう一度お試しください。"
       }
+    },
+    "telemetry": {
+      "title": "Amicalの改善にご協力ください",
+      "subtitle": "使用データとクラッシュレポートは、問題の発見とAmicalの改善に役立ちます。",
+      "share": "匿名の使用データを共有する",
+      "decline": "共有しない"
     },
     "download": {
       "title": "モデルを準備しています",
@@ -321,7 +339,9 @@
         "settings": "設定",
         "aiModels": "AIモデル",
         "configureMicrophone": "マイクを設定",
-        "upgradePlan": "プランをアップグレード"
+        "upgradePlan": "プランをアップグレード",
+        "undo": "元に戻す",
+        "view": "表示"
       },
       "type": {
         "noAudio": {
@@ -339,6 +359,9 @@
         "recordingAutoStopped": {
           "title": "ディクテーションが自動停止しました",
           "description": "最大ディクテーション時間に達しました。必要に応じて新しいディクテーションを開始してください。"
+        },
+        "vocabularyLearned": {
+          "title": "{{terms}} をカスタム辞書に追加しました"
         }
       },
       "errorCode": {
@@ -373,6 +396,10 @@
         "modelMissing": {
           "title": "モデルが選択されていません",
           "description": "文字起こしモデルを選択してください。"
+        },
+        "retryInProgress": {
+          "title": "再試行中",
+          "description": "再試行が完了してから新しい録音を開始してください。"
         },
         "workerInitializationFailed": {
           "title": "初期化に失敗しました",
@@ -450,7 +477,58 @@
       "discordAlt": "Discord",
       "logoAlt": "Amical ロゴ",
       "brand": "Amical",
-      "backToApp": "アプリに戻る"
+      "backToApp": "アプリに戻る",
+      "account": "アカウント",
+      "signOut": "ログアウト",
+      "signIn": "ログイン",
+      "accountLoading": "読み込み中...",
+      "signInToast": {
+        "opening": "ログインのためにブラウザを開いています...",
+        "failed": "ログインの開始に失敗しました",
+        "success": "ログインしました"
+      },
+      "signOutFailed": "ログアウトに失敗しました",
+      "sessionExpired": {
+        "title": "セッションの有効期限が切れました",
+        "description": "続行するには、<strong>{{account}}</strong>で再度ログインしてください。",
+        "existingAccount": "既存のアカウント",
+        "signInFailed": "ログインに失敗しました。もう一度お試しください。",
+        "signOut": "ログアウト",
+        "signingOut": "ログアウト中…",
+        "signIn": "再度ログイン",
+        "openingBrowser": "ブラウザを開いています…"
+      },
+      "logoutDialog": {
+        "loggingOutTitle": "ログアウト中…",
+        "loggingOutDescription": "Amicalはまもなく再起動します。",
+        "unsyncedTitle": "未同期の変更があります",
+        "unsyncedDescription": "同期せずにログアウトすると、これらの変更は完全に破棄されます。再度ログインしても復元されません。",
+        "syncingTitle": "未保存の変更を同期しています…",
+        "syncingDescription": "最大15秒かかる場合があります。同期が完了すると、Amicalはログアウトして再起動します。",
+        "cancel": "キャンセル",
+        "discardAndLogOut": "変更を破棄してログアウト"
+      },
+      "mobileApp": {
+        "label": "モバイルアプリを入手",
+        "title": "スマートフォンでAmicalを使う",
+        "description": "スマートフォンのカメラでスキャンして、iPhoneまたはAndroid版のAmicalをダウンロードしてください。",
+        "qrAlt": "AmicalモバイルアプリをダウンロードするためのQRコード"
+      },
+      "usage": {
+        "label": "クラウド音声入力",
+        "wordsLeft_one": "残り{{words}}語",
+        "wordsLeft_other": "残り{{words}}語",
+        "noWordsLeft": "残り語数なし",
+        "detail": "{{limit}}語中{{used}}語を使用 - {{date}}にリセット",
+        "detailRelative": "{{limit}}語中{{used}}語を使用 - {{when}}にリセット",
+        "upgradeUnlimited": "無制限にアップグレード",
+        "openFailed": "ブラウザで開けませんでした"
+      },
+      "starNudge": {
+        "title": "Amicalで{{words}}語を音声入力しました",
+        "body": "Amicalはオープンソースです。GitHubをご利用でしたら、スターを付けていただくと他の方がAmicalを見つけやすくなります。",
+        "cta": "GitHubでスターする"
+      }
     },
     "search": {
       "buttonLabel": "検索",
@@ -501,6 +579,7 @@
           "de": "Deutsch",
           "es": "Español",
           "ja": "日本語",
+          "ko": "한국어",
           "zh-TW": "繁體中文"
         },
         "restartDialog": {
@@ -649,7 +728,7 @@
           "description": "リリースノートとアップデートを表示"
         },
         "github": {
-          "title": "GitHubリポジトリ",
+          "title": "GitHubでAmicalにスターを付ける",
           "description": "ソースコードと課題管理",
           "alt": "GitHub"
         },
@@ -681,6 +760,8 @@
         "downloadAudio": "音声をダウンロード",
         "delete": "削除",
         "retry": "文字起こしを再試行",
+        "retryDisabledRecording": "文字起こしを再試行する前に、現在の録音を終了してください。",
+        "retryDisabledInProgress": "現在の再試行が完了するまでお待ちください。",
         "report": "問題を報告",
         "reportDisabledTelemetry": "問題を報告するには詳細設定でテレメトリーを有効にしてください"
       },
@@ -745,7 +826,8 @@
         },
         "languagesLabel": "言語",
         "languagesPlaceholder": "言語を選択...",
-        "noResults": "言語が見つかりません。"
+        "noResults": "言語が見つかりません。",
+        "cloudOnlyHint": "クラウドのみ。ローカルモデルでは基本の言語が使われます。"
       },
       "microphone": {
         "label": "マイク",
@@ -779,9 +861,9 @@
         "cloudOptionLabel": "Amical Cloud（Amical）",
         "disabledTooltip": "フォーマットを有効にするには、言語モデルを同期するか、Amical Cloud文字起こしを選択してください。",
         "disabledReason": {
-          "cloudAndSignIn": "Amical Cloud文字起こしとサインインが必要です",
+          "cloudAndSignIn": "Amical Cloud文字起こしとログインが必要です",
           "cloud": "Amical Cloud文字起こしが必要です",
-          "signIn": "サインインが必要です"
+          "signIn": "ログインが必要です"
         },
         "manageLanguageModels": "言語モデルを管理",
         "modelLabel": "フォーマットモデル",
@@ -789,8 +871,8 @@
         "modelPlaceholder": "モデルを選択...",
         "requiresCloudSpeech": "Amical Cloud文字起こしが必要です。",
         "switchSpeechModel": "音声モデルを切り替え",
-        "signInCloud": "Amical Cloudフォーマットを使用するにはサインインしてください。",
-        "signIn": "サインイン",
+        "signInCloud": "Amical Cloudフォーマットを使用するにはログインしてください。",
+        "signIn": "ログイン",
         "cloudReady": "Amical Cloudフォーマットを使用中。",
         "noLanguageModels": "フォーマットは実行されません - 言語モデルがありません。",
         "syncLanguageModels": "言語モデルを同期",
@@ -841,18 +923,24 @@
         "noKeysDetected": "キーが検出されません",
         "tooManyKeys": "キーが多すぎます - {{max}}個以下にしてください",
         "invalidKeyCombination": "無効なキーの組み合わせです",
-        "alreadyAssigned": "ショートカットは既に他のアクションに割り当てられています",
+        "alreadyAssigned": "ショートカットは既に割り当てられています",
         "conflictsWithSystem": "{{shortcut}}はシステムのショートカットと競合します",
-        "addModifier": "Cmd、Ctrl、Fnなどの修飾キーを追加してください",
+        "addModifier": "{{mod1}}、{{mod2}}、{{mod3}}などの修飾キーを追加してください",
         "duplicateModifierPairs": "左右の{{modifier}}を同時に使用できません",
         "overlapsWithPushToTalk": "プッシュトゥトークのショートカットと重複しており、問題が発生する可能性があります"
       },
       "input": {
-        "pressKeys": "キーを押してください..."
+        "pressKeys": "キーを押してください...",
+        "unassigned": "未割り当て",
+        "edit": "ショートカットを編集",
+        "clear": "ショートカットを解除",
+        "cancel": "編集をキャンセル",
+        "add": "ショートカットを追加"
       }
     },
     "notes": {
       "create": "ノートを作成",
+      "loading": "ノートを読み込み中...",
       "defaultTitleWithDate": "ノート - {{date}}",
       "untitledTitle": "無題のノート",
       "empty": {
@@ -898,12 +986,35 @@
           "description": "カレンダーを接続して始めましょう",
           "button": "カレンダーを接続"
         }
+      },
+      "recovery": {
+        "loadFailed": "ノートを読み込めませんでした。閉じてからもう一度開いてください。",
+        "blocked": "このノートを変換できませんでした。復元できるように元のデータは保持されています。",
+        "details": "復元の詳細",
+        "deletedNote": "このノートは削除されたか、このアカウントでは利用できません。",
+        "recovered": "このノートは別のデバイスで削除されました。変更内容は競合コピーとしてノート一覧に保存されました。",
+        "format": "この書式はMarkdownとして保存できません。太字、斜体、取り消し線、またはコードを使用してください。保存するには、貼り付けによって追加された非対応の書式を元に戻してください。",
+        "error": "変更を保存できませんでした。このウィンドウを開いたまま、もう一度編集してみてください。"
+      },
+      "cloud": {
+        "error": "このデバイスに保存済みです。クラウド同期の問題を確認してください：{{reason}}"
       }
     },
     "vocabulary": {
       "title": "カスタム辞書",
       "description": "音声入力用のカスタム辞書と単語置換を管理します。",
       "addButton": "単語を追加",
+      "scope": {
+        "label": "語彙の範囲",
+        "all": "すべて",
+        "user": "個人",
+        "org": "組織",
+        "personalBadge": "個人",
+        "organizationBadge": "組織",
+        "addOrganization": "組織の単語を追加",
+        "readOnly": "現在のロールでは組織の語彙は読み取り専用です。",
+        "unavailable": "利用できる組織の語彙はありません。"
+      },
       "loading": "カスタム辞書を読み込み中...",
       "empty": "カスタム辞書が見つかりません。最初の単語を追加して始めましょう。",
       "toast": {
@@ -932,12 +1043,27 @@
         "cancel": "キャンセル",
         "deleting": "削除中...",
         "confirm": "削除"
+      },
+      "learned": {
+        "badge": "学習済み",
+        "tooltip": "修正内容から追加されました。「{{heard}}」と認識されていました。"
       }
     },
     "snippets": {
       "title": "スニペット",
       "description": "音声入力中に長いテキストに展開される短いトリガーを作成します。",
       "addButton": "新規追加",
+      "scope": {
+        "label": "スニペットの範囲",
+        "all": "すべて",
+        "user": "個人",
+        "org": "組織",
+        "personalBadge": "個人",
+        "organizationBadge": "組織",
+        "addOrganization": "組織のスニペットを追加",
+        "readOnly": "現在のロールでは組織のスニペットは読み取り専用です。",
+        "unavailable": "利用できる組織のスニペットはありません。"
+      },
       "loading": "スニペットを読み込み中...",
       "empty": "スニペットがまだありません。最初のスニペットを追加して始めましょう。",
       "noResults": "「{{query}}」に一致するスニペットはありません。",
@@ -1116,7 +1242,7 @@
         "cloudFormatting": {
           "badge": "フォーマット対応",
           "tooltip": "このモデルを選択すると、クラウドフォーマットが利用できます。",
-          "signInTitle": "クラウドモデルを使用するにはサインインしてください"
+          "signInTitle": "クラウドモデルを使用するにはログインしてください"
         },
         "actions": {
           "downloadTitle": "クリックしてダウンロード",
@@ -1132,13 +1258,13 @@
           "confirm": "削除"
         },
         "loginDialog": {
-          "title": "サインインが必要です",
-          "description": "Amical Cloudの文字起こしを使用するには、Amicalアカウントでサインインする必要があります。これにより、安全で高精度なクラウドベースの文字起こしが利用できます。",
-          "browserNotice": "「サインイン」をクリックすると、ブラウザにリダイレクトされてログインプロセスを完了します。",
+          "title": "ログインが必要です",
+          "description": "Amical Cloudの文字起こしを使用するには、Amicalアカウントでログインする必要があります。これにより、安全で高精度なクラウドベースの文字起こしが利用できます。",
+          "browserNotice": "「ログイン」をクリックすると、ブラウザにリダイレクトされてログインプロセスを完了します。",
           "cloudBenefit": "高速で高精度なクラウド文字起こし",
           "cancel": "キャンセル",
           "openingBrowser": "ブラウザを開いています...",
-          "signIn": "サインイン"
+          "signIn": "ログイン"
         },
         "toast": {
           "downloadStartFailed": "ダウンロードの開始に失敗しました",

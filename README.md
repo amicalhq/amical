@@ -46,8 +46,8 @@
   <a href="https://amical.ai/android">
     <img src="https://amical.ai/Store=Google%20Play,%20Type=Dark,%20Language=English.svg" alt="Get it on Google Play" height="60">
   </a>
-  <a href="https://amical.ai/beta">
-    <img src="https://amical.ai/ios_beta_button.svg" alt="Apply for iOS Beta" height="60">
+  <a href="https://amical.ai/ios">
+    <img src="https://amical.ai/Store=App%20Store,%20Type=Dark,%20Language=English.svg" alt="Download on the App Store" width="180" height="60">
   </a>
 </p>
 
@@ -169,6 +169,16 @@ telemetry integrations, and replace its placeholder values before use.
 
 ### Run checks
 
+Workspace builds and typechecks use TypeScript 7.0.2. The `@typescript/native`
+dependency is an alias for the native compiler and provides `tsc`. The
+`typescript` dependency is an alias for Microsoft's TypeScript 6 compatibility
+package, which provides the compiler API used by ESLint and other tools. This
+follows [Microsoft's side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6-0).
+Run `pnpm exec tsc --version` to check the build compiler version.
+
+For VS Code, install the recommended [TypeScript 7 extension](https://marketplace.visualstudio.com/items?itemName=TypeScriptTeam.native-preview).
+The workspace settings point it at the same native compiler.
+
 Before opening a pull request, run:
 
 ```bash
@@ -182,6 +192,7 @@ Contributions are welcome! Reach out to the team in our [Discord server](https:/
 
 - **🐛 [Report an Issue][issues]**: Found a bug? Let us know!
 - **💬 [Start a Discussion][discussions]**: Have ideas or suggestions? We'd love to hear from you.
+- **⭐ [Star Amical on GitHub][repo]**: A star helps other people find Amical.
 
 ## 🎗 License
 
@@ -189,6 +200,7 @@ Released under [MIT][license].
 
 <!-- REFERENCE LINKS -->
 
+[repo]: https://github.com/amicalhq/amical
 [license]: https://github.com/amicalhq/amical/blob/main/LICENSE
 [discussions]: https://amical.ai/community
 [issues]: https://github.com/amicalhq/amical/issues

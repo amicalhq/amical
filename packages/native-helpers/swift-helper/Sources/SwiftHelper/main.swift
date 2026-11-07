@@ -112,7 +112,7 @@ class SwiftHelper {
 
 // Create instances of both helpers
 let swiftHelper = SwiftHelper()
-let ioBridge = IOBridge(jsonEncoder: JSONEncoder(), jsonDecoder: JSONDecoder())
+let ioBridge = IOBridge()
 
 // Start RPC processing in a background thread
 // Using .userInteractive QoS for high priority (reduces latency for audio muting)

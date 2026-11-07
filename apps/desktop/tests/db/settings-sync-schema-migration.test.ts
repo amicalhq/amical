@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { snippets, syncItemState, vocabulary } from "../../src/db/schema";
+import { snippets, vocabulary } from "../../src/db/schema";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 
 const UUID_PATTERN =
@@ -47,19 +47,19 @@ describe("settings sync schema migration", () => {
       INSERT INTO snippets (trigger, content) VALUES ('sig', 'Regards');
     `);
 
-    const migration = fs
-      .readFileSync(
-        path.join(
-          process.cwd(),
-          "src",
-          "db",
-          "migrations",
-          "0007_odd_mastermind.sql",
-        ),
-        "utf8",
-      )
-      .replaceAll("--> statement-breakpoint", "");
-    testDb.db.$client.exec(migration);
+    for (const migrationName of [
+      "0007_odd_mastermind.sql",
+      "0009_known_robbie_robertson.sql",
+      "0018_vocabulary_source.sql",
+    ]) {
+      const migration = fs
+        .readFileSync(
+          path.join(process.cwd(), "src", "db", "migrations", migrationName),
+          "utf8",
+        )
+        .replaceAll("--> statement-breakpoint", "");
+      testDb.db.$client.exec(migration);
+    }
 
     const vocabularyRows = testDb.db.select().from(vocabulary).all();
     const vocabularyRow = vocabularyRows.find((row) => row.word === "Amical");
@@ -71,15 +71,21 @@ describe("settings sync schema migration", () => {
       word: "Amical",
       replacementWord: "Amical AI",
       usageCount: 3,
+      scopeType: "user",
+      scopeId: "",
     });
     expect(dormantVocabularyRow).toMatchObject({
       word: "Dormant",
       replacementWord: null,
       usageCount: 1,
+      scopeType: "user",
+      scopeId: "",
     });
     expect(snippetRow).toMatchObject({
       trigger: "sig",
       content: "Regards",
+      scopeType: "user",
+      scopeId: "",
     });
     expect(vocabularyRow?.id).toMatch(UUID_PATTERN);
     expect(dormantVocabularyRow?.id).toMatch(UUID_PATTERN);
@@ -98,13 +104,16 @@ describe("settings sync schema migration", () => {
       .prepare<[], { name: string }>("PRAGMA table_info(sync_item_state)")
       .all();
     expect(syncColumns.map((row) => row.name)).not.toContain("local_row_id");
-    const expectedSyncPrimaryKeys = {
+    const expectedPrimaryKeys = {
+      vocabulary: ["scope_type", "scope_id", "id"],
+      snippets: ["scope_type", "scope_id", "id"],
+      sync_scope_state: ["scope_type", "scope_id"],
       sync_item_state: ["scope_type", "scope_id", "collection", "sync_id"],
       sync_outbox: ["scope_type", "scope_id", "collection", "sync_id"],
       sync_collection_state: ["scope_type", "scope_id", "collection"],
     };
     for (const [table, expectedPrimaryKey] of Object.entries(
-      expectedSyncPrimaryKeys,
+      expectedPrimaryKeys,
     )) {
       const columns = testDb.db.$client
         .prepare<
@@ -133,7 +142,9 @@ describe("settings sync schema migration", () => {
         { name: string }
       >("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_scope_state'")
       .all();
-    expect(scopeTable).toEqual([]);
-    expect(testDb.db.select().from(syncItemState).all()).toEqual([]);
+    expect(scopeTable).toEqual([{ name: "sync_scope_state" }]);
+    expect(
+      testDb.db.$client.prepare("SELECT * FROM sync_item_state").all(),
+    ).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@ import { Note } from "../types";
 
 interface RecentNoteCardProps {
   note: Note;
-  onNoteClick: (noteId: number) => void;
+  onNoteClick: (noteId: string) => void;
 }
 
 export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {
@@ -41,6 +41,10 @@ export function NoteCard({ note, onNoteClick }: RecentNoteCardProps) {
         <div className="font-medium text-foreground text-sm leading-tight">
           {note.title}
         </div>
+
+        {note.syncError && (
+          <p className="mt-1 text-xs text-destructive">{note.syncError}</p>
+        )}
 
         {/* Date and Meeting Info */}
         <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">

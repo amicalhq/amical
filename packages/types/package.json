@@ -24,16 +24,18 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@amical/typescript-config": "workspace:*",
     "@amical/eslint-config": "workspace:*",
-    "eslint": "^9.26.0",
+    "@amical/typescript-config": "workspace:*",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "eslint": "^9.39.5",
     "quicktype": "23.1.4",
     "tsx": "^4.19.4",
-    "typescript": "~5.8.3"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "dependencies": {
-    "zod": "^4.3.5",
-    "minimatch": "10.0.3"
+    "@paralleldrive/cuid2": "^2.3.1",
+    "minimatch": "10.0.3",
+    "zod": "^4.3.5"
   },
   "exports": {
     ".": {

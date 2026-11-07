@@ -251,9 +251,17 @@ export class WindowManager extends EventEmitter {
    *                       the renderer isn't ready to receive IPC navigation events.
    *                       If window already exists, caller should use webContents.send()
    *                       to navigate (renderer is already loaded and listening).
+   * @param options.inactive - Show a NEW window without activating the app
+   *                           (no focus change, no macOS Space switch).
    */
-  async createOrShowMainWindow(initialRoute?: string): Promise<void> {
+  async createOrShowMainWindow(
+    initialRoute?: string,
+    { inactive = false }: { inactive?: boolean } = {},
+  ): Promise<void> {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      if (this.mainWindow.isMinimized()) {
+        this.mainWindow.restore();
+      }
       this.mainWindow.show();
       this.mainWindow.focus();
       return;
@@ -273,6 +281,7 @@ export class WindowManager extends EventEmitter {
     this.mainWindow = new BrowserWindow({
       width: 1200,
       height: windowHeight,
+      show: !inactive,
       frame: true,
       backgroundColor:
         process.platform === "darwin" ? "#00000000" : colors.backgroundColor,
@@ -297,6 +306,9 @@ export class WindowManager extends EventEmitter {
         contextIsolation: true,
       },
     });
+    if (inactive) {
+      this.mainWindow.showInactive();
+    }
 
     const shouldOpenExternally = (url: string) => {
       try {
@@ -482,7 +494,9 @@ export class WindowManager extends EventEmitter {
   // chrome differences (fixed 1160 non-resizable vs resizable main), close
   // semantics (onboarding close = quit vs main close = hide to tray), and the
   // production relaunch on completion, which a shared window doesn't remove.
-  async createOrShowOnboardingWindow(): Promise<void> {
+  async createOrShowOnboardingWindow({
+    inactive = false,
+  }: { inactive?: boolean } = {}): Promise<void> {
     if (this.onboardingWindow && !this.onboardingWindow.isDestroyed()) {
       this.onboardingWindow.show();
       this.onboardingWindow.focus();
@@ -504,6 +518,7 @@ export class WindowManager extends EventEmitter {
     this.onboardingWindow = new BrowserWindow({
       width: 1160,
       height: windowHeight,
+      show: !inactive,
       backgroundColor: colors.backgroundColor,
       frame: true,
       titleBarStyle: "hidden",
@@ -522,6 +537,9 @@ export class WindowManager extends EventEmitter {
         contextIsolation: true,
       },
     });
+    if (inactive) {
+      this.onboardingWindow.showInactive();
+    }
 
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
       const devUrl = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -580,8 +598,7 @@ export class WindowManager extends EventEmitter {
   }
 
   /**
-   * Restore a visible widget's native ordering.
-   * Keep the visibility guard: moveTop() can show a hidden window on Windows.
+   * Restore a visible widget's always-on-top status and native ordering.
    */
   reassertWidgetZOrder(): void {
     if (
@@ -590,7 +607,7 @@ export class WindowManager extends EventEmitter {
       !this.widgetWindow.isDestroyed() &&
       this.widgetWindow.isVisible()
     ) {
-      this.widgetWindow.moveTop();
+      this.widgetWindow.setAlwaysOnTop(true, "screen-saver");
     }
   }
 
@@ -735,7 +752,7 @@ export class WindowManager extends EventEmitter {
     this.notesWindowController.close();
   }
 
-  openNotesWindow(noteId?: number): void {
+  openNotesWindow(noteId?: string): void {
     this.notesWindowController.open(noteId);
   }
 

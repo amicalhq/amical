@@ -2,6 +2,7 @@ import { IconCreditCard, IconUserPlus, type Icon } from "@tabler/icons-react";
 import { toast } from "sonner";
 
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { BILLING_RETURN_PATH } from "@/constants/web-app";
 import { api } from "@/trpc/react";
 
 type CloudItem = { title: string; icon: Icon; returnPath: string };
@@ -15,7 +16,7 @@ const CLOUD_ITEMS: CloudItem[] = [
   {
     title: "Usage & Billing",
     icon: IconCreditCard,
-    returnPath: "/organization/billing",
+    returnPath: BILLING_RETURN_PATH,
   },
 ];
 
@@ -40,7 +41,11 @@ export function NavCloud() {
       {CLOUD_ITEMS.map((item) => (
         <SidebarMenuItem key={item.returnPath}>
           <SidebarMenuButton
-            disabled={openWebSessionMutation.isPending}
+            // Only the row being opened waits; the other stays usable.
+            disabled={
+              openWebSessionMutation.isPending &&
+              openWebSessionMutation.variables?.returnPath === item.returnPath
+            }
             onClick={() =>
               openWebSessionMutation.mutate({ returnPath: item.returnPath })
             }

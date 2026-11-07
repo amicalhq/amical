@@ -1,9 +1,9 @@
-import type { AppSettingsData } from "../schema";
 import { MAC_KEYCODES, WINDOWS_KEYCODES } from "../../utils/keycodes";
+import type { AppSettingsDataBeforeV15 } from "./legacy-shortcuts";
 
 // v6 -> v7: add default global shortcut for creating a new note
-export function migrateToV7(data: unknown): AppSettingsData {
-  const oldData = data as AppSettingsData;
+export function migrateToV7(data: unknown): AppSettingsDataBeforeV15 {
+  const oldData = data as AppSettingsDataBeforeV15;
   const shortcuts = oldData.shortcuts ?? {};
 
   const defaultNewNoteShortcut =

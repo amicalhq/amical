@@ -36,6 +36,8 @@ import { CreateNoteButton } from "./create-note-button";
 import { NavCloud } from "./nav-cloud";
 import { RemoteConfigSidebarSlot } from "./remote-config-surfaces";
 import { SettingsNavigationControls } from "./settings-navigation-controls";
+import { StarNudge } from "./star-nudge";
+import { UsageMeter } from "./usage-meter";
 import { APP_NAV_ITEMS, SETTINGS_NAV_ITEMS } from "../lib/settings-navigation";
 
 const dragRegion = { WebkitAppRegion: "drag" } as React.CSSProperties;
@@ -76,7 +78,7 @@ export function SettingsSidebar({
     ? settingsNavItems
     : [...appNavItems, settingsEntryItem];
 
-  const baseNavSecondary: NavSecondaryItem[] = [
+  const helpLinks: NavSecondaryItem[] = [
     {
       id: "docs",
       title: t("settings.sidebar.docs"),
@@ -105,9 +107,6 @@ export function SettingsSidebar({
       }
     : null;
 
-  const navSecondary: NavSecondaryItem[] = navSecondaryCta
-    ? [navSecondaryCta, ...baseNavSecondary]
-    : baseNavSecondary;
   const updateReadyButton =
     updateState === "downloaded" ? (
       <SidebarMenuItem>
@@ -202,11 +201,17 @@ export function SettingsSidebar({
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter className="p-0">
-        <RemoteConfigSidebarSlot />
+        <RemoteConfigSidebarSlot fallback={<StarNudge />} />
         <NavSecondary
-          items={navSecondary}
+          cta={navSecondaryCta}
+          items={helpLinks}
           prefix={<NavCloud />}
-          beforeAuth={updateReadyButton}
+          beforeAuth={
+            <>
+              <UsageMeter />
+              {updateReadyButton}
+            </>
+          }
         />
       </SidebarFooter>
     </Sidebar>

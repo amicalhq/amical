@@ -143,7 +143,7 @@ function resolveLibExecutable(env, arch) {
             "-products",
             "*",
             "-version",
-            "[17.0,18.0)",
+            "[17.0,19.0)",
             "-requires",
             arch === "arm64"
               ? "Microsoft.VisualStudio.Component.VC.Tools.ARM64"
@@ -171,7 +171,7 @@ function resolveLibExecutable(env, arch) {
   probeInstallDir(env.VSINSTALLDIR && path.join(env.VSINSTALLDIR, "VC"));
   probeVswhere();
 
-  for (const version of ["2022"]) {
+  for (const version of ["2022", "18"]) {
     for (const edition of [
       "Enterprise",
       "Community",

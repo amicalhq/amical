@@ -4,14 +4,15 @@ import path from "node:path";
 
 /**
  * The app under test runs its real startup OS integrations (login-item
- * registration via syncAutoLaunch, amical:// protocol registration) — we
- * deliberately don't gate them off, so tests exercise the true code paths.
- * Instead, snapshot the machine state before the suite and best-effort
- * restore it after. Failures warn loudly but never fail the suite.
+ * registration via syncAutoLaunch, amical:// or amical-dev:// protocol
+ * registration) — we deliberately don't gate them off, so tests exercise the
+ * true code paths. Instead, snapshot the machine state before the suite and
+ * best-effort restore it after. Failures warn loudly but never fail the suite.
  *
- * macOS only. The amical:// handler is not restored — the real installed
- * Amical re-registers itself on its next launch. Windows (registry) is not
- * implemented; see e2e/README.md.
+ * macOS only. Protocol handlers are not restored — the real installed Amical
+ * re-registers amical:// on its next launch, and amical-dev:// belongs to
+ * local dev builds anyway. Windows (registry) is not implemented; see
+ * e2e/README.md.
  */
 
 const STATE_FILE = path.join(__dirname, "..", ".artifacts", "os-state.json");

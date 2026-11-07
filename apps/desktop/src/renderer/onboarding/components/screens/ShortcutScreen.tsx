@@ -15,6 +15,7 @@ import { useHeldKeys } from "../shared/useHeldKeys";
 import { OnboardingShortcutInput } from "../shared/OnboardingShortcutInput";
 import { OnboardingScreen } from "@/types/onboarding";
 import { api } from "@/trpc/react";
+import { sortKeycodesForDisplay } from "@/utils/keycode-map";
 
 interface ShortcutScreenProps {
   onNext: () => void;
@@ -31,7 +32,7 @@ export function ShortcutScreen({ onNext, onBack }: ShortcutScreenProps) {
   const { t } = useTranslation();
   const utils = api.useUtils();
   const { data: shortcuts } = api.settings.getShortcuts.useQuery();
-  const configured = shortcuts?.pushToTalk ?? [];
+  const configured = shortcuts?.pushToTalk[0] ?? [];
   const heldKeys = useHeldKeys();
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -58,7 +59,7 @@ export function ShortcutScreen({ onNext, onBack }: ShortcutScreenProps) {
       <PreviewPanel>
         <div className="relative flex items-center justify-center gap-2">
           {configured.length ? (
-            configured.map((code) => (
+            sortKeycodesForDisplay(configured).map((code) => (
               <KeyCap
                 key={code}
                 keycode={code}

@@ -71,8 +71,11 @@ export class VADService extends EventEmitter {
           });
         },
       );
-      yield* addRelease(appScope, "Cleaning up VAD service...", "vadService", () =>
-        service.dispose(),
+      yield* addRelease(
+        appScope,
+        "Cleaning up VAD service...",
+        "vadService",
+        () => service.dispose(),
       );
       yield* step(() => service.initialize());
       logger.main.info("VAD service initialized");

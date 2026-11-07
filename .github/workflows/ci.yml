@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -10,21 +12,27 @@ concurrency:
 
 jobs:
   typecheck:
-    name: Type Check
+    name: Type Check and Tests
     runs-on: macos-latest
     permissions:
       contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
+
+      - name: Fetch comparison base
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.15.0
+          version: 10.34.5
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,6 +49,15 @@ jobs:
       - name: Type check
         run: pnpm type:check
 
+      - name: Test desktop (including lifecycle contract)
+        run: pnpm --filter @amical/desktop test
+
+      - name: Verify lifecycle contract version
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm --filter @amical/desktop verify:lifecycle-contract-version "$BASE_SHA"
+
   build_desktop:
     name: Build Desktop (${{ matrix.os }} ${{ matrix.arch }})
     needs: typecheck
@@ -56,21 +73,21 @@ jobs:
             runner: macos-latest
           - os: windows
             arch: x64
-            runner: windows-2022
+            runner: windows-2025-vs2026
           - os: windows
             arch: arm64
-            runner: windows-11-arm
+            runner: windows-11-vs2026-arm
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.15.0
+          version: 10.34.5
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -80,10 +97,27 @@ jobs:
           architecture: ${{ matrix.arch }}
           cache: pnpm
 
+      - name: Install Vulkan SDK
+        if: matrix.os == 'windows' && matrix.arch == 'x64'
+        shell: pwsh
+        env:
+          VULKAN_VERSION: 1.4.363.0
+        run: |
+          curl.exe -fL -o "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_VERSION.exe"
+          & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --root "C:\VulkanSDK\$env:VULKAN_VERSION" --accept-licenses --default-answer --confirm-command install
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\$env:VULKAN_VERSION\Bin"
+
       - name: Install dependencies
         env:
           GGML_NATIVE: OFF
         run: pnpm install --frozen-lockfile
+
+      - name: Install Electron binary
+        run: pnpm --filter @amical/desktop exec install-electron
+
+      - name: Generate native helper models
+        run: pnpm --filter @amical/types generate:all
 
       - name: Smoke test Windows native dependencies
         if: matrix.os == 'windows'
@@ -94,6 +128,10 @@ jobs:
         if: matrix.os == 'windows'
         run: dotnet test packages/native-helpers/windows-helper-tests/WindowsHelper.Tests.csproj -c Release --arch ${{ matrix.arch }} -- RunConfiguration.TreatNoTestsAsError=true
 
+      - name: Test Swift helper
+        if: matrix.os == 'macos'
+        run: swift test --package-path packages/native-helpers/swift-helper
+
       - name: Build whisper wrapper JS
         run: pnpm --filter @amical/whisper-wrapper build
 
@@ -101,6 +139,12 @@ jobs:
         env:
           GGML_NATIVE: OFF
         run: pnpm --filter @amical/whisper-wrapper build:native
+
+      - name: Build whisper native binaries (vulkan)
+        if: matrix.os == 'windows' && matrix.arch == 'x64'
+        env:
+          GGML_NATIVE: OFF
+        run: pnpm --filter @amical/whisper-wrapper build:native:vulkan
 
       - name: Smoke test whisper native binary
         run: pnpm --filter @amical/whisper-wrapper test:load
@@ -112,6 +156,7 @@ jobs:
       - name: Package desktop app (no signing)
         working-directory: apps/desktop
         env:
+          NODE_OPTIONS: --max-old-space-size=6144
           AMICAL_E2E_PACKAGE: "1"
           SKIP_CODESIGNING: "true"
           SKIP_NOTARIZATION: "true"

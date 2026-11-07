@@ -11,6 +11,7 @@ namespace WindowsHelper.Services
 {
     public class AudioService
     {
+        private static readonly TimeSpan PlaybackTimeout = TimeSpan.FromSeconds(1);
         private WaveOutEvent? waveOut;
         private MMDeviceEnumerator? deviceEnumerator;
         private float originalVolume = 1.0f;
@@ -18,8 +19,6 @@ namespace WindowsHelper.Services
 
         // Preloaded audio data for faster playback
         private readonly Dictionary<string, byte[]> preloadedAudio = new();
-
-        public event EventHandler<string>? SoundPlaybackCompleted;
 
         public AudioService()
         {
@@ -64,8 +63,10 @@ namespace WindowsHelper.Services
             }
         }
 
-        public async Task PlaySound(string soundName, string requestId)
+        public async Task PlaySound(string soundName)
         {
+            WaveOutEvent? player = null;
+            EventHandler<StoppedEventArgs>? playbackStopped = null;
             try
             {
                 LogToStderr($"PlaySound called with soundName: {soundName}");
@@ -74,8 +75,6 @@ namespace WindowsHelper.Services
                 if (waveOut != null && waveOut.PlaybackState == PlaybackState.Playing)
                 {
                     waveOut.Stop();
-                    waveOut.Dispose();
-                    waveOut = null;
                 }
 
                 // Use preloaded audio data (fast) or fall back to loading from resources
@@ -89,8 +88,7 @@ namespace WindowsHelper.Services
                     using var stream = assembly.GetManifestResourceStream(resourceName);
                     if (stream == null)
                     {
-                        LogToStderr($"Resource not found: {resourceName}");
-                        return;
+                        throw new InvalidOperationException($"Resource not found: {resourceName}");
                     }
 
                     using var ms = new MemoryStream();
@@ -102,36 +100,74 @@ namespace WindowsHelper.Services
                 using var memoryStream = new MemoryStream(audioData);
                 using var audioFile = new Mp3FileReader(memoryStream);
 
-                waveOut = new WaveOutEvent();
-                waveOut.Init(audioFile);
+                player = new WaveOutEvent();
+                waveOut = player;
+                player.Init(audioFile);
 
                 // Set up completion handler
-                var completionSource = new TaskCompletionSource<bool>();
-                waveOut.PlaybackStopped += (sender, args) =>
+                var completionSource = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously
+                );
+                playbackStopped = (sender, args) =>
                 {
                     LogToStderr($"Sound playback finished for {soundName}");
-                    completionSource.TrySetResult(true);
-                    SoundPlaybackCompleted?.Invoke(this, requestId);
+                    if (args.Exception != null)
+                    {
+                        completionSource.TrySetException(args.Exception);
+                    }
+                    else
+                    {
+                        completionSource.TrySetResult(true);
+                    }
                 };
+                player.PlaybackStopped += playbackStopped;
 
                 // Start playback
-                waveOut.Play();
+                player.Play();
                 LogToStderr($"Playing sound: {soundName}.mp3");
 
                 // Wait for completion
-                await completionSource.Task;
+                await WaitForPlaybackAsync(
+                    completionSource.Task,
+                    PlaybackTimeout,
+                    player.Stop
+                );
             }
             catch (Exception ex)
             {
                 LogToStderr($"Error playing sound {soundName}: {ex.Message}");
+                throw;
             }
             finally
             {
-                if (waveOut != null)
+                if (player != null)
                 {
-                    waveOut.Dispose();
-                    waveOut = null;
+                    if (playbackStopped != null)
+                    {
+                        player.PlaybackStopped -= playbackStopped;
+                    }
+                    player.Dispose();
+                    if (ReferenceEquals(waveOut, player))
+                    {
+                        waveOut = null;
+                    }
                 }
+            }
+        }
+
+        internal static async Task WaitForPlaybackAsync(
+            Task playback,
+            TimeSpan timeout,
+            Action stopPlayback)
+        {
+            try
+            {
+                await playback.WaitAsync(timeout);
+            }
+            catch (TimeoutException)
+            {
+                stopPlayback();
+                throw;
             }
         }
 

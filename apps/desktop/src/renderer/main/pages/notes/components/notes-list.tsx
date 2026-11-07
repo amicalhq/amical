@@ -8,13 +8,12 @@ import { useTranslation } from "react-i18next";
 export function NotesList() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-
   const { data: notes, isLoading } = api.notes.getNotes.useQuery({
     sortBy: "updatedAt",
     sortOrder: "desc",
   });
 
-  const onNoteClick = (noteId: number) => {
+  const onNoteClick = (noteId: string) => {
     navigate({
       to: "/notes/$noteId",
       params: { noteId: String(noteId) },

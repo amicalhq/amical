@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
-import { debounce } from "@/renderer/main/utils/debounce";
 import Note from "./note";
 import { NoteEditor } from "./note-editor";
 import { FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
+import { useNoteTitleSave } from "@/renderer/main/hooks/use-note-title-save";
 
 type NotePageProps = {
   noteId: string;
@@ -34,28 +34,39 @@ export default function NotePage({
   // Refs
   const noteRef = useRef<typeof note>(null);
   const autoRecordTriggeredRef = useRef(false);
+  const { pendingTitle, setPendingTitle } = useNoteTitleSave(
+    noteId,
+    (saved) => {
+      if (noteRef.current?.id === saved.id)
+        noteRef.current = {
+          ...noteRef.current,
+          title: saved.title,
+          remoteVersion: saved.remoteVersion,
+        };
+    },
+    (id) => {
+      if (noteRef.current?.id === id && !pendingTitle.current)
+        setNoteTitle(noteRef.current.title);
+    },
+  );
 
   // Fetch note data
-  const { data: note, isLoading } = api.notes.getNoteById.useQuery(
-    { id: parseInt(noteId) },
+  const {
+    data: note,
+    isLoading,
+    isError,
+  } = api.notes.getNoteById.useQuery(
+    { id: noteId },
     {
       enabled: !!noteId,
     },
   );
 
-  // Update title mutation
-  const updateTitleMutation = api.notes.updateNoteTitle.useMutation({
-    onSuccess: () => {
-      utils.notes.getNotes.invalidate();
-      utils.notes.getNoteById.invalidate({ id: parseInt(noteId) });
-    },
-  });
-
   // Update emoji mutation
   const updateNoteIconMutation = api.notes.updateNoteIcon.useMutation({
     onSuccess: () => {
       utils.notes.getNotes.invalidate();
-      utils.notes.getNoteById.invalidate({ id: parseInt(noteId) });
+      utils.notes.getNoteById.invalidate({ id: noteId });
       toast.success(t("settings.notes.toast.emojiUpdated"));
     },
     onError: (error) => {
@@ -84,23 +95,11 @@ export default function NotePage({
     },
   });
 
-  // Debounced title update
-  const debouncedUpdateTitle = useMemo(
-    () =>
-      debounce((title: string) => {
-        const currentNote = noteRef.current;
-        if (currentNote && title !== currentNote.title) {
-          updateTitleMutation.mutate({ id: currentNote.id, title });
-        }
-      }, 500),
-    [], // No dependencies - function should remain stable
-  );
-
   // Update note ref and set initial title and emoji
   useEffect(() => {
     noteRef.current = note;
     if (note) {
-      setNoteTitle(note.title);
+      setNoteTitle(pendingTitle.current?.title ?? note.title);
       setNoteIcon(note.icon || null);
     }
   }, [note]);
@@ -135,27 +134,41 @@ export default function NotePage({
   const handleTitleChange = useCallback(
     (newTitle: string) => {
       setNoteTitle(newTitle);
-      debouncedUpdateTitle(newTitle);
+      const remoteVersion = pendingTitle.current
+        ? pendingTitle.current.remoteVersion
+        : (noteRef.current?.remoteVersion ?? null);
+      const originalTitle = pendingTitle.current?.originalTitle ?? noteTitle;
+      setPendingTitle({
+        id: noteId,
+        title: newTitle,
+        remoteVersion,
+        originalTitle,
+      });
     },
-    [debouncedUpdateTitle],
+    [setPendingTitle, noteTitle, noteId],
   );
 
   // Handle delete
   const handleDelete = useCallback(() => {
-    deleteMutation.mutate({ id: parseInt(noteId) });
+    deleteMutation.mutate({ id: noteId });
   }, [noteId, deleteMutation]);
 
   // Handle emoji change
   const handleEmojiChange = useCallback(
     (emoji: string | null) => {
       setNoteIcon(emoji);
-      updateNoteIconMutation.mutate({ id: parseInt(noteId), icon: emoji });
+      updateNoteIconMutation.mutate({
+        id: noteId,
+        icon: emoji,
+        expectedRemoteVersion: noteRef.current?.remoteVersion,
+        originalIcon: noteIcon,
+      });
     },
-    [noteId, updateNoteIconMutation],
+    [noteId, noteIcon, updateNoteIconMutation],
   );
 
   // Note not found state
-  if (!isLoading && !note) {
+  if (!isLoading && (!note || isError)) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <FileTextIcon className="h-12 w-12 text-muted-foreground" />
@@ -193,8 +206,13 @@ export default function NotePage({
       onBack={onBack}
       isDeleting={deleteMutation.isPending}
     >
+      {note?.syncError && (
+        <p role="alert" className="px-4 py-2 text-sm text-destructive">
+          {t("settings.notes.cloud.error", { reason: note.syncError })}
+        </p>
+      )}
       <NoteEditor
-        noteId={parseInt(noteId)}
+        noteId={noteId}
         onSyncStatusChange={handleSyncStatusChange}
         onReady={handleEditorReady}
       />

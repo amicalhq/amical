@@ -1,51 +1,22 @@
 import {
-  PipelineContext,
-  StreamingPipelineContext,
-  StreamingSession,
   TranscribeContext,
-  TranscriptionProvider,
-  FormattingProvider,
+  TranscriptionEngine,
 } from "../pipeline/core/pipeline-types";
-import { createDefaultContext } from "../pipeline/core/context";
 import { WhisperProvider } from "../pipeline/providers/transcription/whisper-provider";
 import { AmicalCloudProvider } from "../pipeline/providers/transcription/amical-cloud-provider";
-import { createRemoteFormattingProvider } from "../pipeline/providers/formatting/remote-formatting-provider-registry";
-import type { RemoteFormattingProviderType } from "../pipeline/providers/formatting/remote-formatting-provider-registry";
 import { ModelService } from "../services/model-service";
 import { SettingsService } from "../services/settings-service";
 import { TelemetryService } from "../services/telemetry-service";
 import type { AuthService } from "./auth-service";
 import type { NativeBridge } from "./platform/native-bridge-service";
 import type { OnboardingService } from "./onboarding-service";
-import {
-  createTranscription,
-  getTranscriptionById,
-  updateTranscription,
-} from "../db/transcriptions";
-import { incrementDailyStats } from "../db/daily-stats";
-import { getAllVocabulary } from "../db/vocabulary";
-import { getAllSnippets } from "../db/snippets";
 import { logger } from "../main/logger";
-import { v4 as uuid } from "uuid";
 import { VADService } from "./vad-service";
 import { Mutex } from "async-mutex";
 import { dialog } from "electron";
 import { AVAILABLE_MODELS } from "../constants/models";
-import type { GetAccessibilityContextResult } from "@amical/types";
-import { AppError, ErrorCodes } from "../types/error";
-import { applyTextReplacements } from "../utils/text-replacement";
-import { normalizeTranscriptionBoundaries } from "../utils/boundary-spacing";
-import { selectVocabularyHints } from "../utils/vocabulary-hints";
-import * as fs from "node:fs";
-import { PROVIDER_TYPES } from "../constants/provider-types";
-import {
-  findModelBySelectionValue,
-  getModelSelectionKey,
-  getSpeechModelSelectionKey,
-  isAmicalCloudSelectionValue,
-} from "../utils/model-selection";
-import { countWords } from "../utils/dictation-stats";
-import { Effect, Layer } from "effect";
+import { isAmicalCloudSelectionValue } from "../utils/model-selection";
+import { Cause, Effect, Exit, Layer } from "effect";
 import {
   TranscriptionServiceTag,
   ModelServiceTag,
@@ -58,29 +29,134 @@ import {
   AppScopeTag,
 } from "../main/runtime/tags";
 import { addRelease, step, up } from "../main/runtime/layer-helpers";
+import { LiveTranscriptionSession } from "./transcription/live-transcription-session";
+import type {
+  MaterializedTranscriptionSession,
+  StreamingSessionUpdate,
+} from "./transcription/types";
+import { loadDictationContext } from "./transcription/load-dictation-context";
+import {
+  accumulateTranscriptionResult,
+  mergeDetectedLanguage,
+  prepareTranscriptText,
+} from "./transcription/prepare-transcript-text";
+import { retranscribeHistoryItem } from "./transcription/retranscribe-history-item";
+import { settleExit } from "./transcription/effect-boundary";
+import { runPromiseExit } from "../main/runtime/telemetry-runtime";
+import {
+  codeOf,
+  failOrDie,
+  isDictationError,
+  tagOf,
+  toDependencyFailure,
+  type DictationError,
+} from "../types/errors";
+import {
+  recordChunkAggregate,
+  recordDefect,
+  recordPhase,
+  recordPoint,
+  recordSessionDimensions,
+  type ChunkAggregate,
+} from "../main/telemetry/dictation-trace";
+import {
+  makeTokenLock,
+  withLock,
+  withLockPromise,
+  type TokenLock,
+} from "./transcription/token-lock";
+import { detectApplicationType } from "../pipeline/providers/formatting/formatter-prompt";
+import { resolveSessionSkills } from "../pipeline/providers/transcription/skill-resolution";
+import type { DictationSkill } from "../pipeline/providers/transcription/dictation-skill";
+import {
+  sanitizeActivitySkills,
+  transcriptionActivityModel,
+  type CompletedDictationActivityMetadata,
+} from "../types/activity";
 
-type StreamingSessionUpdate = {
-  accessibilityContext?: GetAccessibilityContextResult | null;
+type StreamingChunkOptions = {
+  sessionId: string;
+  audioChunk: Float32Array;
   isInstruct?: boolean;
+};
+
+/** Separate queue time from work time without changing the lock's
+ * interruption-safe handoff. Only slow waits are retained by the trace. */
+const withTracedChunkLock = <A, E, R>(
+  lock: TokenLock,
+  use: Effect.Effect<A, E, R>,
+  sessionId: string,
+  chunkIndex: number,
+  name: "transcription.vad-lock-wait" | "transcription.chunk-lock-wait",
+): Effect.Effect<A, E, R> =>
+  Effect.suspend(() => {
+    const startedAt = Date.now();
+    const timerStartedAt = performance.now();
+    return withLock(
+      lock,
+      Effect.suspend(() => {
+        recordPhase(sessionId, name, startedAt, Date.now(), {
+          durationMs: performance.now() - timerStartedAt,
+          chunkIndex,
+          slow: true,
+        });
+        return use;
+      }),
+    );
+  });
+
+/** Retain slow chunk work without allocating an Effect span for every frame. */
+const withTracedChunkWork = <A, E, R>(
+  work: Effect.Effect<A, E, R>,
+  sessionId: string,
+  chunkIndex: number,
+  name: "transcription.vad-process" | "transcription.provider-transcribe",
+): Effect.Effect<A, E, R> =>
+  Effect.suspend(() => {
+    const startedAt = Date.now();
+    const timerStartedAt = performance.now();
+    return work.pipe(
+      Effect.tap(() =>
+        Effect.sync(() =>
+          recordPhase(sessionId, name, startedAt, Date.now(), {
+            durationMs: performance.now() - timerStartedAt,
+            chunkIndex,
+            slow: true,
+          }),
+        ),
+      ),
+    );
+  });
+
+/** Prepared transcript + descriptive fields, nothing persisted. */
+export type ResolvedStreamingSession = {
+  text: string;
+  language?: string;
+  detectedLanguage?: string;
+  speechModel?: string;
+  formattingModel?: string;
+  meta: {
+    source?: string;
+    vocabularySize: number;
+    formattingStyle?: string;
+    activity?: CompletedDictationActivityMetadata;
+  };
 };
 
 /**
  * Service for audio transcription and optional formatting
  */
 export class TranscriptionService {
-  private whisperProvider: WhisperProvider;
-  private cloudProvider: AmicalCloudProvider;
-  private currentProvider: TranscriptionProvider | null = null;
-  private streamingSessions = new Map<string, StreamingSession>();
-  private pendingStreamingSessionUpdates = new Map<
-    string,
-    StreamingSessionUpdate
-  >();
+  private whisperEngine: WhisperProvider;
+  private cloudEngine: AmicalCloudProvider;
+  private activeLiveSession: LiveTranscriptionSession | null = null;
+  private historyRetryInProgress = false;
   private vadService: VADService | null;
   private settingsService: SettingsService;
-  private vadMutex: Mutex;
-  private transcriptionMutex: Mutex;
+  private vadLock: TokenLock;
+  private transcriptionLock: TokenLock;
   private modelLoadMutex: Mutex;
+  private chunkStats = new Map<string, ChunkAggregate>();
   private telemetryService: TelemetryService;
   private modelService: ModelService;
   private modelWasPreloaded: boolean = false;
@@ -97,16 +173,16 @@ export class TranscriptionService {
     private nativeBridge: NativeBridge | null,
     private onboardingService: OnboardingService | null,
   ) {
-    this.whisperProvider = new WhisperProvider(modelService);
-    this.cloudProvider = new AmicalCloudProvider(
+    this.whisperEngine = new WhisperProvider(modelService);
+    this.cloudEngine = new AmicalCloudProvider(
       authService,
       telemetryService,
       settingsService,
     );
     this.vadService = vadService;
     this.settingsService = settingsService;
-    this.vadMutex = new Mutex();
-    this.transcriptionMutex = new Mutex();
+    this.vadLock = makeTokenLock();
+    this.transcriptionLock = makeTokenLock();
     this.modelLoadMutex = new Mutex();
     this.telemetryService = telemetryService;
     this.modelService = modelService;
@@ -118,13 +194,80 @@ export class TranscriptionService {
    * Idempotent and cheap when already warm. Safe to fire-and-forget.
    */
   async warmupActiveProvider(): Promise<void> {
-    const provider = await this.selectProvider();
-    await provider.warmup?.();
+    const engine = await this.selectEngine();
+    await engine.warmup?.();
+  }
+
+  beginStreamingSession(
+    sessionId: string,
+    onTerminalFailure?: (error: Error) => void,
+  ): boolean {
+    if (this.activeLiveSession) {
+      throw new Error("Another live transcription session is already active");
+    }
+
+    if (this.historyRetryInProgress) {
+      return false;
+    }
+
+    const liveSession = new LiveTranscriptionSession(
+      sessionId,
+      (error) => {
+        // Latch ACCEPTANCE is the once-authority for out-of-band defects:
+        // this callback fires only when the latch took the value, so an
+        // unknown value captures here exactly once (classification-latched
+        // defects arrive already marked). Losing channels never capture.
+        if (!isDictationError(error) && !liveSession.wasDefectReported(error)) {
+          liveSession.markDefectsReported([error]);
+          this.reportDefects(sessionId, [error]);
+        }
+        // A stream that reports a terminal result retires itself (§6.1):
+        // the registration must be gone before the lifecycle reacts, or the
+        // next session's begin finds a dead stream still holding the slot.
+        this.retireLiveSession(liveSession);
+        recordPoint(sessionId, "transcription.terminal-latch", {
+          // The latch fires from chunk classification AND from the provider's
+          // out-of-band stream observer, so the stage names the stream, not
+          // one phase.
+          stage: "transcription.stream",
+          errorCode: codeOf(error),
+          errorTag: tagOf(error),
+        });
+        try {
+          onTerminalFailure?.(error);
+        } catch (callbackError) {
+          logger.transcription.error(
+            "Failed to handle terminal streaming session failure",
+            { sessionId, error: callbackError },
+          );
+        }
+      },
+      (defects) => this.reportDefects(sessionId, defects),
+    );
+    this.activeLiveSession = liveSession;
+    this.chunkStats.set(sessionId, {
+      modelId: null,
+      provider: null,
+      count: 0,
+      vadMsSum: 0,
+      vadMsMax: 0,
+      transcribeMsSum: 0,
+      transcribeMsMax: 0,
+      materializeMs: 0,
+      firstChunkAt: null,
+      lastChunkAt: null,
+    });
+    return true;
+  }
+
+  /** Live recording admission gate: history retry holds the engines. */
+  isHistoryRetryInProgress(): boolean {
+    return this.historyRetryInProgress;
   }
 
   private buildTranscribeContextForSession(
     sessionId: string,
-    session: StreamingSession,
+    session: MaterializedTranscriptionSession,
   ): TranscribeContext {
     const previousChunk =
       session.transcriptionResults.length > 0
@@ -134,39 +277,14 @@ export class TranscriptionService {
 
     return {
       sessionId,
-      vocabulary: session.context.sharedData.vocabulary,
-      accessibilityContext: session.context.sharedData.accessibilityContext,
+      vocabulary: session.context.vocabulary,
+      accessibilityContext: session.context.accessibilityContext,
       previousChunk,
       aggregatedTranscription: aggregatedTranscription || undefined,
-      languages: session.context.sharedData.userPreferences?.languages,
-      formattingEnabled:
-        session.context.metadata.get("cloudFormattingEnabled") === true,
-      isInstruct: session.context.metadata.get("isInstruct") === true,
+      languages: session.context.languages,
+      formattingEnabled: session.context.cloudFormattingEnabled,
+      isInstruct: session.context.isInstruct,
     };
-  }
-
-  private async pushProviderSessionContext(
-    context: TranscribeContext,
-  ): Promise<void> {
-    const provider = this.currentProvider;
-    if (!provider?.updateSessionContext) {
-      return;
-    }
-
-    await provider.updateSessionContext(context);
-  }
-
-  private applyStreamingSessionUpdate(
-    session: StreamingSession,
-    update: StreamingSessionUpdate,
-  ): void {
-    if (update.accessibilityContext !== undefined) {
-      session.context.sharedData.accessibilityContext =
-        update.accessibilityContext;
-    }
-    if (update.isInstruct !== undefined) {
-      session.context.metadata.set("isInstruct", update.isInstruct);
-    }
   }
 
   async updateStreamingSession(
@@ -186,46 +304,63 @@ export class TranscriptionService {
       return;
     }
 
-    let providerContext: TranscribeContext | null = null;
-
-    await this.transcriptionMutex.acquire();
-    try {
-      const session = this.streamingSessions.get(options.sessionId);
-      if (!session) {
-        const pending =
-          this.pendingStreamingSessionUpdates.get(options.sessionId) ?? {};
-        this.pendingStreamingSessionUpdates.set(options.sessionId, {
-          ...pending,
-          ...update,
-        });
-        return;
-      }
-
-      this.applyStreamingSessionUpdate(session, update);
-
-      providerContext = this.buildTranscribeContextForSession(
-        options.sessionId,
-        session,
-      );
-    } finally {
-      this.transcriptionMutex.release();
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== options.sessionId) {
+      return;
     }
 
-    if (providerContext) {
-      await this.pushProviderSessionContext(providerContext);
+    const session = liveSession.updateSnapshot(update);
+    if (!session?.providerSession.updateSessionContext) {
+      return;
     }
+
+    const providerContext = this.buildTranscribeContextForSession(
+      options.sessionId,
+      session,
+    );
+    // The in-memory snapshot is immediate. Provider sync is best-effort and
+    // must not block audio or finalization; flush sends the latest snapshot.
+    void Promise.resolve()
+      .then(() => {
+        if (!liveSession.canPushContextTo(session)) {
+          return;
+        }
+        return session.providerSession.updateSessionContext?.(providerContext);
+      })
+      .catch((error) => {
+        // The push may outlive cancellation/finalization, so an unknown
+        // rejection captures REGARDLESS of session phase — exactly once;
+        // the typed-failure log stays best-effort-gated as before.
+        if (!isDictationError(error)) {
+          if (!liveSession.wasDefectReported(error)) {
+            liveSession.markDefectsReported([error]);
+            this.reportDefects(options.sessionId, [error]);
+          }
+          return;
+        }
+        if (liveSession.canPushContextTo(session)) {
+          logger.transcription.warn(
+            "Failed to update streaming provider context",
+            { sessionId: options.sessionId, error },
+          );
+        }
+      });
   }
 
   /**
-   * Select the appropriate transcription provider based on the selected model
+   * Select the appropriate transcription engine based on the selected model.
    */
-  private async selectProvider(): Promise<TranscriptionProvider> {
+  private async selectEngine(): Promise<TranscriptionEngine> {
     const selectedModelId = await this.modelService.getSelectedModel();
+    return this.engineForSelectedModel(selectedModelId);
+  }
 
+  private engineForSelectedModel(
+    selectedModelId: string | null,
+  ): TranscriptionEngine {
     if (!selectedModelId) {
       // Default to whisper if no model selected
-      this.currentProvider = this.whisperProvider;
-      return this.whisperProvider;
+      return this.whisperEngine;
     }
 
     // Find the model in AVAILABLE_MODELS
@@ -233,13 +368,11 @@ export class TranscriptionService {
 
     // Use cloud provider for Amical Cloud models
     if (model?.provider === "Amical Cloud") {
-      this.currentProvider = this.cloudProvider;
-      return this.cloudProvider;
+      return this.cloudEngine;
     }
 
     // Default to whisper for all other models
-    this.currentProvider = this.whisperProvider;
-    return this.whisperProvider;
+    return this.whisperEngine;
   }
 
   /**
@@ -305,7 +438,7 @@ export class TranscriptionService {
         }
       });
       if (service) {
-        // dispose() kills the whisper fork and the cloud provider runtime.
+        // dispose() kills the Whisper fork and the cloud engine runtime.
         yield* addRelease(
           appScope,
           "Disposing transcription service...",
@@ -392,7 +525,7 @@ export class TranscriptionService {
       // Cloud model selected: warm auth so the first dictation's first chunk
       // doesn't block on a token-refresh roundtrip.
       try {
-        await this.cloudProvider.warmup?.();
+        await this.cloudEngine.warmup?.();
         logger.transcription.info("Cloud auth warmed up");
       } catch (error) {
         logger.transcription.warn("Cloud auth warmup failed (non-fatal)", {
@@ -410,7 +543,7 @@ export class TranscriptionService {
   async preloadWhisperModel(): Promise<void> {
     try {
       // This will trigger the model initialization in WhisperProvider
-      await this.whisperProvider.preloadModel();
+      await this.whisperEngine.preloadModel();
       logger.transcription.info("Whisper model preloaded successfully");
     } catch (error) {
       logger.transcription.error("Failed to preload Whisper model:", error);
@@ -433,7 +566,7 @@ export class TranscriptionService {
       }
 
       // For local models, check if any are downloaded
-      const modelService = this.whisperProvider["modelService"];
+      const modelService = this.whisperEngine["modelService"];
       const availableModels = await modelService.getValidDownloadedModels();
       return Object.keys(availableModels).length > 0;
     } catch (error) {
@@ -464,7 +597,7 @@ export class TranscriptionService {
               logger.transcription.info(
                 "Loading Whisper model after model change...",
               );
-              await this.whisperProvider.preloadModel();
+              await this.whisperEngine.preloadModel();
               this.modelWasPreloaded = true;
               logger.transcription.info("Whisper model loaded successfully");
             } else {
@@ -483,144 +616,301 @@ export class TranscriptionService {
    * Process a single audio chunk in streaming mode
    * For finalization, use finalizeSession() instead
    */
-  async processStreamingChunk(options: {
-    sessionId: string;
-    audioChunk: Float32Array;
-    recordingStartedAt?: number;
-    isInstruct?: boolean;
-  }): Promise<string> {
-    const { sessionId, audioChunk, recordingStartedAt, isInstruct } = options;
-
-    // Run VAD on the audio chunk
-    let speechProbability = this.vadService ? 0 : 1;
-    let isSpeaking = !this.vadService && audioChunk.length > 0;
-
-    if (audioChunk.length > 0 && !this.vadService && !this.loggedVadFallback) {
-      logger.transcription.warn(
-        "VAD unavailable; defaulting speechProbability to 1.0 for streaming chunks",
+  async processStreamingChunk(options: StreamingChunkOptions): Promise<string> {
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== options.sessionId) {
+      logger.transcription.debug(
+        "Ignoring chunk for inactive streaming session",
+        { sessionId: options.sessionId },
       );
-      this.loggedVadFallback = true;
+      return "";
     }
 
-    if (audioChunk.length > 0 && this.vadService) {
-      // Acquire VAD mutex
-      await this.vadMutex.acquire();
-      try {
-        // Pass Float32Array directly to VAD
-        const vadResult = await this.vadService.processAudioFrame(audioChunk);
+    if (options.isInstruct !== undefined) {
+      liveSession.updateSnapshot({ isInstruct: options.isInstruct });
+    }
 
-        speechProbability = vadResult.probability;
-        isSpeaking = vadResult.isSpeaking;
-      } finally {
-        // Release VAD mutex - always release even on error
-        this.vadMutex.release();
+    const stats = this.chunkStats.get(options.sessionId);
+    if (stats) {
+      const now = Date.now();
+      stats.count += 1;
+      stats.firstChunkAt ??= now;
+      stats.lastChunkAt = now;
+    }
+    return liveSession.processChunkEffect(
+      this.chunkEffect(liveSession, options, stats?.count ?? 0),
+    );
+  }
+
+  /**
+   * One admitted chunk as an Effect: the VAD region and the transcription
+   * region each run uninterruptible inside their lock, so interruption lands
+   * only at the region boundaries — the same points where the cooperative
+   * guards sit. The guards themselves stay: a latched terminal failure fences
+   * work without interruption. Failures carry the original error object
+   * through the typed channel; the session ledger classifies them.
+   */
+  private chunkEffect(
+    liveSession: LiveTranscriptionSession,
+    options: StreamingChunkOptions,
+    chunkIndex: number,
+  ): Effect.Effect<string, DictationError> {
+    const { sessionId, audioChunk } = options;
+    const service = this;
+
+    return Effect.gen(function* () {
+      // Run VAD on the audio chunk
+      let speechProbability = service.vadService ? 0 : 1;
+      let isSpeaking = !service.vadService && audioChunk.length > 0;
+
+      if (
+        audioChunk.length > 0 &&
+        !service.vadService &&
+        !service.loggedVadFallback
+      ) {
+        logger.transcription.warn(
+          "VAD unavailable; defaulting speechProbability to 1.0 for streaming chunks",
+        );
+        service.loggedVadFallback = true;
       }
 
-      logger.transcription.debug("VAD result", {
-        probability: speechProbability.toFixed(3),
-        isSpeaking,
-      });
-    }
-
-    // Acquire transcription mutex
-    await this.transcriptionMutex.acquire();
-
-    // Auto-create session if it doesn't exist
-    let session = this.streamingSessions.get(sessionId);
-
-    try {
-      if (!session) {
-        const pendingUpdate =
-          this.pendingStreamingSessionUpdates.get(sessionId);
-        const context = await this.buildContext();
-        const streamingContext: StreamingPipelineContext = {
-          ...context,
-          sessionId,
-          isPartial: true,
-          isFinal: false,
-          accumulatedTranscription: [],
-        };
-        const formatterConfig = await this.settingsService.getFormatterConfig();
-        streamingContext.metadata.set(
-          "cloudFormattingEnabled",
-          !!(
-            formatterConfig?.enabled &&
-            isAmicalCloudSelectionValue(formatterConfig.modelId)
+      if (audioChunk.length > 0 && service.vadService) {
+        const vadStartedAt = performance.now();
+        const vadOutcome = yield* withTracedChunkLock(
+          service.vadLock,
+          Effect.uninterruptible(
+            Effect.suspend(() => {
+              if (!liveSession.canCompleteAdmittedWork()) {
+                return Effect.succeed(null);
+              }
+              // Pass Float32Array directly to VAD. The field projection
+              // stays INSIDE the try thunk: outside it, a malformed VAD
+              // result would throw as a defect that the degrade arm below
+              // cannot catch, and one bad frame would kill the session instead
+              // of degrading to assumed speech.
+              return Effect.tryPromise({
+                try: async () => {
+                  const vadResult =
+                    await service.vadService!.processAudioFrame(audioChunk);
+                  return {
+                    probability: vadResult.probability,
+                    isSpeaking: vadResult.isSpeaking,
+                  };
+                },
+                catch: (error) => error,
+              }).pipe(
+                (work) =>
+                  withTracedChunkWork(
+                    work,
+                    sessionId,
+                    chunkIndex,
+                    "transcription.vad-process",
+                  ),
+                Effect.catch((error) => {
+                  // A VAD error degrades this chunk exactly like a missing
+                  // VAD degrades the whole session: assume speech instead of
+                  // letting one bad frame fail the session terminally.
+                  logger.transcription.warn(
+                    "VAD failed for streaming chunk; assuming speech",
+                    { error },
+                  );
+                  return Effect.succeed({
+                    probability: 1,
+                    isSpeaking: true,
+                  });
+                }),
+              );
+            }),
           ),
-        );
-        // Instruct rides the per-session metadata (like cloudFormattingEnabled)
-        // so it persists across chunks and into finalize. Drives the "instruct"
-        // preset sent to the cloud at stream open.
-        streamingContext.metadata.set(
-          "isInstruct",
-          pendingUpdate?.isInstruct ?? !!isInstruct,
-        );
-
-        // Get accessibility context from NativeBridge
-        streamingContext.sharedData.accessibilityContext =
-          pendingUpdate?.accessibilityContext !== undefined
-            ? pendingUpdate.accessibilityContext
-            : (this.nativeBridge?.getAccessibilityContext() ?? null);
-
-        session = {
-          context: streamingContext,
-          transcriptionResults: [],
-          firstChunkReceivedAt: performance.now(),
-          recordingStartedAt: recordingStartedAt,
-          abortController: new AbortController(),
-        };
-
-        this.streamingSessions.set(sessionId, session);
-        this.pendingStreamingSessionUpdates.delete(sessionId);
-
-        logger.transcription.info("Started streaming session", {
           sessionId,
-        });
-      }
-      if (isInstruct !== undefined) {
-        session.context.metadata.set("isInstruct", !!isInstruct);
-      }
+          chunkIndex,
+          "transcription.vad-lock-wait",
+        );
+        {
+          const stats = service.chunkStats.get(sessionId);
+          if (stats) {
+            const vadMs = performance.now() - vadStartedAt;
+            stats.vadMsSum += vadMs;
+            stats.vadMsMax = Math.max(stats.vadMsMax, vadMs);
+          }
+        }
+        if (vadOutcome === null) {
+          return "";
+        }
+        speechProbability = vadOutcome.probability;
+        isSpeaking = vadOutcome.isSpeaking;
 
-      // Select the appropriate provider
-      const provider = await this.selectProvider();
-
-      // Transcribe chunk (flush is done separately in finalizeSession)
-      const chunkResult = await provider.transcribe({
-        audioData: audioChunk,
-        speechProbability: speechProbability,
-        context: this.buildTranscribeContextForSession(sessionId, session),
-      });
-      session.detectedLanguage = this.mergeDetectedLanguage(
-        session.detectedLanguage,
-        chunkResult.detectedLanguage,
-      );
-
-      // Accumulate the result only if Whisper returned something
-      // (it returns empty string while buffering)
-      this.accumulateTranscriptionResult(
-        session.transcriptionResults,
-        chunkResult.text,
-        provider.name === "amical-cloud",
-      );
-      if (chunkResult.text.trim()) {
-        logger.transcription.info("Whisper returned transcription", {
-          sessionId,
-          transcriptionLength: chunkResult.text.length,
-          totalResults: session.transcriptionResults.length,
+        logger.transcription.debug("VAD result", {
+          probability: speechProbability.toFixed(3),
+          isSpeaking,
         });
       }
 
-      logger.transcription.debug("Processed frame", {
+      if (!liveSession.canCompleteAdmittedWork()) {
+        return "";
+      }
+
+      return yield* withTracedChunkLock(
+        service.transcriptionLock,
+        Effect.uninterruptible(
+          Effect.gen(function* () {
+            if (!liveSession.canCompleteAdmittedWork()) {
+              return "";
+            }
+
+            let session = liveSession.materializedSession;
+            if (!session) {
+              const materializeStartedAt = performance.now();
+              const materializeStartedAtMs = Date.now();
+              const context = yield* Effect.tryPromise({
+                try: () =>
+                  loadDictationContext({
+                    settingsService: service.settingsService,
+                    sessionId,
+                  }),
+                catch: toDependencyFailure,
+              });
+              if (!liveSession.canCompleteAdmittedWork()) {
+                return "";
+              }
+              const formatterConfig = yield* Effect.tryPromise({
+                try: () => service.settingsService.getFormatterConfig(),
+                catch: toDependencyFailure,
+              });
+              if (!liveSession.canCompleteAdmittedWork()) {
+                return "";
+              }
+              context.cloudFormattingEnabled = !!(
+                formatterConfig?.enabled &&
+                isAmicalCloudSelectionValue(formatterConfig.modelId)
+              );
+
+              // Get accessibility context from NativeBridge
+              context.accessibilityContext =
+                service.nativeBridge?.getAccessibilityContext() ?? null;
+
+              const selectedModelId = yield* Effect.tryPromise({
+                try: () => service.modelService.getSelectedModel(),
+                catch: toDependencyFailure,
+              });
+              if (!liveSession.canCompleteAdmittedWork()) {
+                return "";
+              }
+              const engine = service.engineForSelectedModel(selectedModelId);
+              // A sync throw inside gen is a defect whatever class it is, so
+              // disposed variants must enter the failure channel through a
+              // lift.
+              const providerSession = yield* Effect.try({
+                try: () =>
+                  engine.openSession({
+                    sessionId,
+                    modelId: selectedModelId,
+                    onTerminalFailure: (error) =>
+                      liveSession.reportTerminalFailure(error),
+                  }),
+                catch: (error) => error,
+              }).pipe(Effect.catch(failOrDie));
+
+              session = {
+                context,
+                providerSession,
+                speechModelId:
+                  providerSession.name === "amical-cloud"
+                    ? "amical-cloud"
+                    : selectedModelId || "whisper-local",
+                transcriptionResults: [],
+                firstChunkReceivedAt: performance.now(),
+              };
+
+              if (!liveSession.attach(session)) {
+                return "";
+              }
+
+              logger.transcription.info("Started streaming session", {
+                sessionId,
+              });
+              const stats = service.chunkStats.get(sessionId);
+              if (stats) {
+                stats.materializeMs = performance.now() - materializeStartedAt;
+                stats.modelId = session.speechModelId;
+                stats.provider = session.providerSession.name;
+              }
+              recordPhase(
+                sessionId,
+                "transcription.session-setup",
+                materializeStartedAtMs,
+                Date.now(),
+                { durationMs: performance.now() - materializeStartedAt },
+              );
+            }
+            // Transcribe chunk (flush is done separately in finalizeSession)
+            const transcribeStartedAt = performance.now();
+            const chunkResult = yield* Effect.tryPromise({
+              try: () =>
+                session.providerSession.transcribe({
+                  audioData: audioChunk,
+                  speechProbability: speechProbability,
+                  context: service.buildTranscribeContextForSession(
+                    sessionId,
+                    session,
+                  ),
+                }),
+              catch: (error) => error,
+            }).pipe(Effect.catch(failOrDie), (work) =>
+              withTracedChunkWork(
+                work,
+                sessionId,
+                chunkIndex,
+                "transcription.provider-transcribe",
+              ),
+            );
+            {
+              const stats = service.chunkStats.get(sessionId);
+              if (stats) {
+                const transcribeMs = performance.now() - transcribeStartedAt;
+                stats.transcribeMsSum += transcribeMs;
+                stats.transcribeMsMax = Math.max(
+                  stats.transcribeMsMax,
+                  transcribeMs,
+                );
+              }
+            }
+            if (!liveSession.canCompleteAdmittedWork()) {
+              return "";
+            }
+            session.detectedLanguage = mergeDetectedLanguage(
+              session.detectedLanguage,
+              chunkResult.detectedLanguage,
+            );
+
+            // Accumulate the result only if Whisper returned something
+            // (it returns empty string while buffering)
+            accumulateTranscriptionResult(
+              session.transcriptionResults,
+              chunkResult.text,
+              session.providerSession.name === "amical-cloud",
+            );
+            if (chunkResult.text.trim()) {
+              logger.transcription.info("Whisper returned transcription", {
+                sessionId,
+                transcriptionLength: chunkResult.text.length,
+                totalResults: session.transcriptionResults.length,
+              });
+            }
+
+            logger.transcription.debug("Processed frame", {
+              sessionId,
+              frameSize: audioChunk.length,
+              hadTranscription: chunkResult.text.length > 0,
+            });
+            return session.transcriptionResults.join("");
+          }),
+        ),
         sessionId,
-        frameSize: audioChunk.length,
-        hadTranscription: chunkResult.text.length > 0,
-      });
-    } finally {
-      // Release transcription mutex - always release even on error
-      this.transcriptionMutex.release();
-    }
-
-    return session.transcriptionResults.join("");
+        chunkIndex,
+        "transcription.chunk-lock-wait",
+      );
+    });
   }
 
   /**
@@ -628,913 +918,311 @@ export class TranscriptionService {
    * Used when recording is cancelled (e.g., quick tap, accidental activation)
    */
   async cancelStreamingSession(sessionId: string): Promise<void> {
-    // Acquire mutex to prevent race with processStreamingChunk
-    await this.transcriptionMutex.acquire();
-    try {
-      this.pendingStreamingSessionUpdates.delete(sessionId);
-      if (!this.streamingSessions.has(sessionId)) {
-        return;
-      }
-
-      // Clear provider buffers to prevent audio bleed into next session
-      this.currentProvider?.reset();
-
-      this.streamingSessions.delete(sessionId);
-      logger.transcription.info("Streaming session cancelled", { sessionId });
-    } finally {
-      this.transcriptionMutex.release();
-    }
-  }
-
-  /**
-   * Dismiss a session by aborting its signal. This both (a) flags
-   * finalizeSession's cooperative gates so it writes a dismissed row instead of
-   * pasting, and (b) cancels an in-flight flush: flush() reacts to the abort by
-   * calling provider.reset(), which synchronously cancels the gRPC stream /
-   * aborts the HTTP fetch off the transcription mutex, rejecting the awaited
-   * flush so the recording machine returns to idle immediately. No-op effect for
-   * the local whisper worker (an in-flight decode isn't interruptible) — its
-   * cooperative checkpoints discard the result. No-op if the session is already
-   * gone (nothing left to dismiss).
-   */
-  abortSession(sessionId: string): void {
-    const session = this.streamingSessions.get(sessionId);
-    if (!session) {
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== sessionId) {
       return;
     }
-    session.abortController.abort();
-    logger.transcription.info("Aborted session", { sessionId });
+
+    liveSession.requestAbort();
+    this.retireLiveSession(liveSession);
+    logger.transcription.info("Streaming session cancelled", { sessionId });
   }
 
   /**
-   * The control signal finalizeSession throws on dismiss. A fresh instance per
-   * throw so the stack trace points at the actual throw site.
+   * The one defect-reporting sink for this service's capture points (chunk
+   * classification, resolve triage, the late context push). Typed failures
+   * never come here; the latch/marking bookkeeping keeps each defect to one
+   * capture.
    */
-  private userDismissedError(): AppError {
-    return new AppError("Recording dismissed", ErrorCodes.USER_DISMISSED);
+  private reportDefects(
+    sessionId: string,
+    defects: ReadonlyArray<unknown>,
+  ): void {
+    for (const defect of defects) {
+      logger.transcription.error("Dictation defect", { sessionId, defect });
+      this.telemetryService.captureException(defect, {
+        source: "dictation",
+        session_id: sessionId,
+      });
+    }
+    if (defects.length > 0) {
+      recordDefect(sessionId);
+    }
+  }
+
+  private retireLiveSession(liveSession: LiveTranscriptionSession): void {
+    liveSession.retire();
+    const stats = this.chunkStats.get(liveSession.id);
+    if (stats) {
+      // Emit once and delete: late uninterruptible chunk tails find no
+      // entry and their timing is dropped with their results.
+      this.chunkStats.delete(liveSession.id);
+      recordChunkAggregate(liveSession.id, stats);
+    }
+    if (this.activeLiveSession === liveSession) {
+      this.activeLiveSession = null;
+    }
   }
 
   /**
-   * Persist a dismissed dictation: empty text, the captured audio (if any), and
-   * meta.status="dismissed". No stats increment (the user deliberately discarded).
-   */
-  async saveDismissedTranscription(options: {
-    sessionId: string;
-    audioFilePath?: string;
-  }): Promise<void> {
-    await createTranscription({
-      text: "",
-      audioFile: options.audioFilePath,
-      meta: {
-        sessionId: options.sessionId,
-        status: "dismissed",
-      },
-    });
-    logger.transcription.info("Saved dismissed transcription record", {
-      sessionId: options.sessionId,
-      audioFilePath: options.audioFilePath,
-    });
-  }
-
-  /**
-   * Finalize a streaming session - flush provider, format, save to DB
+   * Finalize a streaming session - flush the provider session, format, save to DB
    * Call this instead of processStreamingChunk with isFinal=true
    */
-  async finalizeSession(options: {
+  /**
+   * v2 lifecycle resolve: drain admitted chunks, flush the provider, prepare
+   * the transcript, and RETURN it — persistence belongs to the lifecycle's
+   * storage commit, and dismissal never flows through here (the lifecycle
+   * seals first and cancels this work; an abort surfaces as a throw the
+   * caller drops). Returns null when nothing was ever fed.
+   */
+  async resolveStreamingSession(options: {
     sessionId: string;
-    audioFilePath?: string;
-    recordingStartedAt?: number;
-    recordingStoppedAt?: number;
-  }): Promise<string> {
-    const { sessionId, audioFilePath, recordingStartedAt, recordingStoppedAt } =
-      options;
-
-    const session = this.streamingSessions.get(sessionId);
-    if (!session) {
-      this.pendingStreamingSessionUpdates.delete(sessionId);
-      logger.transcription.warn("No session found to finalize", { sessionId });
-      return "";
+  }): Promise<ResolvedStreamingSession | null> {
+    const { sessionId } = options;
+    const liveSession = this.activeLiveSession;
+    if (!liveSession || liveSession.id !== sessionId) {
+      logger.transcription.warn("No session found to resolve", { sessionId });
+      return null;
     }
-    // The session's aborter — its signal drives every dismiss gate below and is
-    // handed to provider.flush() so a dismiss can cancel the in-flight call.
-    const { signal } = session.abortController;
 
+    // Sync prefix: the slot guard above and this close must run
+    // before any yield point — a later chunk on the same tick must already
+    // be refused.
+    liveSession.closeChunkAdmission();
     try {
-      // Early dismiss: the user dismissed before the flush started — skip the
-      // flush entirely (no wasted transcription call). The catch below persists
-      // the dismissed row once and rethrows USER_DISMISSED.
-      if (signal.aborted) {
-        throw this.userDismissedError();
+      const exit = await runPromiseExit(
+        this.resolveEffect(liveSession, options),
+      );
+      // Boundary triage: typed failures rethrow; every defect in the
+      // cause is reported once (the session bookkeeping dedups values the
+      // chunk arm or an out-of-band channel already own), loudly.
+      if (Exit.isFailure(exit)) {
+        const fresh = exit.cause.reasons
+          .filter(Cause.isDieReason)
+          .map((reason) => reason.defect)
+          .filter((defect) => !liveSession.wasDefectReported(defect));
+        if (fresh.length > 0) {
+          liveSession.markDefectsReported(fresh);
+          logger.transcription.error("Dictation resolve defect", {
+            sessionId,
+            cause: Cause.pretty(exit.cause),
+          });
+          this.reportDefects(sessionId, fresh);
+        }
+      }
+      return settleExit(exit);
+    } finally {
+      this.retireLiveSession(liveSession);
+    }
+  }
+
+  /**
+   * The resolve body as one Effect. Never interrupted: an abort
+   * surfaces through the flush signal as a provider throw. Every synchronous
+   * terminal gate lifts through a two-arg Effect.try so the latched error
+   * object crosses the boundary unchanged.
+   */
+  private resolveEffect(
+    liveSession: LiveTranscriptionSession,
+    options: {
+      sessionId: string;
+    },
+  ): Effect.Effect<ResolvedStreamingSession | null, DictationError> {
+    const { sessionId } = options;
+    const service = this;
+    // The latch may hold a variant (typed failure) or an out-of-band defect;
+    // refine by value so a latched defect surfaces as a defect.
+    const terminalGate = Effect.try({
+      try: () => liveSession.throwIfTerminalFailure(),
+      catch: (error) => error,
+    }).pipe(Effect.catch(failOrDie));
+
+    return Effect.gen(function* () {
+      yield* Effect.tryPromise({
+        try: () => liveSession.drainAdmittedChunks(),
+        catch: (error) => error,
+      }).pipe(
+        Effect.catch(failOrDie),
+        Effect.withSpan("resolve.drain", { attributes: { sessionId } }),
+      );
+      const session = liveSession.materializedSession;
+      if (!session) {
+        yield* terminalGate;
+        return null;
       }
 
-      // Update session timestamps
+      yield* terminalGate;
       session.finalizationStartedAt = performance.now();
-      session.recordingStoppedAt = recordingStoppedAt;
-      if (recordingStartedAt && !session.recordingStartedAt) {
-        session.recordingStartedAt = recordingStartedAt;
-      }
 
-      const formatterConfig = await this.settingsService.getFormatterConfig();
+      const formatterConfig = yield* Effect.tryPromise({
+        try: () => service.settingsService.getFormatterConfig(),
+        catch: toDependencyFailure,
+      });
       const shouldUseCloudFormatting =
         formatterConfig?.enabled &&
         isAmicalCloudSelectionValue(formatterConfig.modelId);
-      let usedCloudProvider = false;
+      const usedCloudProvider = session.providerSession.name === "amical-cloud";
 
-      // Flush provider to get any remaining buffered audio
-      await this.transcriptionMutex.acquire();
-      try {
-        const previousChunk =
-          session.transcriptionResults.length > 0
-            ? session.transcriptionResults[
-                session.transcriptionResults.length - 1
-              ]
-            : undefined;
-        const aggregatedTranscription = session.transcriptionResults.join("");
-
-        const provider = await this.selectProvider();
-        usedCloudProvider = provider.name === "amical-cloud";
-        const finalResult = await provider.flush(
-          {
-            sessionId,
-            vocabulary: session.context.sharedData.vocabulary,
-            accessibilityContext:
-              session.context.sharedData.accessibilityContext,
-            previousChunk,
-            aggregatedTranscription: aggregatedTranscription || undefined,
-            languages: session.context.sharedData.userPreferences?.languages,
-            formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
-            isInstruct: session.context.metadata.get("isInstruct") === true,
-          },
-          signal,
-        );
-        session.detectedLanguage = this.mergeDetectedLanguage(
-          session.detectedLanguage,
-          finalResult.detectedLanguage,
-        );
-
-        this.accumulateTranscriptionResult(
-          session.transcriptionResults,
-          finalResult.text,
-          usedCloudProvider,
-        );
-        if (finalResult.text.trim()) {
-          logger.transcription.info("Whisper returned final transcription", {
-            sessionId,
-            transcriptionLength: finalResult.text.length,
-            totalResults: session.transcriptionResults.length,
-          });
-        }
-      } finally {
-        this.transcriptionMutex.release();
-      }
+      yield* withLock(
+        service.transcriptionLock,
+        Effect.uninterruptible(
+          Effect.gen(function* () {
+            yield* terminalGate;
+            const finalResult = yield* Effect.tryPromise({
+              try: () =>
+                session.providerSession.flush(
+                  {
+                    ...service.buildTranscribeContextForSession(
+                      sessionId,
+                      session,
+                    ),
+                    formattingEnabled:
+                      shouldUseCloudFormatting && usedCloudProvider,
+                  },
+                  liveSession.signal,
+                ),
+              catch: (error) => error,
+            }).pipe(Effect.catch(failOrDie));
+            yield* terminalGate;
+            session.detectedLanguage = mergeDetectedLanguage(
+              session.detectedLanguage,
+              finalResult.detectedLanguage,
+            );
+            accumulateTranscriptionResult(
+              session.transcriptionResults,
+              finalResult.text,
+              usedCloudProvider,
+            );
+          }),
+        ),
+      ).pipe(Effect.withSpan("resolve.flush", { attributes: { sessionId } }));
 
       const rawTranscription = session.transcriptionResults.join("");
+      const prepared = yield* Effect.tryPromise({
+        try: () =>
+          prepareTranscriptText(
+            {
+              text: rawTranscription,
+              usedCloudProvider,
+              context: session.context,
+              detectedLanguage: session.detectedLanguage,
+            },
+            {
+              settingsService: service.settingsService,
+              modelService: service.modelService,
+            },
+          ),
+        catch: toDependencyFailure,
+      }).pipe(Effect.withSpan("resolve.format", { attributes: { sessionId } }));
+      yield* terminalGate;
 
-      logger.transcription.info("Finalizing streaming session", {
-        sessionId,
-        rawTranscriptionLength: rawTranscription.length,
-        chunkCount: session.transcriptionResults.length,
-      });
-
-      // Finalize-phase dismiss: the flush already ran, but the user dismissed.
-      // Discard the transcript — the catch below persists the dismissed row and
-      // rethrows USER_DISMISSED (skip paste/stats).
-      if (signal.aborted) {
-        throw this.userDismissedError();
-      }
-
-      const requestedLanguage = this.singleRequestedLanguage(
-        session.context.sharedData.userPreferences?.languages,
-      );
-      const detectedLanguage = this.sanitizeDetectedLanguage(
-        session.detectedLanguage,
-      );
-
-      const formatResult = await this.applyFormattingAndReplacements({
-        text: rawTranscription,
-        usedCloudProvider,
-        vocabulary: session.context.sharedData.vocabulary,
-        accessibilityContext: session.context.sharedData.accessibilityContext,
-        replacements: session.context.sharedData.replacements,
-        formattingStyle:
-          session.context.sharedData.userPreferences?.formattingStyle,
-      });
-      // Final post-format pass: normalize boundary whitespace based on the
-      // insertion context. Runs after formatting + replacements so the emitted
-      // text (raw or formatted) is normalized, matching the cloud server's
-      // server-side handling. Cloud transcripts are already normalized there.
-      const textSelection =
-        session.context.sharedData.accessibilityContext?.context?.textSelection;
-      const completeTranscription = usedCloudProvider
-        ? formatResult.text
-        : normalizeTranscriptionBoundaries(
-            formatResult.text,
-            textSelection?.preSelectionText,
-            textSelection?.postSelectionText,
-          );
-      const transcriptionWordCount = countWords(
-        formatResult.textBeforeReplacements,
-        detectedLanguage ?? requestedLanguage,
-      );
-      const formattingUsed = formatResult.formattingUsed;
-      const formattingModel = formatResult.formattingModel;
-      const formattingDuration = formatResult.formattingDuration;
-
-      // Save directly to database
-      logger.transcription.info("Saving transcription with audio file", {
-        sessionId,
-        audioFilePath,
-        hasAudioFile: !!audioFilePath,
-      });
-
-      const selectedModelId = await this.modelService.getSelectedModel();
-      const speechModelId = usedCloudProvider
-        ? "amical-cloud"
-        : selectedModelId || "whisper-local";
-
-      // Late dismiss: the user dismissed while formatting / model lookup was in
-      // flight (after the post-flush check). Discard the now-formatted transcript
-      // — the catch persists the dismissed row and rethrows USER_DISMISSED, so
-      // there's no paste, no stats, no completion telemetry.
-      //
-      // This is the FINAL dismiss gate. A dismiss arriving after this point
-      // (during the DB write / return / the caller's paste) is an accepted
-      // single-ms race we deliberately do NOT guard: the transcription has
-      // effectively committed, and once handleFinalChunk hands the text to the
-      // native paste there is nothing left to abort. See handleFinalChunk.
-      if (signal.aborted) {
-        throw this.userDismissedError();
-      }
-
-      await createTranscription({
-        text: completeTranscription,
-        language: requestedLanguage,
-        detectedLanguage,
-        duration: session.context.sharedData.audioMetadata?.duration,
-        speechModel: speechModelId,
-        formattingModel,
-        audioFile: audioFilePath,
-        meta: {
-          sessionId,
-          source: session.context.sharedData.audioMetadata?.source,
-          vocabularySize: session.context.sharedData.vocabulary?.length || 0,
-          formattingStyle:
-            session.context.sharedData.userPreferences?.formattingStyle,
-        },
-      });
-
-      try {
-        await incrementDailyStats(transcriptionWordCount);
-      } catch (error) {
-        logger.transcription.error("Failed to increment dictation stats", {
-          sessionId,
-          error,
+      let activitySkillInputs: DictationSkill[] | null =
+        formatterConfig?.enabled ? [] : null;
+      if (
+        usedCloudProvider &&
+        (session.context.isInstruct || shouldUseCloudFormatting)
+      ) {
+        activitySkillInputs = yield* Effect.tryPromise({
+          try: () =>
+            resolveSessionSkills({
+              isInstruct: session.context.isInstruct,
+              enableFormatting: Boolean(shouldUseCloudFormatting),
+              accessibilityContext: session.context.accessibilityContext,
+            }),
+          catch: toDependencyFailure,
         });
       }
 
-      // Track transcription completion
-      const completionTime = performance.now();
-
-      // Calculate durations:
-      // - Recording duration: from when recording started to when it ended
-      // - Processing duration: from when recording ended to completion
-      // - Total duration: from recording start to completion
-      const recordingDuration =
-        session.recordingStartedAt && session.recordingStoppedAt
-          ? session.recordingStoppedAt - session.recordingStartedAt
-          : undefined;
-      const processingDuration = session.recordingStoppedAt
-        ? completionTime - session.recordingStoppedAt
-        : undefined;
-      const totalDuration = session.recordingStartedAt
-        ? completionTime - session.recordingStartedAt
-        : undefined;
-
-      const audioDurationSeconds =
-        session.context.sharedData.audioMetadata?.duration;
-
-      // Get native binding info if using local whisper
-      let whisperNativeBinding: string | undefined;
-      if (this.whisperProvider && "getBindingInfo" in this.whisperProvider) {
-        const bindingInfo = await this.whisperProvider.getBindingInfo();
-        whisperNativeBinding = bindingInfo?.type;
-        logger.transcription.info(
-          "whisper native binding used",
-          whisperNativeBinding,
-        );
-      }
-
-      this.telemetryService.trackTranscriptionCompleted({
-        session_id: sessionId,
-        model_id: speechModelId,
-        model_preloaded: this.modelWasPreloaded,
-        whisper_native_binding: whisperNativeBinding,
-        total_duration_ms: totalDuration || 0,
-        recording_duration_ms: recordingDuration,
-        processing_duration_ms: processingDuration,
-        audio_duration_seconds: audioDurationSeconds,
-        realtime_factor:
-          audioDurationSeconds && totalDuration
-            ? audioDurationSeconds / (totalDuration / 1000)
-            : undefined,
-        text_length: completeTranscription.length,
-        word_count: transcriptionWordCount,
-        formatting_enabled: formattingUsed,
-        formatting_model: formattingModel,
-        formatting_duration_ms: formattingDuration,
-        vad_enabled: !!this.vadService,
-        languages: session.context.sharedData.userPreferences?.languages ?? [],
-        vocabulary_size: session.context.sharedData.vocabulary?.length || 0,
-      });
-
-      this.pendingStreamingSessionUpdates.delete(sessionId);
-      this.streamingSessions.delete(sessionId);
-
-      logger.transcription.info("Streaming session completed", { sessionId });
-      return completeTranscription;
-    } catch (error) {
-      // Dismiss — either an aborted flush, or the USER_DISMISSED rethrown from
-      // the pre/post-flush checks above. Persist the dismissed row once (with the
-      // already-written audio) and rethrow USER_DISMISSED so the caller resets
-      // silently — no failure toast.
-      if (signal.aborted) {
-        await this.saveDismissedTranscription({
-          sessionId,
-          audioFilePath: audioFilePath || undefined,
-        });
-        this.pendingStreamingSessionUpdates.delete(sessionId);
-        this.streamingSessions.delete(sessionId);
-        logger.transcription.info("Dismissed transcription during finalize", {
-          sessionId,
-        });
-        throw this.userDismissedError();
-      }
-
-      // Save failed transcription record
-      const errorCode =
-        error instanceof AppError ? error.errorCode : ErrorCodes.UNKNOWN;
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-
-      await createTranscription({
-        text: "",
-        audioFile: audioFilePath || undefined,
-        language: this.singleRequestedLanguage(
-          session.context.sharedData.userPreferences?.languages,
+      const activity: CompletedDictationActivityMetadata = {
+        wordCount: prepared.wordCount,
+        appType: detectApplicationType(session.context.accessibilityContext),
+        skills: sanitizeActivitySkills(activitySkillInputs),
+        transcription: transcriptionActivityModel(
+          session.speechModelId,
+          usedCloudProvider,
         ),
-        detectedLanguage: this.sanitizeDetectedLanguage(
-          session.detectedLanguage,
-        ),
+        formatting:
+          prepared.formattingActivity ??
+          (usedCloudProvider && session.context.isInstruct
+            ? transcriptionActivityModel("amical-cloud", true)
+            : null),
+      };
+
+      recordSessionDimensions(sessionId, {
+        app_type: activity.appType,
+        detected_language: prepared.detectedLanguage,
+        formatting_model: prepared.formattingModel,
+      });
+
+      logger.transcription.info("Streaming session resolved", { sessionId });
+      return {
+        text: prepared.text,
+        language: prepared.language,
+        detectedLanguage: prepared.detectedLanguage,
+        speechModel: session.speechModelId,
+        formattingModel: prepared.formattingModel,
         meta: {
-          sessionId,
-          status: "failed",
-          failureReason: errorCode,
-          errorMessage,
+          source: session.context.audio.source,
+          vocabularySize: session.context.vocabulary.length,
+          formattingStyle: session.context.formattingStyle,
+          activity,
         },
-      });
-      logger.transcription.info("Saved failed transcription record", {
-        sessionId,
-        errorCode,
-        audioFilePath,
-      });
-
-      try {
-        // Failed rows still appear in History, so they intentionally contribute
-        // to totalTranscriptions even though they add zero dictated words.
-        await incrementDailyStats(0);
-      } catch (statsError) {
-        logger.transcription.error(
-          "Failed to increment failed dictation stats",
-          {
-            sessionId,
-            error: statsError,
-          },
-        );
-      }
-
-      // Clean up session
-      this.pendingStreamingSessionUpdates.delete(sessionId);
-      this.streamingSessions.delete(sessionId);
-
-      // Re-throw for RecordingManager to handle notifications
-      throw error;
-    }
-  }
-
-  private async buildContext(): Promise<PipelineContext> {
-    // Create default context
-    const context = createDefaultContext(uuid());
-
-    // Load dictation settings. Auto-detect (or no languages selected) means no
-    // language constraint; otherwise pass the selected languages through.
-    const dictationSettings = await this.settingsService.getDictationSettings();
-    const languages = dictationSettings.languages ?? [];
-    context.sharedData.userPreferences.languages =
-      dictationSettings.autoDetectEnabled || languages.length === 0
-        ? undefined
-        : languages;
-
-    // Load vocabulary — every entry the user has authored should participate
-    // in replacement; caps belong on the create path, not here.
-    const vocabEntries = await getAllVocabulary();
-    for (const entry of vocabEntries) {
-      if (entry.replacementWord !== null) {
-        context.sharedData.replacements.set(entry.word, entry.replacementWord);
-      }
-    }
-    // Non-replacement vocabulary is sent to the LLM formatter as hints; the
-    // hint list is capped separately from storage so the prompt stays bounded.
-    context.sharedData.vocabulary.push(...selectVocabularyHints(vocabEntries));
-
-    // Load snippets — trigger phrases that expand into longer content.
-    // Snippets piggy-back on the same replacement pipeline as vocabulary replacements.
-    const snippetEntries = await getAllSnippets();
-    for (const snippet of snippetEntries) {
-      context.sharedData.replacements.set(snippet.trigger, snippet.content);
-    }
-
-    // TODO: Load formatter config from settings
-
-    return context;
-  }
-
-  private async formatWithProvider(
-    provider: FormattingProvider,
-    text: string,
-    context: {
-      style?: string;
-      vocabulary?: string[];
-      accessibilityContext?: StreamingSession["context"]["sharedData"]["accessibilityContext"];
-    },
-  ): Promise<{ text: string; duration: number } | null> {
-    const startTime = performance.now();
-
-    try {
-      const formattedText = await provider.format({
-        text,
-        context: {
-          style: context.style,
-          vocabulary: context.vocabulary,
-          accessibilityContext: context.accessibilityContext,
-          aggregatedTranscription: text,
-        },
-      });
-
-      const duration = performance.now() - startTime;
-
-      logger.transcription.info("Text formatted successfully", {
-        originalLength: text.length,
-        formattedLength: formattedText.length,
-        formattingDuration: duration,
-      });
-
-      return { text: formattedText, duration };
-    } catch (error) {
-      logger.transcription.error("Formatting failed, using unformatted text", {
-        error,
-      });
-      return null;
-    }
-  }
-
-  /**
-   * Shared formatting and vocabulary replacement logic used by both
-   * finalizeSession and retryTranscription.
-   */
-  private async applyFormattingAndReplacements(options: {
-    text: string;
-    usedCloudProvider: boolean;
-    vocabulary?: string[];
-    accessibilityContext?: StreamingSession["context"]["sharedData"]["accessibilityContext"];
-    replacements: Map<string, string>;
-    formattingStyle?: string;
-  }): Promise<{
-    text: string;
-    textBeforeReplacements: string;
-    formattingUsed: boolean;
-    formattingModel?: string;
-    formattingDuration?: number;
-  }> {
-    let text = options.text;
-    let formattingUsed = false;
-    let formattingModel: string | undefined;
-    let formattingDuration: number | undefined;
-
-    const formatterConfig = await this.settingsService.getFormatterConfig();
-
-    if (!formatterConfig || !formatterConfig.enabled) {
-      logger.transcription.debug("Formatting skipped: disabled in config");
-    } else if (!text.trim().length) {
-      logger.transcription.debug("Formatting skipped: empty transcription");
-    } else if (isAmicalCloudSelectionValue(formatterConfig.modelId)) {
-      if (!options.usedCloudProvider) {
-        logger.transcription.warn(
-          "Formatting skipped: Amical Cloud formatting requires cloud transcription",
-        );
-      } else {
-        formattingUsed = true;
-        formattingModel = getSpeechModelSelectionKey("amical-cloud");
-      }
-    } else {
-      const modelId =
-        formatterConfig.modelId ||
-        (await this.settingsService.getDefaultLanguageModel());
-      if (!modelId) {
-        logger.transcription.debug(
-          "Formatting skipped: no default language model",
-        );
-      } else {
-        const allModels = await this.modelService.getSyncedProviderModels();
-        const model = findModelBySelectionValue(
-          allModels.filter((entry) => entry.type === "language"),
-          modelId,
-        );
-
-        if (!model) {
-          logger.transcription.warn("Formatting skipped: model not found", {
-            modelId,
-          });
-        } else if (model.providerType !== PROVIDER_TYPES.localWhisper) {
-          const provider = await createRemoteFormattingProvider(
-            this.settingsService,
-            model.providerType as RemoteFormattingProviderType,
-            model.id,
-          );
-
-          if (!provider) {
-            logger.transcription.warn(
-              "Formatting skipped: provider config missing",
-              {
-                provider: model.provider,
-              },
-            );
-          } else {
-            logger.transcription.info("Starting formatting", {
-              provider: model.provider,
-              model: model.id,
-            });
-            const result = await this.formatWithProvider(provider, text, {
-              style: options.formattingStyle,
-              vocabulary: options.vocabulary,
-              accessibilityContext: options.accessibilityContext,
-            });
-            if (result) {
-              text = result.text;
-              formattingDuration = result.duration;
-              formattingUsed = true;
-              formattingModel = getModelSelectionKey(
-                model.providerInstanceId,
-                model.type,
-                model.id,
-              );
-            }
-          }
-        } else {
-          logger.transcription.warn(
-            "Formatting skipped: unsupported provider",
-            { provider: model.provider },
-          );
-        }
-      }
-    }
-
-    const textBeforeReplacements = text;
-
-    // Apply vocabulary replacements (final post-processing step)
-    if (options.replacements.size > 0) {
-      const beforeReplacements = text;
-      text = applyTextReplacements(text, options.replacements);
-      if (beforeReplacements !== text) {
-        logger.transcription.info("Applied vocabulary replacements", {
-          replacementCount: options.replacements.size,
-          originalLength: beforeReplacements.length,
-          newLength: text.length,
-        });
-      }
-    }
-
-    return {
-      text,
-      textBeforeReplacements,
-      formattingUsed,
-      formattingModel,
-      formattingDuration,
-    };
-  }
-
-  /**
-   * Read a WAV file from disk and return Float32Array of PCM samples.
-   * Assumes standard 44-byte WAV header with Int16 PCM data (our app's format).
-   */
-  private async readWavAsFloat32(filePath: string): Promise<Float32Array> {
-    const fileBuffer = await fs.promises.readFile(filePath);
-    const WAV_HEADER_SIZE = 44;
-    const pcmData = fileBuffer.subarray(WAV_HEADER_SIZE);
-    const int16Array = new Int16Array(
-      pcmData.buffer,
-      pcmData.byteOffset,
-      pcmData.byteLength / 2,
+      };
+    }).pipe(
+      Effect.withSpan("transcription.resolve", { attributes: { sessionId } }),
     );
-    const float32Array = new Float32Array(int16Array.length);
-    for (let i = 0; i < int16Array.length; i++) {
-      float32Array[i] = int16Array[i] / 32768;
-    }
-    return float32Array;
   }
 
-  /**
-   * Retry transcription for an existing record using current model and settings.
-   * Bypasses RecordingManager entirely — works directly with providers.
-   */
   async retryTranscription(transcriptionId: number): Promise<string> {
-    const retryStartedAt = performance.now();
-
-    // Guard: reject if a recording session is active
-    if (this.streamingSessions.size > 0) {
+    if (this.activeLiveSession) {
       throw new Error("Cannot retry while recording is in progress");
     }
-
-    // Fetch the existing transcription record
-    const record = await getTranscriptionById(transcriptionId);
-    if (!record) {
-      throw new Error("Transcription not found");
+    if (this.historyRetryInProgress) {
+      throw new Error("Another transcription retry is already in progress");
     }
 
-    if (!record.audioFile) {
-      throw new Error("No audio file associated with this transcription");
-    }
-
-    // Verify the audio file exists on disk
-    await fs.promises.access(record.audioFile);
-
-    // Read WAV file into Float32Array
-    const audioData = await this.readWavAsFloat32(record.audioFile);
-
-    // Build fresh context for vocabulary, language, and replacements
-    const context = await this.buildContext();
-    const retrySessionId = context.sessionId;
-    const vocabulary = context.sharedData.vocabulary;
-    const languages = context.sharedData.userPreferences?.languages;
-    const language = this.singleRequestedLanguage(languages);
-
-    // Determine formatting config before acquiring mutex
-    const selectedModelId = await this.modelService.getSelectedModel();
-    const formatterConfig = await this.settingsService.getFormatterConfig();
-    const shouldUseCloudFormatting =
-      formatterConfig?.enabled &&
-      isAmicalCloudSelectionValue(formatterConfig.modelId);
-
-    // Split audio into 512-sample frames for per-frame VAD
-    const FRAME_SIZE = 512;
-    const frames: Float32Array[] = [];
-    for (let offset = 0; offset < audioData.length; offset += FRAME_SIZE) {
-      frames.push(
-        audioData.subarray(
-          offset,
-          Math.min(offset + FRAME_SIZE, audioData.length),
-        ),
-      );
-    }
-
-    // Compute per-frame VAD probabilities (batch under one vadMutex acquisition)
-    const vadProbs: number[] = [];
-    if (this.vadService) {
-      await this.vadMutex.runExclusive(async () => {
-        this.vadService!.reset();
-        for (const frame of frames) {
-          const result = await this.vadService!.processAudioFrame(frame);
-          vadProbs.push(result.probability);
-        }
-      });
-    } else {
-      vadProbs.push(...new Array(frames.length).fill(1));
-    }
-
-    logger.transcription.info("Starting transcription retry", {
-      transcriptionId,
-      sessionId: retrySessionId,
-      audioFile: record.audioFile,
-      audioSamples: audioData.length,
-      totalFrames: frames.length,
-    });
-
-    // Transcribe using current provider settings
-    const transcriptionResults: string[] = [];
-    let detectedLanguage = this.sanitizeDetectedLanguage(
-      record.detectedLanguage,
-    );
-    let usedCloudProvider = false;
-
-    await this.transcriptionMutex.acquire();
+    this.historyRetryInProgress = true;
     try {
-      const provider = await this.selectProvider();
-      usedCloudProvider = provider.name === "amical-cloud";
-      provider.reset();
-
-      // Feed each frame with its computed VAD probability
-      for (let i = 0; i < frames.length; i++) {
-        const previousChunk =
-          transcriptionResults.length > 0
-            ? transcriptionResults[transcriptionResults.length - 1]
-            : undefined;
-        const aggregatedTranscription = transcriptionResults.join("");
-
-        const chunkResult = await provider.transcribe({
-          audioData: frames[i],
-          speechProbability: vadProbs[i],
-          context: {
-            sessionId: retrySessionId,
-            vocabulary,
-            languages,
-            previousChunk,
-            aggregatedTranscription: aggregatedTranscription || undefined,
-            formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
-          },
-        });
-        detectedLanguage = this.mergeDetectedLanguage(
-          detectedLanguage,
-          chunkResult.detectedLanguage,
-        );
-
-        this.accumulateTranscriptionResult(
-          transcriptionResults,
-          chunkResult.text,
-          usedCloudProvider,
-        );
-      }
-
-      // Flush to get remaining buffered audio
-      const aggregatedTranscription = transcriptionResults.join("");
-      const finalResult = await provider.flush({
-        sessionId: retrySessionId,
-        vocabulary,
-        languages,
-        aggregatedTranscription: aggregatedTranscription || undefined,
-        formattingEnabled: shouldUseCloudFormatting && usedCloudProvider,
+      return await retranscribeHistoryItem(transcriptionId, {
+        settingsService: this.settingsService,
+        modelService: this.modelService,
+        telemetryService: this.telemetryService,
+        processVadFrames: (frames) => this.processHistoryVadFrames(frames),
+        engineForSelectedModel: (selectedModelId) =>
+          this.engineForSelectedModel(selectedModelId),
+        withTranscriptionLock: (work) =>
+          withLockPromise(this.transcriptionLock, work),
+        wasModelPreloaded: () => this.modelWasPreloaded,
+        isVadEnabled: () => this.vadService !== null,
       });
-      detectedLanguage = this.mergeDetectedLanguage(
-        detectedLanguage,
-        finalResult.detectedLanguage,
-      );
-
-      this.accumulateTranscriptionResult(
-        transcriptionResults,
-        finalResult.text,
-        usedCloudProvider,
-      );
     } finally {
-      this.transcriptionMutex.release();
+      this.historyRetryInProgress = false;
+    }
+  }
+
+  private async processHistoryVadFrames(
+    frames: Float32Array[],
+  ): Promise<number[]> {
+    if (!this.vadService) {
+      return new Array(frames.length).fill(1);
     }
 
-    const rawTranscription = transcriptionResults.join("");
-
-    // Apply formatting and vocabulary replacements
-    const formatResult = await this.applyFormattingAndReplacements({
-      text: rawTranscription,
-      usedCloudProvider,
-      vocabulary,
-      replacements: context.sharedData.replacements,
-      formattingStyle: context.sharedData.userPreferences?.formattingStyle,
-    });
-
-    // Final post-format pass, mirroring finalizeSession. Re-transcription has no
-    // insertion context (accessibility context is not threaded through here), so
-    // normalize without surrounding text. Cloud transcripts are already
-    // normalized server-side.
-    const completeTranscription = usedCloudProvider
-      ? formatResult.text
-      : normalizeTranscriptionBoundaries(
-          formatResult.text,
-          undefined,
-          undefined,
-        );
-
-    const speechModelId = usedCloudProvider
-      ? "amical-cloud"
-      : selectedModelId || "whisper-local";
-    const previousWordCount = countWords(
-      record.text,
-      record.detectedLanguage ?? record.language,
-    );
-    const nextWordCount = countWords(
-      formatResult.textBeforeReplacements,
-      detectedLanguage ?? language,
-    );
-
-    // Update the existing record in-place
-    await updateTranscription(transcriptionId, {
-      text: completeTranscription,
-      detectedLanguage: this.sanitizeDetectedLanguage(detectedLanguage),
-      speechModel: speechModelId,
-      formattingModel: formatResult.formattingModel,
-      meta: {
-        ...(typeof record.meta === "object" && record.meta !== null
-          ? record.meta
-          : {}),
-        retried: true,
-        retriedAt: new Date().toISOString(),
-      },
-    });
-
-    // Retries only upgrade a previously empty history row into its first
-    // successful counted transcription. We intentionally do not rebalance
-    // lifetime stats for already-counted rows when a retry changes the text.
-    if (previousWordCount === 0 && nextWordCount > 0) {
-      try {
-        await incrementDailyStats(nextWordCount, new Date(), 0);
-      } catch (error) {
-        logger.transcription.error(
-          "Failed to increment retry dictation stats",
-          {
-            transcriptionId,
-            error,
-          },
-        );
+    return withLockPromise(this.vadLock, async () => {
+      this.vadService!.reset();
+      const probabilities: number[] = [];
+      for (const frame of frames) {
+        const result = await this.vadService!.processAudioFrame(frame);
+        probabilities.push(result.probability);
       }
-    }
-
-    const processingDuration = performance.now() - retryStartedAt;
-    const audioDurationSeconds = audioData.length / 16000;
-
-    this.telemetryService.trackTranscriptionCompleted({
-      session_id: retrySessionId,
-      model_id: speechModelId,
-      model_preloaded: this.modelWasPreloaded,
-      total_duration_ms: processingDuration,
-      processing_duration_ms: processingDuration,
-      audio_duration_seconds: audioDurationSeconds,
-      realtime_factor:
-        audioDurationSeconds && processingDuration
-          ? audioDurationSeconds / (processingDuration / 1000)
-          : undefined,
-      text_length: completeTranscription.length,
-      word_count: nextWordCount,
-      formatting_enabled: formatResult.formattingUsed,
-      formatting_model: formatResult.formattingModel,
-      formatting_duration_ms: formatResult.formattingDuration,
-      vad_enabled: !!this.vadService,
-      is_retry: true,
-      languages: languages ?? [],
-      vocabulary_size: vocabulary.length,
+      return probabilities;
     });
-
-    logger.transcription.info("Transcription retry completed", {
-      transcriptionId,
-      sessionId: retrySessionId,
-      textLength: completeTranscription.length,
-      formattingUsed: formatResult.formattingUsed,
-    });
-
-    return completeTranscription;
   }
 
   /**
-   * Accumulate a transcription result into the results array.
-   * Cloud provider returns cumulative text, so we replace; local provider appends.
-   */
-  private accumulateTranscriptionResult(
-    results: string[],
-    newText: string,
-    isCloudProvider: boolean,
-  ): void {
-    if (!newText.trim()) return;
-    if (isCloudProvider && results.length > 0) {
-      results.length = 0;
-    }
-    results.push(newText);
-  }
-
-  private sanitizeDetectedLanguage(
-    detectedLanguage?: string | null,
-  ): string | undefined {
-    const trimmed = detectedLanguage?.trim();
-    return trimmed ? trimmed : undefined;
-  }
-
-  // The user can select several dictation languages with no ordering or
-  // "primary". A single requested language only exists when exactly one is
-  // selected; multi-select and auto-detect both mean "no single language" →
-  // "auto". Used for the single-language sinks (transcription record column,
-  // word-count segmentation, telemetry).
-  private singleRequestedLanguage(languages: string[] | undefined): string {
-    return languages?.length === 1 ? languages[0] : "auto";
-  }
-
-  private mergeDetectedLanguage(
-    currentLanguage?: string,
-    nextLanguage?: string,
-  ): string | undefined {
-    return (
-      this.sanitizeDetectedLanguage(nextLanguage) ??
-      this.sanitizeDetectedLanguage(currentLanguage)
-    );
-  }
-
-  /**
-   * Reset VAD state behind vadMutex so it cannot interleave with retry VAD computation.
+   * Reset VAD state behind the VAD lock so it cannot interleave with retry VAD computation.
    */
   async resetVadForNewSession(): Promise<void> {
-    await this.vadMutex.runExclusive(() => {
+    await withLockPromise(this.vadLock, async () => {
       this.vadService?.reset();
     });
   }
@@ -1543,8 +1231,13 @@ export class TranscriptionService {
    * Cleanup method
    */
   async dispose(): Promise<void> {
-    await this.whisperProvider.dispose();
-    await this.cloudProvider.dispose();
+    const liveSession = this.activeLiveSession;
+    if (liveSession) {
+      liveSession.requestAbort();
+      this.retireLiveSession(liveSession);
+    }
+    await this.whisperEngine.dispose();
+    await this.cloudEngine.dispose();
     // VAD service is managed by ServiceManager
     logger.transcription.info("Transcription service disposed");
   }

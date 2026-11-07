@@ -10,6 +10,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { WEB_APP_ORIGIN } from "@/constants/web-app";
 import { api } from "@/trpc/react";
 import type {
   RemoteConfig,
@@ -93,7 +94,7 @@ function toneOf(surface: RemoteConfigSurface): RemoteConfigTone {
 
 // Dismissals are local + per-device (store lives in remote-config-dismissals).
 // Re-read on the in-renderer change event and the cross-window "storage" event.
-function useDismissals() {
+export function useDismissals() {
   const [dismissedUntil, setDismissedUntil] =
     React.useState(readDismissedUntil);
 
@@ -118,17 +119,11 @@ function useRemoteConfig(): RemoteConfig {
   return live.data ?? EMPTY_REMOTE_CONFIG;
 }
 
-// Host of the web app — CTAs pointing here are opened via the signed-in session
-// handoff so the user lands authenticated instead of on a login wall.
-const WEB_APP_HOST = "app.amical.ai";
-
 // Runs a CTA's navigation/external action. `dismiss` is handled by the caller
 // (it needs the surface id), so it is a no-op here.
 function useRemoteConfigCtaHandler() {
   const navigate = useNavigate();
-  const authStatus = api.auth.getAuthStatus.useQuery();
   const openWebSession = api.auth.openWebSession.useMutation();
-  const isAuthenticated = authStatus.data?.isAuthenticated ?? false;
 
   return React.useCallback(
     async (cta: RemoteConfigCta) => {
@@ -154,27 +149,19 @@ function useRemoteConfigCtaHandler() {
         const target = new URL(cta.url);
 
         // For the web app, hand off the desktop session so the user arrives
-        // already signed in. Anonymous users — or any non-app host — just open
-        // the URL directly.
-        if (isAuthenticated && target.hostname === WEB_APP_HOST) {
-          try {
-            await openWebSession.mutateAsync({
-              returnPath: target.pathname + target.search + target.hash,
-            });
-            return;
-          } catch (error) {
-            // Handoff failed (e.g. expired token) — fall back to a plain open.
-            window.electronAPI.log.warn(
-              "Web-session handoff failed, opening directly",
-              error,
-            );
-          }
+        // signed in (main opens the page directly if the handoff fails). Any
+        // non-app host just opens the URL directly.
+        if (target.origin === WEB_APP_ORIGIN) {
+          openWebSession.mutate({
+            returnPath: target.pathname + target.search + target.hash,
+          });
+          return;
         }
 
         await window.electronAPI.openExternal(cta.url);
       }
     },
-    [navigate, isAuthenticated, openWebSession],
+    [navigate, openWebSession],
   );
 }
 
@@ -399,7 +386,7 @@ function RemoteConfigBanner({
   );
 }
 
-function RemoteConfigSideSlot({
+export function RemoteConfigSideSlot({
   surface,
   onDismiss,
   onCta,
@@ -500,7 +487,12 @@ export function RemoteConfigSurfaces({
   );
 }
 
-export function RemoteConfigSidebarSlot() {
+// `fallback` renders only when no remote card holds the slot.
+export function RemoteConfigSidebarSlot({
+  fallback,
+}: {
+  fallback: React.ReactNode;
+}) {
   const { surfaces, dismiss, handleCta } = useActiveRemoteConfigSurfaces();
 
   const sideSlot = surfaces.find(
@@ -509,7 +501,7 @@ export function RemoteConfigSidebarSlot() {
   );
 
   if (!sideSlot) {
-    return null;
+    return fallback;
   }
 
   return (

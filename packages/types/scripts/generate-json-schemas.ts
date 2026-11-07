@@ -46,6 +46,14 @@ import {
   GetSelectedTextViaCopyResultSchema,
 } from "../src/schemas/methods/get-selected-text-via-copy.js";
 import {
+  StartEditWatchParamsSchema,
+  StartEditWatchResultSchema,
+  ReadEditWatchParamsSchema,
+  ReadEditWatchResultSchema,
+  StopEditWatchParamsSchema,
+  StopEditWatchResultSchema,
+} from "../src/schemas/methods/edit-watch.js";
+import {
   KeyDownEventSchema,
   KeyUpEventSchema,
   FlagsChangedEventSchema,
@@ -162,6 +170,36 @@ const schemasToGenerate = [
   {
     zod: GetSelectedTextViaCopyResultSchema,
     name: "GetSelectedTextViaCopyResult",
+    category: "methods",
+  },
+  {
+    zod: StartEditWatchParamsSchema,
+    name: "StartEditWatchParams",
+    category: "methods",
+  },
+  {
+    zod: StartEditWatchResultSchema,
+    name: "StartEditWatchResult",
+    category: "methods",
+  },
+  {
+    zod: ReadEditWatchParamsSchema,
+    name: "ReadEditWatchParams",
+    category: "methods",
+  },
+  {
+    zod: ReadEditWatchResultSchema,
+    name: "ReadEditWatchResult",
+    category: "methods",
+  },
+  {
+    zod: StopEditWatchParamsSchema,
+    name: "StopEditWatchParams",
+    category: "methods",
+  },
+  {
+    zod: StopEditWatchResultSchema,
+    name: "StopEditWatchResult",
     category: "methods",
   },
 ];

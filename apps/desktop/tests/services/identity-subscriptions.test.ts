@@ -52,7 +52,10 @@ describe("identity subscriptions", () => {
           clientState.isIdentified = false;
         }),
       } as unknown as PostHogClient;
-      const settingsService = {} as unknown as SettingsService;
+      // A completed sign-in turns telemetry on, which persists the setting.
+      const settingsService = {
+        setTelemetrySettings: vi.fn(async () => undefined),
+      } as unknown as SettingsService;
       const authService = new EventEmitter() as unknown as AuthService;
 
       const scope = Effect.runSync(Scope.make());
@@ -65,16 +68,35 @@ describe("identity subscriptions", () => {
             Layer.provide(Layer.succeed(AuthServiceTag, authService)),
             Layer.provide(Layer.succeed(AppScopeTag, scope)),
           ),
-        ).pipe(Scope.extend(scope)),
+        ).pipe(Scope.provide(scope)),
       );
       closeScope = () => Effect.runPromise(Scope.close(scope, Exit.void));
 
       return {
         service: Context.get(ctx, TelemetryServiceTag),
         client,
+        settingsService,
         authEmitter: authService as unknown as EventEmitter,
       };
     };
+
+    it("turns telemetry on at signed-in, not at a re-emitted authenticated", async () => {
+      const { settingsService, authEmitter } = await build();
+
+      // A failed logout re-emits "authenticated" to restore state.
+      authEmitter.emit("authenticated", {
+        isAuthenticated: true,
+        userInfo: { sub: "user-1" },
+      });
+      expect(settingsService.setTelemetrySettings).not.toHaveBeenCalled();
+
+      authEmitter.emit("signed-in", { isAuthenticated: true });
+      await vi.waitFor(() =>
+        expect(settingsService.setTelemetrySettings).toHaveBeenCalledWith({
+          enabled: true,
+        }),
+      );
+    });
 
     it("identifies on authenticated when the token carried a subject", async () => {
       const { client, authEmitter } = await build();
@@ -136,6 +158,26 @@ describe("identity subscriptions", () => {
       expect(identityAtEvent).toEqual([true, false]);
     });
 
+    it("forwards auth API contract failures to telemetry", async () => {
+      const { service, authEmitter } = await build();
+      const captureContractFailure = vi.spyOn(
+        service,
+        "captureContractFailure",
+      );
+
+      authEmitter.emit("api-contract-failure", {
+        errorContext: "oauth_token_response_invalid",
+        failureKind: "invalid_json",
+        properties: { status: 200 },
+      });
+
+      expect(captureContractFailure).toHaveBeenCalledExactlyOnceWith(
+        "oauth_token_response_invalid",
+        "invalid_json",
+        { status: 200 },
+      );
+    });
+
     it("drops the auth subscriptions when the scope closes", async () => {
       const { client, authEmitter } = await build();
 
@@ -149,6 +191,7 @@ describe("identity subscriptions", () => {
       expect(client.setIdentifiedUser).not.toHaveBeenCalled();
       expect(authEmitter.listenerCount("authenticated")).toBe(0);
       expect(authEmitter.listenerCount("logged-out")).toBe(0);
+      expect(authEmitter.listenerCount("api-contract-failure")).toBe(0);
     });
   });
 
@@ -198,7 +241,7 @@ describe("identity subscriptions", () => {
             Layer.provide(Layer.succeed(TelemetryServiceTag, telemetryService)),
             Layer.provide(Layer.succeed(AppScopeTag, scope)),
           ),
-        ).pipe(Scope.extend(scope)),
+        ).pipe(Scope.provide(scope)),
       );
       closeScope = () => Effect.runPromise(Scope.close(scope, Exit.void));
 

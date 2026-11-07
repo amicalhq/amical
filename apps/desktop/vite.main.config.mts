@@ -1,8 +1,10 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
+import { posthogSourceMapPlugins } from "./vite.posthog";
 
 // https://vitejs.dev/config
 export default defineConfig({
+  plugins: posthogSourceMapPlugins(),
   define: {
     __BUNDLED_POSTHOG_API_KEY: JSON.stringify(
       process.env.POSTHOG_API_KEY || "",

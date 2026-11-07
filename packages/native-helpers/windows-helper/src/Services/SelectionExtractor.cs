@@ -73,37 +73,8 @@ namespace WindowsHelper.Services
                 }
             }
 
-            // Try to get TextPattern from extraction element
-            IUIAutomationTextPattern? textPattern = GetTextPattern(extractionElement);
-
-            // If no TextPattern, walk UP parents (with timeout)
-            if (textPattern == null)
-            {
-                var walker = UIAutomationService.ControlViewWalker;
-                var current = extractionElement;
-
-                for (int depth = 0; depth < Constants.PARENT_CHAIN_MAX_DEPTH; depth++)
-                {
-                    if (sw.ElapsedMilliseconds > Constants.PARENT_WALK_TIMEOUT_MS)
-                    {
-                        metricsBuilder.RecordError("Parent walk timeout");
-                        break;
-                    }
-
-                    try
-                    {
-                        current = walker.GetParentElement(current);
-                        if (current == null) break;
-
-                        textPattern = GetTextPattern(current);
-                        if (textPattern != null) break;
-                    }
-                    catch (COMException)
-                    {
-                        break;
-                    }
-                }
-            }
+            // TextPattern from the extraction element, else from an ancestor
+            var (_, textPattern) = FindTextPattern(extractionElement, sw, metricsBuilder);
 
             // If we found TextPattern, extract selection
             if (textPattern != null)
@@ -194,6 +165,95 @@ namespace WindowsHelper.Services
         }
 
         /// <summary>
+        /// Resolve the element Extract reads text from, in the same order:
+        /// the Chromium Edit with the caret, else the Edit/Document with a
+        /// TextPattern (the extraction element or an ancestor), else the
+        /// extraction element when it has a ValuePattern. The edit watch holds
+        /// this element and reads it again later.
+        /// </summary>
+        public static (IUIAutomationElement Element, TextReadPath ReadPath)? ResolveTextElement(
+            IUIAutomationElement focusedElement,
+            IUIAutomationElement extractionElement,
+            MetricsBuilder metricsBuilder)
+        {
+            var sw = Stopwatch.StartNew();
+
+            var editWithCaret = FindEditWithCaret(focusedElement, metricsBuilder);
+            if (editWithCaret != null)
+            {
+                var readPath = HasPattern(editWithCaret, Constants.UIA_TextPatternId)
+                    ? TextReadPath.TextPattern
+                    : TextReadPath.ValuePattern;
+                return (editWithCaret, readPath);
+            }
+
+            var (textElement, textPattern) = FindTextPattern(extractionElement, sw, metricsBuilder);
+            if (textElement != null && textPattern != null)
+            {
+                return (textElement, TextReadPath.TextPattern);
+            }
+
+            if (HasPattern(extractionElement, Constants.UIA_ValuePatternId))
+            {
+                return (extractionElement, TextReadPath.ValuePattern);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// TextPattern of the extraction element, else of the nearest Edit or
+        /// Document ancestor. The walk is bounded by depth and by the shared stopwatch.
+        /// </summary>
+        private static (IUIAutomationElement? Element, IUIAutomationTextPattern? Pattern) FindTextPattern(
+            IUIAutomationElement extractionElement,
+            Stopwatch sw,
+            MetricsBuilder metricsBuilder)
+        {
+            var textPattern = GetTextPattern(extractionElement);
+            if (textPattern != null) return (extractionElement, textPattern);
+
+            var walker = UIAutomationService.ControlViewWalker;
+            var current = extractionElement;
+
+            for (int depth = 0; depth < Constants.PARENT_CHAIN_MAX_DEPTH; depth++)
+            {
+                if (sw.ElapsedMilliseconds > Constants.PARENT_WALK_TIMEOUT_MS)
+                {
+                    metricsBuilder.RecordError("Parent walk timeout");
+                    break;
+                }
+
+                try
+                {
+                    current = walker.GetParentElement(current);
+                    if (current == null) break;
+
+                    textPattern = GetTextPattern(current);
+                    if (textPattern != null) return (current, textPattern);
+                }
+                catch (COMException)
+                {
+                    break;
+                }
+            }
+
+            return (null, null);
+        }
+
+        private static bool HasPattern(IUIAutomationElement element, int patternId)
+        {
+            try
+            {
+                return element.GetCurrentPattern(patternId) != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Extract selection using TextPattern.
         /// Uses RangeFromChild to scope extraction to the focused element when possible.
         /// </summary>
@@ -249,20 +309,8 @@ namespace WindowsHelper.Services
                 var selectedText = StringHelpers.NormalizeNewlines(rawSelectedText);
                 var selectionLength = selectedText?.Length ?? 0;
 
-                // Get text before selection to compute location (relative to scoped range)
-                var beforeRange = selectionRange.Clone();
-                beforeRange.MoveEndpointByRange(
-                    TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start,
-                    contentRange,
-                    TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
-                beforeRange.MoveEndpointByRange(
-                    TextPatternRangeEndpoint.TextPatternRangeEndpoint_End,
-                    selectionRange,
-                    TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
-
-                var rawBeforeText = beforeRange.GetText(-1);
-                var beforeText = StringHelpers.NormalizeNewlines(rawBeforeText);
-                var location = beforeText?.Length ?? 0;
+                // Location of the selection relative to the scoped range
+                var location = NormalizedOffset(contentRange, selectionRange);
 
                 // Get full content from scoped range
                 var rawFullContent = contentRange.GetText(-1);
@@ -309,7 +357,7 @@ namespace WindowsHelper.Services
         /// <summary>
         /// Get caret range using TextPattern2 if available.
         /// </summary>
-        private static IUIAutomationTextRange? GetCaretRange(IUIAutomationTextPattern textPattern)
+        internal static IUIAutomationTextRange? GetCaretRange(IUIAutomationTextPattern textPattern)
         {
             try
             {
@@ -326,6 +374,27 @@ namespace WindowsHelper.Services
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Offset of a range's start inside the content range, counted in the
+        /// normalized text so it indexes normalized content.
+        /// </summary>
+        internal static int NormalizedOffset(
+            IUIAutomationTextRange contentRange,
+            IUIAutomationTextRange range)
+        {
+            var beforeRange = range.Clone();
+            beforeRange.MoveEndpointByRange(
+                TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start,
+                contentRange,
+                TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
+            beforeRange.MoveEndpointByRange(
+                TextPatternRangeEndpoint.TextPatternRangeEndpoint_End,
+                range,
+                TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
+
+            return StringHelpers.NormalizeNewlines(beforeRange.GetText(-1))?.Length ?? 0;
         }
 
         /// <summary>
@@ -389,7 +458,7 @@ namespace WindowsHelper.Services
         /// <summary>
         /// Check if element is a secure/password field.
         /// </summary>
-        private static bool IsSecureField(IUIAutomationElement element)
+        internal static bool IsSecureField(IUIAutomationElement element)
         {
             if (element == null) return false;
 
@@ -693,19 +762,7 @@ namespace WindowsHelper.Services
                             builder.SelectedText = selectedText;
 
                             // Get location using before text
-                            var docRange = textPattern.DocumentRange;
-                            var beforeRange = selRange.Clone();
-                            beforeRange.MoveEndpointByRange(
-                                TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start,
-                                docRange,
-                                TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
-                            beforeRange.MoveEndpointByRange(
-                                TextPatternRangeEndpoint.TextPatternRangeEndpoint_End,
-                                selRange,
-                                TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start);
-
-                            var beforeText = StringHelpers.NormalizeNewlines(beforeRange.GetText(-1));
-                            var location = beforeText?.Length ?? 0;
+                            var location = NormalizedOffset(textPattern.DocumentRange, selRange);
                             var selectionLength = selectedText?.Length ?? 0;
 
                             builder.SelectionRange = new SelectionRange
@@ -739,6 +796,15 @@ namespace WindowsHelper.Services
                 return null;
             }
         }
+    }
+
+    /// <summary>
+    /// Pattern a resolved text element is read through.
+    /// </summary>
+    public enum TextReadPath
+    {
+        TextPattern,
+        ValuePattern
     }
 
     /// <summary>

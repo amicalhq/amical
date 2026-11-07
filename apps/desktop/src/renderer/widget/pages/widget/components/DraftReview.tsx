@@ -1,15 +1,22 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { CornerDownLeft, Copy, Check, X, PenLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { RecordingStatus } from "@/hooks/useRecording";
-import { Waveform } from "@/components/Waveform";
+import { RippleWaveform } from "@/components/RippleWaveform";
 
 interface DraftReviewProps {
   text: string;
   onInsert: () => void;
   onDismiss: () => void;
+  onCopy: () => Promise<void>;
   recordingStatus: RecordingStatus;
-  audioLevels: number[];
+  audioLevelRef: RefObject<number>;
 }
 
 // A small keyboard-cap hint (e.g. ↵, esc) that teaches the shortcut driving
@@ -42,8 +49,9 @@ export function DraftReview({
   text,
   onInsert,
   onDismiss,
+  onCopy,
   recordingStatus,
-  audioLevels,
+  audioLevelRef,
 }: DraftReviewProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -52,7 +60,7 @@ export function DraftReview({
 
   // Sticky draft: the review stays open while a replacement is dictated. During
   // that window the action bar becomes a live status (Insert/Copy return once
-  // idle); Enter is disarmed meanwhile (see RecordingManager.syncDraftEnterMask).
+  // idle); Enter is disarmed meanwhile (the Enter mask arms only while idle).
   const isRecording =
     recordingStatus.state === "recording" ||
     recordingStatus.state === "starting";
@@ -70,7 +78,7 @@ export function DraftReview({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      await onCopy();
       setCopied(true);
       if (copyResetRef.current) clearTimeout(copyResetRef.current);
       copyResetRef.current = setTimeout(() => setCopied(false), 1500);
@@ -131,16 +139,8 @@ export function DraftReview({
               <span className="h-[4px] w-[4px] rounded-full bg-blue-500 animate-bounce" />
             </span>
           ) : (
-            <span className="flex h-4 items-center gap-[3px]">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Waveform
-                  key={i}
-                  isRecording
-                  level={audioLevels[i] ?? 0}
-                  baseHeight={70}
-                  silentHeight={20}
-                />
-              ))}
+            <span className="flex h-4 items-center">
+              <RippleWaveform levelRef={audioLevelRef} isRecording />
             </span>
           )}
         </div>

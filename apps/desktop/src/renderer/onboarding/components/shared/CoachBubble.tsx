@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import type { ParseKeys } from "i18next";
 import { KeycapSentence, KEYS_SENTINEL } from "./KeyCap";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +16,7 @@ export function CoachBubble({
   recording,
   shortcut,
 }: {
-  ctaKey: string;
+  ctaKey: ParseKeys;
   recording: boolean;
   shortcut: number[];
 }) {

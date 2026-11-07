@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TelemetryService } from "../../src/services/telemetry-service";
 import type { PostHogClient } from "../../src/services/posthog-client";
 import type { SettingsService } from "../../src/services/settings-service";
+import { getAmicalClientInfo } from "../../src/utils/http-client";
 
 interface AuthStateFixture {
   isAuthenticated: boolean;
@@ -12,7 +13,10 @@ interface AuthStateFixture {
   };
 }
 
-function createHarness(auth?: AuthStateFixture) {
+function createHarness(
+  auth?: AuthStateFixture,
+  telemetry: { enabled?: boolean } = { enabled: true },
+) {
   const posthog = {
     capture: vi.fn(),
     captureException: vi.fn(),
@@ -73,10 +77,11 @@ function createHarness(auth?: AuthStateFixture) {
       identity.email = undefined;
       identity.name = undefined;
     }),
+    shutdown: vi.fn(() => Promise.resolve()),
   } as unknown as PostHogClient;
 
   const settingsService = {
-    getTelemetrySettings: vi.fn(() => Promise.resolve({ enabled: true })),
+    getTelemetrySettings: vi.fn(() => Promise.resolve(telemetry)),
     getAllSettings: vi.fn(() => Promise.resolve({ auth })),
     setTelemetrySettings: vi.fn(() => Promise.resolve()),
   } as unknown as SettingsService;
@@ -113,6 +118,57 @@ describe("TelemetryService identity", () => {
     });
   });
 
+  it("exposes the common event properties used by renderer telemetry", async () => {
+    const { service } = createHarness();
+
+    await service.initialize();
+
+    expect(service.getCommonProperties()).toEqual({
+      client: "desktop",
+      platform: getAmicalClientInfo().platform,
+      app_version: "0.1.0-test",
+      machine_id: "machine-1",
+      app_is_packaged: false,
+      system_info: {},
+    });
+  });
+
+  it("emits telemetry enabled changes for renderer subscribers", async () => {
+    const { service } = createHarness();
+    const onEnabledChange = vi.fn();
+    service.on("enabled-changed", onEnabledChange);
+
+    await service.initialize();
+    await service.setEnabled(false);
+    await service.setEnabled(true);
+
+    expect(onEnabledChange.mock.calls).toEqual([[false], [true]]);
+  });
+
+  it("reports API contract failures without the rejected response", async () => {
+    const { posthog, service } = createHarness();
+
+    await service.initialize();
+    service.captureContractFailure(
+      "remote_config_response_invalid",
+      "schema_mismatch",
+      { status: 200 },
+    );
+
+    expect(posthog.captureException).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        name: "ClientContractError",
+        message: "Response did not match its expected schema",
+      }),
+      "machine-1",
+      expect.objectContaining({
+        error_context: "remote_config_response_invalid",
+        failure_kind: "schema_mismatch",
+        status: 200,
+      }),
+    );
+  });
+
   it("identifies on login and captures later events with user ID", async () => {
     const { client, posthog, service } = createHarness();
 
@@ -127,11 +183,11 @@ describe("TelemetryService identity", () => {
     );
     expect(posthog.identify).toHaveBeenCalledWith({
       distinctId: "user-1",
-      properties: expect.objectContaining({
+      properties: {
         email: "user@example.com",
         name: "Test User",
         $anon_distinct_id: "machine-1",
-      }),
+      },
     });
     expect(posthog.capture).toHaveBeenLastCalledWith({
       distinctId: "user-1",
@@ -185,11 +241,11 @@ describe("TelemetryService identity", () => {
     );
     expect(posthog.identify).toHaveBeenCalledWith({
       distinctId: "user-from-settings",
-      properties: expect.objectContaining({
+      properties: {
         email: "persisted@example.com",
         name: "Persisted User",
         $anon_distinct_id: "machine-1",
-      }),
+      },
     });
     expect(posthog.capture).toHaveBeenCalledWith({
       distinctId: "user-from-settings",
@@ -200,5 +256,190 @@ describe("TelemetryService identity", () => {
         $is_identified: true,
       }),
     });
+  });
+});
+
+describe("TelemetryService consent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("holds events until opt-in, then sends them with their capture time", async () => {
+    const { posthog, service } = createHarness(undefined, {});
+
+    await service.initialize();
+    service.trackAppLaunch();
+
+    expect(service.isEnabled()).toBe(false);
+    expect(posthog.optOut).toHaveBeenCalled();
+    expect(posthog.capture).not.toHaveBeenCalled();
+
+    await service.optIn();
+
+    expect(posthog.capture).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        distinctId: "machine-1",
+        event: "app_launch",
+        timestamp: expect.any(Date),
+      }),
+    );
+  });
+
+  it("drops held events on opt-out", async () => {
+    const { posthog, service } = createHarness(undefined, {});
+
+    await service.initialize();
+    service.trackAppLaunch();
+    await service.optOut();
+    await service.optIn();
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it("does not hold events for an install that opted out", async () => {
+    const { posthog, service } = createHarness(undefined, { enabled: false });
+
+    await service.initialize();
+    service.trackAppLaunch();
+    await service.optIn();
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it("turns telemetry on at sign-in and sends held events", async () => {
+    const { posthog, service, settingsService } = createHarness(undefined, {});
+
+    await service.initialize();
+    service.trackAppLaunch();
+    service.identifyUser("user-1");
+    await service.handleSignIn();
+
+    expect(settingsService.setTelemetrySettings).toHaveBeenCalledWith({
+      enabled: true,
+    });
+    expect(service.isEnabled()).toBe(true);
+    expect(posthog.identify).toHaveBeenCalledWith(
+      expect.objectContaining({ distinctId: "user-1" }),
+    );
+    expect(posthog.capture).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "app_launch" }),
+    );
+  });
+});
+
+describe("TelemetryService flood guard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("drops events past the burst for one event name without touching others", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 15; i++) {
+      service.trackAppLaunch();
+    }
+    service.trackNoteCreated({
+      note_id: "11111111-1111-4111-8111-111111111111",
+      has_initial_content: false,
+      has_icon: false,
+    });
+
+    const captured = posthog.capture.mock.calls.map(
+      ([msg]) => (msg as { event: string }).event,
+    );
+    expect(captured.filter((e: string) => e === "app_launch")).toHaveLength(10);
+    expect(captured.filter((e: string) => e === "note_created")).toHaveLength(
+      1,
+    );
+  });
+
+  it("refills one event per interval after the burst is drained", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 12; i++) {
+      service.trackAppLaunch();
+    }
+    expect(posthog.capture).toHaveBeenCalledTimes(10);
+
+    vi.advanceTimersByTime(10_000);
+    service.trackAppLaunch();
+    service.trackAppLaunch();
+    expect(posthog.capture).toHaveBeenCalledTimes(11);
+  });
+
+  it("suppresses repeats of one exception but lets a different one through", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    const looping = new Error("boom");
+    for (let i = 0; i < 8; i++) {
+      service.captureException(looping);
+    }
+    expect(posthog.captureException).toHaveBeenCalledTimes(5);
+
+    service.captureException(new Error("something else"));
+    expect(posthog.captureException).toHaveBeenCalledTimes(6);
+  });
+
+  it("does not throw when the error resists fingerprinting", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    const hostile = {
+      toString() {
+        throw new Error("broken conversion");
+      },
+    };
+    expect(() => service.captureException(hostile)).not.toThrow();
+    expect(posthog.captureException).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps exceptions globally when every fingerprint is unique", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 30; i++) {
+      service.captureException(`unique failure ${i}`);
+    }
+    expect(posthog.captureException).toHaveBeenCalledTimes(20);
+  });
+
+  it("holds the bucket map at its hard bound during a unique-key storm", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 600; i++) {
+      service.captureException(`storm ${i}`);
+    }
+    const buckets = (
+      service as unknown as { rateBuckets: Map<string, unknown> }
+    ).rateBuckets;
+    expect(buckets.size).toBeLessThanOrEqual(500);
+    expect(posthog.captureException).toHaveBeenCalledTimes(20);
+
+    vi.advanceTimersByTime(61_000);
+    service.captureException("after the storm");
+    expect(buckets.size).toBeLessThan(10);
+    expect(posthog.captureException).toHaveBeenCalledTimes(21);
+  });
+
+  it("never rate-limits the fatal capture-and-shutdown path", async () => {
+    const { posthog, service } = createHarness();
+    await service.initialize();
+
+    for (let i = 0; i < 30; i++) {
+      service.captureException(`noise ${i}`);
+    }
+    expect(posthog.captureException).toHaveBeenCalledTimes(20);
+
+    await service.captureExceptionImmediateAndShutdown(new Error("fatal"));
+    expect(posthog.captureExceptionImmediate).toHaveBeenCalledTimes(1);
   });
 });

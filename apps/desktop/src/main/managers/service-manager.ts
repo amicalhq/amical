@@ -10,7 +10,7 @@ import type { TranscriptionService } from "../../services/transcription-service"
 import type { SettingsService } from "../../services/settings-service";
 import type { NativeBridge } from "../../services/platform/native-bridge-service";
 import type { AutoUpdaterService } from "../services/auto-updater";
-import type { RecordingManager } from "./recording-manager";
+import type { DesktopRecordingLifecycle } from "../lifecycle/live";
 import type { VADService } from "../../services/vad-service";
 import type { ShortcutManager } from "./shortcut-manager";
 import type { WindowManager } from "../core/window-manager";
@@ -21,6 +21,8 @@ import type { OnboardingService } from "../../services/onboarding-service";
 import type { FeatureFlagService } from "../../services/feature-flag-service";
 import type { RemoteConfigService } from "../../services/remote-config-service";
 import type { SettingsSyncService } from "../../services/settings-sync-service";
+import type { ActivityReportingService } from "../../services/activity-reporting-service";
+import type { UsageService } from "../../services/usage-service";
 
 /**
  * Service map for type-safe service access
@@ -38,10 +40,12 @@ export interface ServiceMap {
   settingsService: SettingsService;
   authService: AuthService;
   settingsSyncService: SettingsSyncService;
+  activityReportingService: ActivityReportingService;
+  usageService: UsageService;
   vadService: VADService;
   nativeBridge: NativeBridge | null;
   autoUpdaterService: AutoUpdaterService;
-  recordingManager: RecordingManager;
+  recordingLifecycle: DesktopRecordingLifecycle;
   shortcutManager: ShortcutManager;
   windowManager: WindowManager;
   onboardingService: OnboardingService;
@@ -90,7 +94,7 @@ export interface EarlyServiceRefs {
 export class ServiceManager {
   private isInitialized = false;
 
-  private scope: Scope.CloseableScope | null = null;
+  private scope: Scope.Closeable | null = null;
   private resolvedServices: Readonly<ServiceMap> | null = null;
   private earlyRefs: EarlyServiceRefs = {};
 

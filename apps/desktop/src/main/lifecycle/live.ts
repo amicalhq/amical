@@ -1,0 +1,438 @@
+import { runPromise as runTelemetryPromise } from "../runtime/telemetry-runtime";
+import {
+  flushAllDictationTraces,
+  tracePhase,
+} from "../telemetry/dictation-trace";
+import { ipcMain, app } from "electron";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { Deferred, Effect, Layer } from "effect";
+import { v4 as uuid } from "uuid";
+import type { GetAccessibilityContextResult } from "@amical/types";
+import { logger } from "../logger";
+import { ServiceInitFailed } from "../../types/errors";
+import { addRelease, up } from "../runtime/layer-helpers";
+import {
+  AppScopeTag,
+  ModelServiceTag,
+  NativeBridgeTag,
+  RecordingLifecycleTag,
+  RemoteConfigServiceTag,
+  WindowManagerTag,
+  SettingsServiceTag,
+  TranscriptionServiceTag,
+} from "../runtime/tags";
+import type { NativeBridge } from "../../services/platform/native-bridge-service";
+import type { SettingsService } from "../../services/settings-service";
+import type { ModelService } from "../../services/model-service";
+import type { TranscriptionService } from "../../services/transcription-service";
+import type { ShortcutManager } from "../managers/shortcut-manager";
+import { createRecorderAmbiance } from "./adapters/ambiance";
+import {
+  createRecordingLifecycle,
+  type RecordingLifecycle,
+  type RecordingLifecycleDeps,
+} from "./runtime";
+import { createSessionWork } from "./effect/session-work";
+import { REAL_TIMER_HOST, type ShellTimerHost } from "./shell";
+import { runLifecycleRecovery } from "./startup-recovery";
+import { DEFAULT_LIFECYCLE_TUNING } from "./tuning";
+import { AudioCaptureInfoSchema } from "../../types/audio-capture";
+
+/**
+ * Desktop binding of the recording lifecycle: real ambiance (native start/
+ * stop sounds + system-audio mute), real paste bridge, chunk IPC, hotkey
+ * wiring, the draft selected-text fallback, and startup recovery.
+ */
+export interface DesktopRecordingLifecycle extends RecordingLifecycle {
+  /** Late binding: ShortcutManager builds after the lifecycle (its Live
+   * wires the hotkey stream in, mirroring the v1 dependency direction). */
+  bindShortcutManager(shortcutManager: ShortcutManager): void;
+  /** A session paste the helper acknowledged (text as pasted). The
+   * vocabulary learning service starts its edit watch from here. */
+  onSessionPasteConfirmed(
+    listener: (session: string, text: string) => void,
+  ): () => void;
+  /** A draft confirm or paste-last-transcript paste was dispatched. */
+  onOtherPaste(listener: () => void): () => void;
+}
+
+/** Substituted when transcription-service init failed at boot: the stream
+ * fast-fails at open, so the session seals failure in STARTING and the user
+ * learns at press time. Deviation from v1, which recorded the full session
+ * and threw at finalize. */
+function degradedTranscriptionService() {
+  return {
+    beginStreamingSession: (): boolean => {
+      throw new ServiceInitFailed({
+        message: "Transcription service failed to initialize",
+      });
+    },
+    processStreamingChunk: async () => "",
+    resolveStreamingSession: async () => null,
+    cancelStreamingSession: async () => undefined,
+    resetVadForNewSession: async () => undefined,
+    warmupActiveProvider: async () => undefined,
+    isHistoryRetryInProgress: () => false,
+    updateStreamingSession: async () => undefined,
+  };
+}
+
+export function createDesktopRecordingLifecycle(deps: {
+  transcriptionService: TranscriptionService | null;
+  nativeBridge: NativeBridge | null;
+  settingsService: SettingsService;
+  modelService: ModelService;
+  startGateTimers?: ShellTimerHost;
+  isUpdateRequired?: () => boolean;
+  onUpdateRequired?: () => void;
+}): DesktopRecordingLifecycle {
+  const { nativeBridge, settingsService, modelService } = deps;
+  const transcriptionService =
+    deps.transcriptionService ?? degradedTranscriptionService();
+
+  // One SessionWork instance for the whole binding: the runtime wires it to
+  // the lifecycle edges, and the desktop glue below runs its own session
+  // work (ambiance stop, draft barrier) through the same regions and
+  // failure sink.
+  const sessionWork = createSessionWork({ timers: REAL_TIMER_HOST });
+
+  let shortcutManager: ShortcutManager | null = null;
+
+  // Paste hooks for the vocabulary learning service (built after the
+  // lifecycle, so it subscribes instead of being a constructor dep).
+  const pasteConfirmedListeners = new Set<
+    (session: string, text: string) => void
+  >();
+  const otherPasteListeners = new Set<() => void>();
+
+  const ambiance = createRecorderAmbiance({
+    nativeBridge,
+    settingsService,
+    sessionWork,
+    timers: deps.startGateTimers ?? REAL_TIMER_HOST,
+  });
+
+  // Draft copy-capture barrier (v1 semantics): the clipboard-copy fallback
+  // starts when a draft session begins stopping, and resolve waits for it
+  // (bounded) so the merged selection is in the stream context before the
+  // final flush. One capture per session.
+  const DRAFT_CAPTURE_BARRIER_MS = 2_500;
+  const draftCaptures = new Map<string, Deferred.Deferred<void>>();
+
+  const barrieredTranscriptionService: RecordingLifecycleDeps["transcriptionService"] =
+    {
+      beginStreamingSession: (sessionId, onTerminalFailure) =>
+        transcriptionService.beginStreamingSession(
+          sessionId,
+          onTerminalFailure,
+        ),
+      processStreamingChunk: (options) =>
+        transcriptionService.processStreamingChunk(options),
+      resolveStreamingSession: async (options) => {
+        // The entry stays in the map until idle clears it — deleting here
+        // would let the still-stopping snapshots start a second capture
+        // (a second synthetic copy chord) after transcription retired.
+        const capture = draftCaptures.get(options.sessionId);
+        if (capture) {
+          // Bounded barrier: the losing side is interrupted, so a settled
+          // capture no longer leaves a dangling timeout behind.
+          await runTelemetryPromise(
+            sessionWork
+              .bounded<void>(
+                Deferred.await(capture),
+                DRAFT_CAPTURE_BARRIER_MS,
+                undefined,
+              )
+              .pipe(
+                Effect.withSpan("resolve.draft-selection-wait", {
+                  attributes: { sessionId: options.sessionId },
+                }),
+              ),
+          );
+        }
+        return transcriptionService.resolveStreamingSession(options);
+      },
+      cancelStreamingSession: (sessionId) =>
+        transcriptionService.cancelStreamingSession(sessionId),
+      resetVadForNewSession: () => transcriptionService.resetVadForNewSession(),
+      warmupActiveProvider: () => transcriptionService.warmupActiveProvider(),
+      isHistoryRetryInProgress: () =>
+        transcriptionService.isHistoryRetryInProgress(),
+    };
+
+  const lifecycle = createRecordingLifecycle({
+    transcriptionService: barrieredTranscriptionService,
+    ambiance,
+    bridge: nativeBridge
+      ? {
+          pasteText: async (options) => {
+            const result = await nativeBridge.call("pasteText", {
+              transcript: options.transcript,
+              preserveClipboard: options.preserveClipboard,
+            });
+            return { success: !!result?.success };
+          },
+          setDraftEnterCapture: async (armed) => {
+            await nativeBridge.setDraftEnterCapture(armed);
+          },
+        }
+      : null,
+    getPreserveClipboard: async () =>
+      (await settingsService.getPreferences()).preserveClipboard,
+    isUpdateRequired: deps.isUpdateRequired,
+    onUpdateRequired: deps.onUpdateRequired,
+    hasSpeechModelSelected: async () =>
+      Boolean(await modelService.getSelectedModel()),
+    isDraftChordActive: () => shortcutManager?.isPTTDraftActive() ?? false,
+    setDraftInputActive: (armed) => shortcutManager?.setDraftActive(armed),
+    onSessionPasteConfirmed: (session, text) => {
+      for (const listener of pasteConfirmedListeners) listener(session, text);
+    },
+    onOtherPaste: () => {
+      for (const listener of otherPasteListeners) listener();
+    },
+    audioFilePathFor: (session) => {
+      const audioDir = path.join(app.getPath("temp"), "amical-audio");
+      fs.mkdirSync(audioDir, { recursive: true });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      return path.join(audioDir, `audio-${session}-${timestamp}.wav`);
+    },
+    tuning: DEFAULT_LIFECYCLE_TUNING,
+    mintSession: () => uuid(),
+    sessionWork,
+  });
+
+  // Session-start context work: refresh the accessibility snapshot and push
+  // it into the live stream when it lands (v1 doStart behavior).
+  // Session-stop draft work: when the AX read failed or produced a phantom
+  // empty selection, capture the selection via the helper's clipboard-copy
+  // RPC and merge it in (v1 captureDraftSelectionViaCopy).
+  lifecycle.onSnapshot((snapshot) => {
+    // Idle snapshots carry no session — clean up before the session guard,
+    // or the map keeps one settled promise per draft session forever.
+    if (snapshot.projection.publicState === "idle") {
+      draftCaptures.clear();
+    }
+
+    const session = snapshot.sessionId;
+    if (!session || !nativeBridge) return;
+
+    if (snapshot.projection.publicState === "starting") {
+      void tracePhase(session, "context.accessibility-refresh", async () => {
+        await nativeBridge.refreshAccessibilityContext();
+        const accessibilityContext = nativeBridge.getAccessibilityContext();
+        if (
+          !accessibilityContext ||
+          lifecycle.getSnapshot().sessionId !== session
+        ) {
+          return;
+        }
+        await transcriptionService.updateStreamingSession({
+          sessionId: session,
+          accessibilityContext,
+        });
+      }).catch((error) => {
+        logger.audio.warn("Failed to propagate accessibility context", {
+          error,
+        });
+      });
+    }
+
+    if (
+      snapshot.projection.publicState === "stopping" &&
+      snapshot.projection.stopKind === "finalize" &&
+      snapshot.metadata?.isDraft &&
+      !draftCaptures.has(session)
+    ) {
+      // Once per session: stopping publishes several snapshots (drain,
+      // seal, settle) and the capture must not re-fire on each.
+      const barrier = Deferred.makeUnsafe<void>();
+      draftCaptures.set(session, barrier);
+      void captureDraftSelectionViaCopy(session)
+        .catch((error) => {
+          logger.audio.warn("Draft copy-capture fallback failed", {
+            sessionId: session,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => Deferred.doneUnsafe(barrier, Effect.void));
+    }
+  });
+
+  async function captureDraftSelectionViaCopy(session: string): Promise<void> {
+    if (!nativeBridge) return;
+    const cached = nativeBridge.getAccessibilityContext();
+    const axSelectedText = cached?.context?.textSelection?.selectedText;
+    if (axSelectedText && axSelectedText.trim() !== "") {
+      return; // AX path already captured the selection
+    }
+    const baseContext = cached?.context;
+    if (!baseContext) {
+      logger.audio.warn(
+        "Draft copy-capture skipped: no fresh accessibility context to merge into",
+        { sessionId: session },
+      );
+      return;
+    }
+
+    return tracePhase(session, "context.draft-selection-copy", async () => {
+      const captured = await nativeBridge.getSelectedTextViaCopy();
+      const selectedText = captured?.selectedText;
+      if (!selectedText || selectedText.trim() === "") {
+        logger.audio.info("Draft copy-capture found no selection", {
+          sessionId: session,
+          clipboardChanged: captured?.clipboardChanged ?? null,
+          message: captured?.message,
+        });
+        return;
+      }
+      if (lifecycle.getSnapshot().sessionId !== session) {
+        return; // session moved on while the capture was in flight
+      }
+
+      // clipboardCopy yields only the text; every other selection field would
+      // describe the wrong location, so report null/false rather than junk.
+      const merged: GetAccessibilityContextResult = {
+        context: {
+          ...baseContext,
+          textSelection: {
+            selectedText,
+            fullContent: null,
+            preSelectionText: null,
+            postSelectionText: null,
+            selectionRange: null,
+            isEditable: false,
+            extractionMethod: "clipboardCopy",
+            hasMultipleRanges: false,
+            isPlaceholder: false,
+            isSecure: cached.context?.textSelection?.isSecure ?? false,
+            fullContentTruncated: false,
+          },
+        },
+      };
+      await transcriptionService.updateStreamingSession({
+        sessionId: session,
+        accessibilityContext: merged,
+      });
+      logger.audio.info("Draft selection captured via clipboard copy", {
+        sessionId: session,
+        selectedTextLength: selectedText.length,
+      });
+    });
+  }
+
+  return {
+    ...lifecycle,
+    bindShortcutManager(manager: ShortcutManager): void {
+      shortcutManager = manager;
+      manager.on("ptt-state-changed", (engaged: boolean) => {
+        lifecycle.setPttLevel(engaged);
+      });
+      manager.on("toggle-recording-triggered", () => {
+        lifecycle.toggleKey();
+      });
+      manager.on("paste-last-transcript-triggered", () => {
+        void lifecycle.pasteLatestTranscription();
+      });
+      // ESC closes a pending draft review first, else dismisses the live
+      // session; Enter confirms a reviewable draft (armed only while idle).
+      manager.on("escape-pressed", () => {
+        void lifecycle.dismiss();
+      });
+      manager.on("enter-pressed", () => {
+        void lifecycle.confirmDraftFromInput();
+      });
+    },
+    onSessionPasteConfirmed(listener) {
+      pasteConfirmedListeners.add(listener);
+      return () => pasteConfirmedListeners.delete(listener);
+    },
+    onOtherPaste(listener) {
+      otherPasteListeners.add(listener);
+      return () => otherPasteListeners.delete(listener);
+    },
+  };
+}
+
+export const RecordingLifecycleLive: Layer.Layer<
+  RecordingLifecycleTag,
+  never,
+  | SettingsServiceTag
+  | ModelServiceTag
+  | NativeBridgeTag
+  | TranscriptionServiceTag
+  | AppScopeTag
+  | RemoteConfigServiceTag
+  | WindowManagerTag
+> = Layer.effect(
+  RecordingLifecycleTag,
+  Effect.gen(function* () {
+    const settingsService = yield* SettingsServiceTag;
+    const modelService = yield* ModelServiceTag;
+    const nativeBridge = yield* NativeBridgeTag;
+    const transcriptionService = yield* TranscriptionServiceTag;
+    const appScope = yield* AppScopeTag;
+    const remoteConfig = yield* RemoteConfigServiceTag;
+    const windowManager = yield* WindowManagerTag;
+
+    const lifecycle = createDesktopRecordingLifecycle({
+      transcriptionService,
+      nativeBridge,
+      settingsService,
+      modelService,
+      isUpdateRequired: () => remoteConfig.getUpdateRequirement() !== null,
+      onUpdateRequired: () => {
+        void windowManager.createOrShowMainWindow();
+      },
+    });
+
+    ipcMain.handle(
+      "audio-data-chunk",
+      async (
+        _event,
+        sessionId: string,
+        chunk: ArrayBuffer,
+        isFinalChunk: boolean,
+        captureInfo?: unknown,
+      ) => {
+        if (!(chunk instanceof ArrayBuffer)) {
+          logger.audio.error("Received invalid audio chunk type", {
+            type: typeof chunk,
+          });
+          throw new Error("Invalid audio chunk type received.");
+        }
+        await lifecycle.handleAudioChunk(
+          sessionId,
+          new Float32Array(chunk),
+          isFinalChunk,
+          captureInfo === undefined
+            ? undefined
+            : AudioCaptureInfoSchema.safeParse(captureInfo).data,
+        );
+      },
+    );
+
+    // Settle custody rows a previous run died on (never the live session).
+    void runLifecycleRecovery({
+      excludeSession: lifecycle.getSnapshot().sessionId,
+    }).catch((error) => {
+      logger.audio.error("Startup lifecycle recovery failed", { error });
+    });
+
+    yield* addRelease(
+      appScope,
+      "Cleaning up recording lifecycle...",
+      "recordingLifecycle",
+      () => {
+        ipcMain.removeHandler("audio-data-chunk");
+        lifecycle.dispose();
+        // Ship whatever traces are still waiting before the process exits.
+        flushAllDictationTraces();
+      },
+    );
+    logger.main.info("Recording lifecycle initialized");
+    up("recordingLifecycle");
+    return lifecycle;
+  }),
+);

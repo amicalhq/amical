@@ -99,7 +99,7 @@ await fixtures.withCustomSettings(testDb, {
 ## The service graph (Effect layers)
 
 Since AMIC-42, ServiceManager's services are constructed by an Effect Layer
-graph (`src/main/runtime/`): `tags.ts` (one `Context.Tag` per service),
+graph (`src/main/runtime/`): `tags.ts` (one `Context.Service` per service),
 `layers.ts` (one layer per service wrapping the existing class), and
 `app-runtime.ts` (builds the graph into an app-owned scope whose finalizers
 run the old cleanup methods, dependents-first).
@@ -130,7 +130,9 @@ import { Effect, Layer } from "effect";
 import { SettingsServiceTag } from "../../src/main/runtime/tags";
 import { HistoryCleanupService } from "../../src/services/history-cleanup-service";
 
-const fakeSettings = { getHistorySettings: async () => ({ retentionPeriod: "7d" }) };
+const fakeSettings = {
+  getHistorySettings: async () => ({ retentionPeriod: "7d" }),
+};
 const TestLayer = HistoryCleanupService.Live.pipe(
   Layer.provide(Layer.succeed(SettingsServiceTag, fakeSettings as never)),
 );

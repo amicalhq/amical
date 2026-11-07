@@ -3,7 +3,9 @@
  * Provides comprehensive validation for keyboard shortcuts
  */
 
-import { getKeyFromKeycode } from "./keycode-map";
+import type { ParseKeys } from "i18next";
+import { formatShortcut } from "./keycode-map";
+import { MAC_KEYCODES, WINDOWS_KEYCODES } from "./keycodes";
 import {
   MAC_MODIFIER_KEYCODES,
   WINDOWS_MODIFIER_KEYCODES,
@@ -22,10 +24,18 @@ export type ShortcutType =
   | "newNote"
   | "draftMode";
 
+export type ShortcutChord = number[];
+export type ShortcutBindings = ShortcutChord[];
+export type ShortcutsConfig = Record<ShortcutType, ShortcutBindings>;
+
+export function canUnassignShortcut(type: ShortcutType): boolean {
+  return type !== "pushToTalk";
+}
+
 export interface ValidationContext {
-  candidateShortcut: number[];
+  candidateBindings: ShortcutBindings;
   candidateType: ShortcutType;
-  shortcutsByType: Record<ShortcutType, number[]>;
+  shortcutsByType: ShortcutsConfig;
   platform: NodeJS.Platform;
 }
 
@@ -36,12 +46,27 @@ export interface ValidationResult {
 }
 
 export interface I18nMessage {
-  key: string;
+  key: ParseKeys;
   params?: Record<string, string | number>;
 }
 
 // Maximum number of keys allowed in a shortcut
 const MAX_KEY_COMBINATION_LENGTH = 4;
+
+// Modifier names for messages, as Apple and Microsoft write them in prose:
+// "Command", not "Cmd" or "command"; "Windows", not "Win".
+const MAC_MODIFIER_NAMES: Record<number, string> = {
+  [MAC_KEYCODES.CMD]: "Command",
+  [MAC_KEYCODES.CTRL]: "Control",
+  [MAC_KEYCODES.ALT]: "Option",
+  [MAC_KEYCODES.SHIFT]: "Shift",
+};
+const WINDOWS_MODIFIER_NAMES: Record<number, string> = {
+  [WINDOWS_KEYCODES.CTRL]: "Ctrl",
+  [WINDOWS_KEYCODES.ALT]: "Alt",
+  [WINDOWS_KEYCODES.SHIFT]: "Shift",
+  [WINDOWS_KEYCODES.WIN]: "Windows",
+};
 
 /**
  * Helper function to compare two sorted arrays
@@ -56,10 +81,6 @@ function arraysEqual(a: number[], b: number[]): boolean {
  */
 function normalizeKeys(keys: number[]): number[] {
   return [...keys].sort((a, b) => a - b);
-}
-
-function keycodesToDisplayNames(keys: number[]): string[] {
-  return keys.map((keycode) => getKeyFromKeycode(keycode) ?? `Key${keycode}`);
 }
 
 /**
@@ -85,7 +106,7 @@ export function checkMaxKeysLength(keys: number[]): ValidationResult {
 }
 
 /**
- * Check if the shortcut is already assigned to another action
+ * Check if the shortcut is already assigned
  */
 export function checkDuplicateShortcut(
   currentKeys: number[],
@@ -125,12 +146,11 @@ export function checkReservedShortcut(
   for (const reservedShortcut of reserved) {
     const normalizedReserved = normalizeKeys(reservedShortcut);
     if (arraysEqual(normalizedKeys, normalizedReserved)) {
-      const displayShortcut = keycodesToDisplayNames(keys).join("+");
       return {
         valid: false,
         error: {
           key: "settings.shortcuts.validation.conflictsWithSystem",
-          params: { shortcut: displayShortcut },
+          params: { shortcut: formatShortcut(keys) },
         },
       };
     }
@@ -164,15 +184,22 @@ export function checkAlphanumericOnly(
   }
 
   // All keys are alphanumeric - need a modifier
+  const [mod1, mod2, mod3] =
+    platform === "darwin"
+      ? ["Command", "Control", "Fn"]
+      : ["Ctrl", "Alt", "Windows"];
   return {
     valid: false,
-    error: { key: "settings.shortcuts.validation.addModifier" },
+    error: {
+      key: "settings.shortcuts.validation.addModifier",
+      params: { mod1, mod2, mod3 },
+    },
   };
 }
 
 /**
- * Check for duplicate left/right modifier pairs (Windows only)
- * macOS can't distinguish left/right modifiers via its event system
+ * Check that a shortcut does not use both the left and right key of one
+ * modifier
  */
 export function checkDuplicateModifierPairs(
   keys: number[],
@@ -180,15 +207,16 @@ export function checkDuplicateModifierPairs(
 ): ValidationResult {
   const modifierPairs =
     platform === "darwin" ? MAC_MODIFIER_PAIRS : WINDOWS_MODIFIER_PAIRS;
+  const modifierNames =
+    platform === "darwin" ? MAC_MODIFIER_NAMES : WINDOWS_MODIFIER_NAMES;
 
   for (const [left, right] of modifierPairs) {
     if (keys.includes(left) && keys.includes(right)) {
-      const baseName = getKeyFromKeycode(left) ?? "modifier";
       return {
         valid: false,
         error: {
           key: "settings.shortcuts.validation.duplicateModifierPairs",
-          params: { modifier: baseName },
+          params: { modifier: modifierNames[left] },
         },
       };
     }
@@ -202,78 +230,89 @@ export function checkDuplicateModifierPairs(
 export function checkSubsetConflict(
   candidateShortcut: number[],
   candidateType: ShortcutType,
-  shortcutsByType: Record<ShortcutType, number[]>,
+  shortcutsByType: ShortcutsConfig,
 ): ValidationResult {
   if (candidateType !== "toggleRecording") return { valid: true };
 
-  const pushToTalkKeys = shortcutsByType.pushToTalk ?? [];
-  if (pushToTalkKeys.length === 0 || candidateShortcut.length === 0)
+  if (shortcutsByType.pushToTalk.length === 0 || candidateShortcut.length === 0)
     return { valid: true };
 
   const toggleNormalized = normalizeKeys(candidateShortcut);
-  const pttNormalized = normalizeKeys(pushToTalkKeys);
+  for (const pushToTalkKeys of shortcutsByType.pushToTalk) {
+    const pttNormalized = normalizeKeys(pushToTalkKeys);
+    const isSubset = toggleNormalized.every((key) =>
+      pttNormalized.some((pttKey) => pttKey === key),
+    );
 
-  // Check if toggle shortcut is a subset of PTT shortcut
-  const isSubset = toggleNormalized.every((key) =>
-    pttNormalized.some((pttKey) => pttKey === key),
-  );
-
-  if (isSubset && toggleNormalized.length < pttNormalized.length) {
-    return {
-      valid: true, // Still valid, just warning
-      warning: { key: "settings.shortcuts.validation.overlapsWithPushToTalk" },
-    };
+    if (isSubset && toggleNormalized.length < pttNormalized.length) {
+      return {
+        valid: true,
+        warning: {
+          key: "settings.shortcuts.validation.overlapsWithPushToTalk",
+        },
+      };
+    }
   }
 
   return { valid: true };
 }
 
 /**
- * Run all validation checks in order
- * Returns first error found, or warning if all pass
+ * Validate the complete replacement binding list for one action. The proposed
+ * list is checked atomically so duplicates within the same action are caught
+ * alongside conflicts with every other action.
  */
-export function validateShortcutComprehensive(
+export function validateShortcutBindings(
   context: ValidationContext,
 ): ValidationResult {
-  const { candidateShortcut, candidateType, shortcutsByType, platform } =
+  const { candidateBindings, candidateType, shortcutsByType, platform } =
     context;
 
-  const otherShortcuts = Object.entries(shortcutsByType)
-    .filter(([shortcutType]) => shortcutType !== candidateType)
-    .map(([, shortcutKeys]) => shortcutKeys);
+  // An empty binding list intentionally means "unassigned" for optional
+  // actions. Push-to-talk remains required.
+  if (candidateBindings.length === 0) {
+    return canUnassignShortcut(candidateType)
+      ? { valid: true }
+      : checkMaxKeysLength([]);
+  }
 
-  // 1. Max keys length check
-  const maxKeysCheck = checkMaxKeysLength(candidateShortcut);
-  if (!maxKeysCheck.valid) return maxKeysCheck;
+  const proposedShortcuts = {
+    ...shortcutsByType,
+    [candidateType]: candidateBindings,
+  };
+  let warning: I18nMessage | undefined;
 
-  // 2. Duplicate shortcut check
-  const duplicateCheck = checkDuplicateShortcut(
+  for (const [
+    candidateIndex,
     candidateShortcut,
-    otherShortcuts,
-  );
-  if (!duplicateCheck.valid) return duplicateCheck;
+  ] of candidateBindings.entries()) {
+    const otherShortcuts = Object.entries(proposedShortcuts).flatMap(
+      ([shortcutType, bindings]) =>
+        bindings.filter(
+          (_, bindingIndex) =>
+            shortcutType !== candidateType || bindingIndex !== candidateIndex,
+        ),
+    );
 
-  // 3. Reserved shortcut check
-  const reservedCheck = checkReservedShortcut(candidateShortcut, platform);
-  if (!reservedCheck.valid) return reservedCheck;
+    const checks = [
+      checkMaxKeysLength(candidateShortcut),
+      checkDuplicateShortcut(candidateShortcut, otherShortcuts),
+      checkReservedShortcut(candidateShortcut, platform),
+      checkAlphanumericOnly(candidateShortcut, platform),
+      checkDuplicateModifierPairs(candidateShortcut, platform),
+    ];
+    const error = checks.find((result) => !result.valid);
+    if (error) return error;
 
-  // 4. Alphanumeric-only check
-  const alphaCheck = checkAlphanumericOnly(candidateShortcut, platform);
-  if (!alphaCheck.valid) return alphaCheck;
-
-  // 5. Duplicate modifier pair check (Windows only)
-  const pairCheck = checkDuplicateModifierPairs(candidateShortcut, platform);
-  if (!pairCheck.valid) return pairCheck;
-
-  // 6. Subset conflict check (soft warning - returns valid:true with warning)
-  const subsetCheck = checkSubsetConflict(
-    candidateShortcut,
-    candidateType,
-    shortcutsByType,
-  );
+    warning ??= checkSubsetConflict(
+      candidateShortcut,
+      candidateType,
+      proposedShortcuts,
+    ).warning;
+  }
 
   return {
     valid: true,
-    warning: subsetCheck.warning,
+    warning,
   };
 }

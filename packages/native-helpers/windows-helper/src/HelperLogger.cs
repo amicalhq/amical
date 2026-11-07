@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Threading;
 
 namespace WindowsHelper
@@ -37,7 +38,9 @@ namespace WindowsHelper
 
         internal static void LogToStderr(string message)
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            var timestamp = DateTime.Now.ToString(
+                "yyyy-MM-dd HH:mm:ss.fff",
+                CultureInfo.InvariantCulture);
             LogQueue.Enqueue($"[{timestamp}] {message}");
             LogSignal.Set();
         }

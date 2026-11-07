@@ -12,7 +12,7 @@ import { extractHostnameFromBrowserUrl } from "../../../utils/url";
  * Server-known preset id that switches a cloud session into instruct
  * (generation) mode. The server treats `preset` as an open string and
  * generates content from the spoken instruction instead of formatting the
- * transcript. Mirrors the axis `INSTRUCT_PRESET_ID` (packages/prompts).
+ * transcript. Mirrors the cloud prompt package's `INSTRUCT_PRESET_ID`.
  */
 export const INSTRUCT_PRESET_ID = "instruct";
 

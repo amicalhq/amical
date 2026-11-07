@@ -13,19 +13,34 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 type VocabularyItem = {
   id: string;
+  scopeType: "user" | "org";
+  scopeId: string;
   word: string;
   replacementWord: string | null;
+  source: "manual" | "auto";
+  observedSource: string | null;
   dateAdded: Date;
   usageCount: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+type ScopeFilter = "all" | "user" | "org";
+
+// Keep hidden until team-plan eligibility is available.
+const ORGANIZATION_VOCABULARY_ENABLED = false;
 
 // Add/Edit Dialog Component
 interface VocabularyDialogProps {
@@ -175,9 +190,10 @@ function DeleteDialog({
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {t("settings.vocabulary.delete.description", {
-              item: deletingItem?.replacementWord != null
-                ? `${deletingItem?.word} → ${deletingItem?.replacementWord}`
-                : deletingItem?.word,
+              item:
+                deletingItem?.replacementWord != null
+                  ? `${deletingItem?.word} → ${deletingItem?.replacementWord}`
+                  : deletingItem?.word,
             })}
           </p>
         </div>
@@ -213,12 +229,20 @@ export default function VocabularySettingsPage() {
     replacementWord: "",
     replacementEnabled: false,
   });
+  const [selectedScope, setScope] = useState<ScopeFilter>("all");
+  const scopeAccessQuery = api.vocabulary.getScopeAccess.useQuery(undefined, {
+    enabled: ORGANIZATION_VOCABULARY_ENABLED,
+  });
+  const showOrganizationVocabulary =
+    ORGANIZATION_VOCABULARY_ENABLED && scopeAccessQuery.data != null;
+  const scope = showOrganizationVocabulary ? selectedScope : "user";
 
   const vocabularyQuery = api.vocabulary.getVocabulary.useQuery({
     limit: 200,
     offset: 0,
     sortBy: "dateAdded",
     sortOrder: "desc",
+    scope,
   });
 
   const vocabularyItems = vocabularyQuery.data || [];
@@ -228,6 +252,18 @@ export default function VocabularySettingsPage() {
   const utils = api.useUtils();
   const createVocabularyMutation =
     api.vocabulary.createVocabularyWord.useMutation({
+      onSuccess: () => {
+        utils.vocabulary.getVocabulary.invalidate();
+        toast.success(t("settings.vocabulary.toast.added"));
+      },
+      onError: (error) => {
+        toast.error(
+          t("settings.vocabulary.toast.addFailed", { message: error.message }),
+        );
+      },
+    });
+  const createOrganizationVocabularyMutation =
+    api.vocabulary.createOrganizationVocabularyWord.useMutation({
       onSuccess: () => {
         utils.vocabulary.getVocabulary.invalidate();
         toast.success(t("settings.vocabulary.toast.added"));
@@ -250,6 +286,20 @@ export default function VocabularySettingsPage() {
       );
     },
   });
+  const updateOrganizationVocabularyMutation =
+    api.vocabulary.updateOrganizationVocabulary.useMutation({
+      onSuccess: () => {
+        utils.vocabulary.getVocabulary.invalidate();
+        toast.success(t("settings.vocabulary.toast.updated"));
+      },
+      onError: (error) => {
+        toast.error(
+          t("settings.vocabulary.toast.updateFailed", {
+            message: error.message,
+          }),
+        );
+      },
+    });
 
   const deleteVocabularyMutation = api.vocabulary.deleteVocabulary.useMutation({
     onSuccess: () => {
@@ -264,10 +314,32 @@ export default function VocabularySettingsPage() {
       );
     },
   });
+  const deleteOrganizationVocabularyMutation =
+    api.vocabulary.deleteOrganizationVocabulary.useMutation({
+      onSuccess: () => {
+        utils.vocabulary.getVocabulary.invalidate();
+        toast.success(t("settings.vocabulary.toast.deleted"));
+      },
+      onError: (error) => {
+        toast.error(
+          t("settings.vocabulary.toast.deleteFailed", {
+            message: error.message,
+          }),
+        );
+      },
+    });
+
+  const organizationAccess = scopeAccessQuery.data;
+  const organizationWritable = organizationAccess?.canWrite === true;
+  const addDisabled = scope === "org" && !organizationWritable;
 
   const handleAddWord = async () => {
     try {
-      await createVocabularyMutation.mutateAsync({
+      const mutation =
+        scope === "org"
+          ? createOrganizationVocabularyMutation
+          : createVocabularyMutation;
+      await mutation.mutateAsync({
         word: formData.word.trim(),
         replacementWord: formData.replacementEnabled
           ? formData.replacementWord
@@ -289,7 +361,11 @@ export default function VocabularySettingsPage() {
     if (!editingItem) return;
 
     try {
-      await updateVocabularyMutation.mutateAsync({
+      const mutation =
+        editingItem.scopeType === "org"
+          ? updateOrganizationVocabularyMutation
+          : updateVocabularyMutation;
+      await mutation.mutateAsync({
         id: editingItem.id,
         data: {
           word: formData.word.trim(),
@@ -315,7 +391,11 @@ export default function VocabularySettingsPage() {
     if (!deletingItem) return;
 
     try {
-      await deleteVocabularyMutation.mutateAsync({
+      const mutation =
+        deletingItem.scopeType === "org"
+          ? deleteOrganizationVocabularyMutation
+          : deleteVocabularyMutation;
+      await mutation.mutateAsync({
         id: deletingItem.id,
       });
       setDeletingItem(null);
@@ -368,13 +448,46 @@ export default function VocabularySettingsPage() {
             <Button
               onClick={() => resetForm()}
               className="flex items-center gap-2"
+              disabled={addDisabled}
             >
               <Plus className="w-4 h-4" />
-              {t("settings.vocabulary.addButton")}
+              {scope === "org"
+                ? t("settings.vocabulary.scope.addOrganization")
+                : t("settings.vocabulary.addButton")}
             </Button>
           </DialogTrigger>
         </Dialog>
       </div>
+
+      {showOrganizationVocabulary && (
+        <div
+          className="flex items-center gap-1 mb-4"
+          role="tablist"
+          aria-label={t("settings.vocabulary.scope.label")}
+        >
+          {(["all", "user", "org"] as const).map((filter) => (
+            <Button
+              key={filter}
+              type="button"
+              size="sm"
+              variant={scope === filter ? "secondary" : "ghost"}
+              role="tab"
+              aria-selected={scope === filter}
+              onClick={() => setScope(filter)}
+            >
+              {t(`settings.vocabulary.scope.${filter}`)}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {scope === "org" && !organizationWritable && (
+        <p className="mb-4 text-sm text-muted-foreground" role="status">
+          {organizationAccess
+            ? t("settings.vocabulary.scope.readOnly")
+            : t("settings.vocabulary.scope.unavailable")}
+        </p>
+      )}
 
       {/* Vocabulary List */}
       <Card className="p-0 overflow-clip">
@@ -392,7 +505,7 @@ export default function VocabularySettingsPage() {
               {vocabularyItems.map((item, index) => (
                 <div
                   className="hover:bg-muted/50 transition-colors"
-                  key={item.id}
+                  key={`${item.scopeType}:${item.scopeId}:${item.id}`}
                 >
                   <div className="flex items-center justify-between py-3 px-4 group">
                     <span className="text-sm flex items-center gap-1">
@@ -405,23 +518,50 @@ export default function VocabularySettingsPage() {
                       ) : (
                         item.word
                       )}
+                      {item.source === "auto" && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                                {t("settings.vocabulary.learned.badge")}
+                              </span>
+                            </TooltipTrigger>
+                            {item.observedSource && (
+                              <TooltipContent>
+                                {t("settings.vocabulary.learned.tooltip", {
+                                  heard: item.observedSource,
+                                })}
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      {showOrganizationVocabulary && (
+                        <span className="ml-2 rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                          {item.scopeType === "user"
+                            ? t("settings.vocabulary.scope.personalBadge")
+                            : t("settings.vocabulary.scope.organizationBadge")}
+                        </span>
+                      )}
                     </span>
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditDialog(item)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openDeleteDialog(item)}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
+                    {(item.scopeType === "user" || organizationWritable) && (
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditDialog(item)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openDeleteDialog(item)}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   {index < vocabularyItems.length - 1 && (
                     <div className="border-t border-border" />
@@ -441,7 +581,10 @@ export default function VocabularySettingsPage() {
         formData={formData}
         onFormDataChange={setFormData}
         onSubmit={handleAddWord}
-        isLoading={createVocabularyMutation.isPending}
+        isLoading={
+          createVocabularyMutation.isPending ||
+          createOrganizationVocabularyMutation.isPending
+        }
       />
 
       <VocabularyDialog
@@ -451,7 +594,10 @@ export default function VocabularySettingsPage() {
         formData={formData}
         onFormDataChange={setFormData}
         onSubmit={handleEditWord}
-        isLoading={updateVocabularyMutation.isPending}
+        isLoading={
+          updateVocabularyMutation.isPending ||
+          updateOrganizationVocabularyMutation.isPending
+        }
       />
 
       <DeleteDialog
@@ -459,7 +605,10 @@ export default function VocabularySettingsPage() {
         onOpenChange={setIsDeleteDialogOpen}
         deletingItem={deletingItem}
         onConfirm={handleDeleteWord}
-        isLoading={deleteVocabularyMutation.isPending}
+        isLoading={
+          deleteVocabularyMutation.isPending ||
+          deleteOrganizationVocabularyMutation.isPending
+        }
       />
     </div>
   );

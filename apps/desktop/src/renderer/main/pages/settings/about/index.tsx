@@ -12,14 +12,15 @@ import {
 } from "lucide-react";
 import { api } from "@/trpc/react";
 import { useTranslation } from "react-i18next";
+import type { ParseKeys } from "i18next";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useUpdateState } from "@/hooks/useUpdateState";
 import type { UpdateState } from "@/main/services/auto-updater";
+import { GITHUB_REPO_URL } from "@/constants/github";
 
 const routeApi = getRouteApi("/_app/settings/about");
 
 const CHANGELOG_URL = "https://github.com/amicalhq/amical/releases";
-const GITHUB_URL = "https://github.com/amicalhq/amical";
 const DISCORD_URL = "https://amical.ai/community";
 const CONTACT_EMAIL = "contact@amical.ai";
 
@@ -29,7 +30,7 @@ const UPDATE_STATUS: Record<
     Icon: LucideIcon;
     iconClassName: string;
     textClassName?: string;
-    labelKey: string;
+    labelKey: ParseKeys;
   }
 > = {
   checking: {
@@ -216,7 +217,7 @@ export default function AboutSettingsPage() {
                   </div>
                 </div>
               </ExternalLink>
-              <ExternalLink href={GITHUB_URL}>
+              <ExternalLink href={GITHUB_REPO_URL}>
                 <div className="flex items-center justify-between py-4 group cursor-pointer">
                   <div>
                     <div className="flex items-center gap-2 font-semibold text-base group-hover:underline">

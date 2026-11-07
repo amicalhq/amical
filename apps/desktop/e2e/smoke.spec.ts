@@ -22,8 +22,8 @@ test.describe("smoke", () => {
 
     // A fresh profile boots straight into the onboarding window.
     const page = await app.firstWindow({ timeout: 60_000 });
+    await expect(page).toHaveURL(/onboarding\.html/);
     assertNotStaleDevBundle(page.url());
-    expect(page.url()).toContain("onboarding.html");
 
     // The renderer actually mounted (React rendered into #root).
     await page.waitForLoadState("domcontentloaded");

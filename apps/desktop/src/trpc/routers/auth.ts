@@ -1,16 +1,23 @@
 import { observable } from "@trpc/server/observable";
+import { shell } from "electron";
 import { z } from "zod";
+import { WEB_APP_ORIGIN } from "../../constants/web-app";
 import { createRouter, procedure } from "../trpc";
 import { logger } from "../../main/logger";
-import { AuthState } from "../../services/auth-service";
+import { runAuthEffect, type AuthState } from "../../services/auth-service";
+import {
+  getLogoutStatus,
+  logoutAndClearUserData,
+  syncBeforeLogout,
+} from "../../services/logout";
 
 export const authRouter = createRouter({
   // Get current auth status
   getAuthStatus: procedure.query(async ({ ctx }) => {
     const authService = ctx.services.authService;
 
-    const authState = await authService.getAuthState();
-    const isAuthenticated = await authService.isAuthenticated();
+    const authState = await runAuthEffect(authService.getAuthState());
+    const isAuthenticated = await runAuthEffect(authService.isAuthenticated());
 
     return {
       isAuthenticated,
@@ -27,14 +34,14 @@ export const authRouter = createRouter({
       throw new Error("Only available in development");
     }
     const authService = ctx.services.authService;
-    return { token: await authService.getIdToken() };
+    return { token: await runAuthEffect(authService.getIdToken()) };
   }),
 
   // Initiate login flow
   login: procedure.mutation(async ({ ctx }) => {
     const authService = ctx.services.authService;
 
-    await authService.login();
+    await runAuthEffect(authService.login());
 
     // The actual authentication will complete via the deep link callback
     return {
@@ -43,25 +50,37 @@ export const authRouter = createRouter({
     };
   }),
 
+  // `returnPath` starts with "/", so the fallback URL stays on the web app.
   openWebSession: procedure
-    .input(z.object({ returnPath: z.string().optional() }).optional())
+    .input(
+      z
+        .object({ returnPath: z.string().startsWith("/").optional() })
+        .optional(),
+    )
     .mutation(async ({ ctx, input }) => {
       const authService = ctx.services.authService;
-      await authService.openWebSession(input?.returnPath ?? "/");
+      const returnPath = input?.returnPath ?? "/";
+      try {
+        await runAuthEffect(authService.openWebSession(returnPath));
+      } catch (error) {
+        // Signed out, or the handoff failed: open the page anyway; the browser asks to sign in.
+        logger.main.warn(
+          "Web-session handoff failed, opening directly:",
+          error,
+        );
+        await shell.openExternal(`${WEB_APP_ORIGIN}${returnPath}`);
+      }
       return { success: true };
     }),
 
+  getLogoutStatus: procedure.query(() => getLogoutStatus()),
+
+  syncBeforeLogout: procedure.mutation(({ ctx }) =>
+    syncBeforeLogout(ctx.services),
+  ),
+
   // Logout
-  logout: procedure.mutation(async ({ ctx }) => {
-    const authService = ctx.services.authService;
-
-    await authService.logout();
-
-    return {
-      success: true,
-      message: "Logged out successfully",
-    };
-  }),
+  logout: procedure.mutation(({ ctx }) => logoutAndClearUserData(ctx.services)),
 
   // Subscribe to auth state changes
   // Using Observable instead of async generator due to Symbol.asyncDispose conflict
@@ -118,15 +137,19 @@ export const authRouter = createRouter({
       authService.on("auth-error", handleAuthError);
 
       // Send initial state
-      authService.getAuthState().then((state) => {
-        emit.next({
-          eventType: "initial",
-          isAuthenticated: state?.isAuthenticated || false,
-          userId: state?.userInfo?.sub || null,
-          userEmail: state?.userInfo?.email || null,
-          userName: state?.userInfo?.name || null,
+      void runAuthEffect(authService.getAuthState())
+        .then((state) => {
+          emit.next({
+            eventType: "initial",
+            isAuthenticated: state?.isAuthenticated || false,
+            userId: state?.userInfo?.sub || null,
+            userEmail: state?.userInfo?.email || null,
+            userName: state?.userInfo?.name || null,
+          });
+        })
+        .catch((error: unknown) => {
+          logger.main.error("Failed to read initial auth state:", error);
         });
-      });
 
       // Cleanup function - removes listeners when subscription ends
       return () => {

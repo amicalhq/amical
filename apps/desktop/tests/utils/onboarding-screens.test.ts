@@ -38,7 +38,7 @@ describe("getActiveOnboardingScreens", () => {
     ]);
   });
 
-  it("local flow: Download setup + shared config, no SignIn or try-it", () => {
+  it("local flow: Telemetry + Download setup + shared config, no SignIn or try-it", () => {
     const screens = getActiveOnboardingScreens({
       modelType: ModelType.Local,
       flags,
@@ -48,6 +48,7 @@ describe("getActiveOnboardingScreens", () => {
       OnboardingScreen.Welcome,
       OnboardingScreen.DiscoverySource,
       OnboardingScreen.ModelSelection,
+      OnboardingScreen.Telemetry,
       OnboardingScreen.Download,
       OnboardingScreen.Permissions,
       OnboardingScreen.MicTest,
@@ -56,6 +57,17 @@ describe("getActiveOnboardingScreens", () => {
       OnboardingScreen.DictationLocal,
       OnboardingScreen.Completion,
     ]);
+  });
+
+  it("skips the telemetry step for a signed-in user on the local flow", () => {
+    const screens = getActiveOnboardingScreens({
+      modelType: ModelType.Local,
+      flags,
+      skipped: [],
+      signedIn: true,
+    });
+    expect(screens).not.toContain(OnboardingScreen.Telemetry);
+    expect(screens).toContain(OnboardingScreen.Download);
   });
 
   it("mic/shortcut/language are shared across both branches", () => {
@@ -87,6 +99,7 @@ describe("getActiveOnboardingScreens", () => {
       skipped: [],
     });
     expect(screens).not.toContain(OnboardingScreen.SignIn);
+    expect(screens).not.toContain(OnboardingScreen.Telemetry);
     expect(screens).not.toContain(OnboardingScreen.Download);
     expect(screens).not.toContain(OnboardingScreen.DictationEmail);
     expect(screens).not.toContain(OnboardingScreen.DictationNotes);

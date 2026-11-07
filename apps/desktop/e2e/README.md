@@ -45,15 +45,17 @@ win box; note `test:e2e:fresh`'s env-prefix syntax needs a POSIX shell
 
 The app's startup deliberately runs un-gated in tests (so the real code paths
 are exercised): `syncAutoLaunch()` registers the test binary as a login item,
-and `setAsDefaultProtocolClient` registers the `amical://` handler. The
+and `setAsDefaultProtocolClient` registers the `amical://` handler
+(`amical-dev://` for the unpackaged `bundle` target). The
 Playwright globalSetup/globalTeardown pair (`helpers/os-state.ts`) snapshots
 login items before the suite and best-effort removes entries the run added —
 failures warn but never fail the suite.
 
-- The `amical://` handler is not restored: the real installed Amical
-  re-registers itself on its next launch (macOS self-heals; harmless locally).
+- Protocol handlers are not restored: the real installed Amical re-registers
+  `amical://` on its next launch (macOS self-heals; harmless locally), and
+  `amical-dev://` belongs to local dev builds anyway.
 - Windows is not implemented yet. The equivalent pollution lives in HKCU
   (`Software\Microsoft\Windows\CurrentVersion\Run` for auto-launch,
-  `Software\Classes\amical` for the protocol); the same snapshot/diff pattern
+  `Software\Classes\amical` / `amical-dev` for the protocol); the same snapshot/diff pattern
   applies via `reg query`/`reg delete`. Verify on the real box (`ssh win`)
   when porting.

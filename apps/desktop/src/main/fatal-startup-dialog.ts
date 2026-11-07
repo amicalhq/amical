@@ -101,7 +101,7 @@ export async function showFatalStartupDialog(
         } catch (supportError) {
           console.error("Failed to open support email", supportError);
           try {
-            clipboard.writeText(diagnostics);
+            await clipboard.writeText(diagnostics);
           } catch {
             // The address remains visible in the status message below.
           }

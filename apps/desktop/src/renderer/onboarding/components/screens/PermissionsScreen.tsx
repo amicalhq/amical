@@ -33,6 +33,8 @@ export function PermissionsScreen({
 }: PermissionsScreenProps) {
   const { t } = useTranslation();
   const [isRequestingMic, setIsRequestingMic] = useState(false);
+  const [micOpenTried, setMicOpenTried] = useState(false);
+  const isWindows = platform === "win32";
 
   // tRPC mutations
   const requestMicPermission =
@@ -58,9 +60,20 @@ export function PermissionsScreen({
   const handleRequestMicrophone = async () => {
     setIsRequestingMic(true);
     try {
-      await requestMicPermission.mutateAsync();
+      if (isWindows) {
+        // Electron cannot ask Windows for mic access. Windows may show its
+        // prompt only when an app opens the mic, so open it once, close it,
+        // and let the status check decide what the row shows.
+        await navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then((stream) => stream.getTracks().forEach((track) => track.stop()))
+          .catch(() => {}); // Blocked: the status check below decides.
+      } else {
+        await requestMicPermission.mutateAsync();
+      }
       await checkPermissions();
     } finally {
+      if (isWindows) setMicOpenTried(true);
       setIsRequestingMic(false);
     }
   };
@@ -88,14 +101,18 @@ export function PermissionsScreen({
     </span>
   );
 
-  // Microphone action: request when not-yet-determined, otherwise open settings.
-  const handleMicAction =
-    permissions.microphone === "not-determined"
-      ? handleRequestMicrophone
-      : handleOpenMicrophoneSettings;
+  // Windows: try the mic once, then settings. macOS: ask only when not-determined.
+  const canRequestMic = isWindows
+    ? !micOpenTried
+    : permissions.microphone === "not-determined";
+  const micBlockedOnWindows =
+    isWindows && micOpenTried && permissions.microphone !== "granted";
+  const handleMicAction = canRequestMic
+    ? handleRequestMicrophone
+    : handleOpenMicrophoneSettings;
   const micActionLabel = isRequestingMic
     ? t("onboarding.permissions.actions.requesting")
-    : permissions.microphone === "not-determined"
+    : canRequestMic
       ? t("onboarding.permissions.actions.request")
       : t("onboarding.permissions.actions.openSettings");
 
@@ -118,7 +135,11 @@ export function PermissionsScreen({
           tileClassName="size-[38px]"
           icon={<Mic size={20} />}
           title={t("onboarding.permissions.microphone.title")}
-          description={t("onboarding.permissions.microphone.description")}
+          description={
+            micBlockedOnWindows
+              ? t("onboarding.permissions.microphone.windowsBlocked")
+              : t("onboarding.permissions.microphone.description")
+          }
           trailing={
             permissions.microphone === "granted" ? (
               grantedPill

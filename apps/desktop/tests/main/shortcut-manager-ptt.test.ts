@@ -13,10 +13,11 @@ const createManager = () => {
   // superset-triggered resync never prunes anything in these tests.
   const ctx = createTestManager();
   ctx.internals.shortcuts = {
-    pushToTalk: [A, B],
-    toggleRecording: [A, B, C],
+    pushToTalk: [[A, B]],
+    toggleRecording: [[A, B, C]],
     pasteLastTranscript: [],
     newNote: [],
+    draftMode: [],
   };
   return ctx;
 };
@@ -71,7 +72,7 @@ describe("ShortcutManager PTT activation (exact start, subset hold)", () => {
     expect(timeline).toEqual(["toggle"]);
 
     // Releasing the extra key collapses to exactly the PTT set. It must NOT emit a
-    // press — RecordingManager treats pttPress in hands-free as a stop, which would
+    // press — the lifecycle grammar treats a press while latched as a stop, which would
     // cancel the session.
     internals.removeActiveKey(C); // {A,B} via key-up
     expect(timeline).toEqual(["toggle"]);

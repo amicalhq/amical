@@ -3,10 +3,11 @@ import { ShortcutManager } from "../../src/main/managers/shortcut-manager";
 
 export type ShortcutManagerInternals = {
   shortcuts: {
-    pushToTalk: number[];
-    toggleRecording: number[];
-    pasteLastTranscript: number[];
-    newNote: number[];
+    pushToTalk: number[][];
+    toggleRecording: number[][];
+    pasteLastTranscript: number[][];
+    newNote: number[][];
+    draftMode: number[][];
   };
   addActiveKey(keyCode: number): void;
   removeActiveKey(keyCode: number): void;
@@ -23,10 +24,11 @@ export const usePttShortcut = (
   keys: number[] = [101],
 ) => {
   internals.shortcuts = {
-    pushToTalk: keys,
+    pushToTalk: [keys],
     toggleRecording: [],
     pasteLastTranscript: [],
     newNote: [],
+    draftMode: [],
   };
 };
 
@@ -38,9 +40,10 @@ export const useToggleShortcut = (
 ) => {
   internals.shortcuts = {
     pushToTalk: [],
-    toggleRecording: keys,
+    toggleRecording: [keys],
     pasteLastTranscript: [],
     newNote: [],
+    draftMode: [],
   };
 };
 
@@ -89,6 +92,7 @@ export const createManager = (
     toggleRecording: [],
     pasteLastTranscript: [],
     newNote: [],
+    draftMode: [],
   };
 
   const timeline: string[] = [];

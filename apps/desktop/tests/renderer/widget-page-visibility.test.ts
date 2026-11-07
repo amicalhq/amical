@@ -15,7 +15,7 @@ vi.mock("@/hooks/useRecording", () => ({
       mode: "idle",
       isDraft: false,
     },
-    audioLevels: [],
+    audioLevelRef: { current: 0 },
     startRecording: vi.fn(),
     stopRecording: vi.fn(),
     dismissRecording: vi.fn(),

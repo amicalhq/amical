@@ -442,6 +442,14 @@ export class OnboardingService extends EventEmitter {
       !permissions.microphone || !permissions.accessibility;
 
     const needed = forceOnboarding || !hasCompleted || hasMissingPermissions;
+    if (needed) {
+      logger.main.info("Onboarding needed", {
+        forceOnboarding,
+        notCompleted: !hasCompleted,
+        microphoneStatus: systemPreferences.getMediaAccessStatus("microphone"),
+        accessibility: permissions.accessibility,
+      });
+    }
 
     return {
       needed,
@@ -701,13 +709,12 @@ export class OnboardingService extends EventEmitter {
    * a resume happens. A completed run re-entering (FORCE_ONBOARDING, missing
    * permissions) is a re-run, not a resume.
    */
-  async trackOnboardingStarted(platform: string): Promise<void> {
+  async trackOnboardingStarted(): Promise<void> {
     const persisted = await this.getOnboardingState();
     const resumedFrom = persisted?.completedVersion
       ? undefined
       : persisted?.lastVisitedScreen;
     this.telemetryService.trackOnboardingStarted({
-      platform,
       resumed: !!resumedFrom,
       resumedFrom,
     });
@@ -773,7 +780,7 @@ export class OnboardingService extends EventEmitter {
     logger.main.info("Starting onboarding flow");
 
     // Track onboarding started event
-    await this.trackOnboardingStarted(process.platform);
+    await this.trackOnboardingStarted();
   }
 
   /**

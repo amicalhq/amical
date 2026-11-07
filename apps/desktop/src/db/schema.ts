@@ -1,3 +1,5 @@
+import { createEntityId } from "@amical/types";
+import type { SyncPayload } from "@amical/api-contracts/apps/v1";
 import { sql } from "drizzle-orm";
 import {
   sqliteTable,
@@ -12,75 +14,134 @@ import {
 } from "drizzle-orm/sqlite-core";
 import type { RemoteConfig } from "@/types/remote-config";
 import type { HistoryRetentionPeriod } from "../constants/history-retention";
+import type { DictationActivity } from "../types/activity";
 
 // Transcriptions table
-export const transcriptions = sqliteTable("transcriptions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  text: text("text").notNull(),
-  timestamp: integer("timestamp", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  language: text("language").default("en"),
-  detectedLanguage: text("detected_language"),
-  audioFile: text("audio_file"), // Path to the audio file
-  confidence: real("confidence"), // AI confidence score (0-1)
-  duration: integer("duration"), // Duration in seconds
-  speechModel: text("speech_model"), // Model used for speech recognition
-  formattingModel: text("formatting_model"), // Model used for formatting
-  meta: text("meta", { mode: "json" }), // Additional metadata as JSON
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const transcriptions = sqliteTable(
+  "transcriptions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    // Recording lifecycle custody: the session that produced this row and the
+    // sealed outcome stamped at commit ("success" | "empty" | "failure" |
+    // "dismissed"; discards delete the row). `disposition` NULL on a
+    // session-keyed row means the app died mid-session; startup recovery
+    // settles it.
+    sessionId: text("session_id"),
+    disposition: text("disposition"),
+    // Consumed atomically when a successful row is staged in the activity outbox.
+    activityPending: integer("activity_pending", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    text: text("text").notNull(),
+    timestamp: integer("timestamp", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    language: text("language").default("en"),
+    detectedLanguage: text("detected_language"),
+    audioFile: text("audio_file"), // Path to the audio file
+    confidence: real("confidence"), // AI confidence score (0-1)
+    duration: integer("duration"), // Duration in seconds
+    audioDurationMs: integer("audio_duration_ms"),
+    speechModel: text("speech_model"), // Model used for speech recognition
+    formattingModel: text("formatting_model"), // Model used for formatting
+    meta: text("meta", { mode: "json" }), // Additional metadata as JSON
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    index("transcriptions_session_id_idx").on(table.sessionId),
+    index("transcriptions_activity_pending_idx")
+      .on(table.createdAt, table.id)
+      .where(
+        sql`${table.activityPending} = 1 AND ${table.disposition} = 'success'`,
+      ),
+  ],
+);
 
 // Vocabulary table
-export const vocabulary = sqliteTable("vocabulary", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  word: text("word").notNull().unique(),
-  replacementWord: text("replacement_word"),
-  dateAdded: integer("date_added", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  usageCount: integer("usage_count").default(0), // How many times this word appeared in transcriptions
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const vocabulary = sqliteTable(
+  "vocabulary",
+  {
+    id: text("id")
+      .notNull()
+      .$defaultFn(() => createEntityId("vocabulary")),
+    scopeType: text("scope_type", { enum: ["user", "org"] })
+      .notNull()
+      .default("user"),
+    // Personal data keeps the existing device-local lifecycle and uses an
+    // empty scope ID. Organisation data always stores the cloud scope ID.
+    scopeId: text("scope_id").notNull().default(""),
+    word: text("word").notNull(),
+    replacementWord: text("replacement_word"),
+    // "auto" rows were learned from a correction on this device; the marker
+    // and the heard form stay local (not in the sync payload).
+    source: text("source", { enum: ["manual", "auto"] })
+      .notNull()
+      .default("manual"),
+    observedSource: text("observed_source"),
+    dateAdded: integer("date_added", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    usageCount: integer("usage_count").default(0), // How many times this word appeared in transcriptions
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scopeType, table.scopeId, table.id] }),
+    uniqueIndex("vocabulary_scope_word_unique").on(
+      table.scopeType,
+      table.scopeId,
+      table.word,
+    ),
+  ],
+);
 
 // Snippets table — short trigger phrases that expand into longer text during dictation
-export const snippets = sqliteTable("snippets", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  trigger: text("trigger").notNull().unique(),
-  content: text("content").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const snippets = sqliteTable(
+  "snippets",
+  {
+    id: text("id")
+      .notNull()
+      .$defaultFn(() => createEntityId("snippet")),
+    scopeType: text("scope_type", { enum: ["user", "org"] })
+      .notNull()
+      .default("user"),
+    scopeId: text("scope_id").notNull().default(""),
+    trigger: text("trigger").notNull(),
+    content: text("content").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scopeType, table.scopeId, table.id] }),
+    uniqueIndex("snippets_scope_trigger_unique").on(
+      table.scopeType,
+      table.scopeId,
+      table.trigger,
+    ),
+  ],
+);
 
-export type SyncScopeType = "user" | "org";
-export type SyncCollection = "vocabulary" | "snippet";
-export type VocabularySyncPayload = {
-  word: string;
-  replacement: string | null;
-};
-export type SnippetSyncPayload = {
-  trigger: string;
-  content: string;
-};
-export type SyncPayload = VocabularySyncPayload | SnippetSyncPayload;
+export type { SyncPayload };
+export type {
+  NotePayload as NoteSyncPayload,
+  SnippetPayload as SnippetSyncPayload,
+  SyncCollection,
+  SyncScopeType,
+  VocabularyPayload as VocabularySyncPayload,
+} from "@amical/api-contracts/apps/v1";
 
 // Singleton sequence allocator shared by every synchronized collection.
 export const syncClientState = sqliteTable("sync_client_state", {
@@ -88,13 +149,26 @@ export const syncClientState = sqliteTable("sync_client_state", {
   lastOutboxSequence: integer("last_outbox_sequence").notNull().default(0),
 });
 
+// The scopes advertised by the latest successful cloud bootstrap. This gives
+// local organisation CRUD a transactionally checkable capability boundary.
+export const syncScopeState = sqliteTable(
+  "sync_scope_state",
+  {
+    scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
+    scopeId: text("scope_id").notNull(),
+    role: text("role"),
+    canWrite: integer("can_write", { mode: "boolean" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.scopeType, table.scopeId] })],
+);
+
 export const syncCollectionState = sqliteTable(
   "sync_collection_state",
   {
     scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
     scopeId: text("scope_id").notNull(),
     collection: text("collection", {
-      enum: ["vocabulary", "snippet"],
+      enum: ["vocabulary", "snippet", "note"],
     }).notNull(),
     cursor: integer("cursor").notNull().default(0),
   },
@@ -105,7 +179,7 @@ export const syncCollectionState = sqliteTable(
   ],
 );
 
-// The domain row UUID is also its sync ID. Accepted server state remains in a
+// The domain row ID is also its sync ID. Accepted server state remains in a
 // scope-specific sidecar so physical deletion can still sync a tombstone.
 export const syncItemState = sqliteTable(
   "sync_item_state",
@@ -113,10 +187,12 @@ export const syncItemState = sqliteTable(
     scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
     scopeId: text("scope_id").notNull(),
     collection: text("collection", {
-      enum: ["vocabulary", "snippet"],
+      enum: ["vocabulary", "snippet", "note"],
     }).notNull(),
     syncId: text("sync_id").notNull(),
     acceptedSyncVersion: integer("accepted_sync_version"),
+    // Last remote note change; local push acknowledgments do not advance it.
+    noteRemoteVersion: integer("note_remote_version"),
     acceptedPayload: text("accepted_payload", {
       mode: "json",
     }).$type<SyncPayload | null>(),
@@ -136,7 +212,7 @@ export const syncOutbox = sqliteTable(
     scopeType: text("scope_type", { enum: ["user", "org"] }).notNull(),
     scopeId: text("scope_id").notNull(),
     collection: text("collection", {
-      enum: ["vocabulary", "snippet"],
+      enum: ["vocabulary", "snippet", "note"],
     }).notNull(),
     syncId: text("sync_id").notNull(),
     desiredPayload: text("desired_payload", {
@@ -154,11 +230,42 @@ export const syncOutbox = sqliteTable(
     }).$type<SyncPayload | null>(),
     headExpectedSyncVersion: integer("head_expected_sync_version"),
     headSequence: integer("head_sequence"),
+    blockedReason: text("blocked_reason"),
+    desiredNotBefore: integer("desired_not_before").notNull().default(0),
   },
   (table) => [
     primaryKey({
       columns: [table.scopeType, table.scopeId, table.collection, table.syncId],
     }),
+  ],
+);
+
+export const activityOutbox = sqliteTable(
+  "activity_outbox",
+  {
+    activityId: text("activity_id").primaryKey(),
+    payload: text("payload", { mode: "json" })
+      .$type<DictationActivity>()
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("activity_outbox_created_idx").on(table.createdAt)],
+);
+
+// Historical account-replay marker. Runtime no longer uses it; logout clears it.
+export const activityMaterializationState = sqliteTable(
+  "activity_materialization_state",
+  {
+    id: integer("id").primaryKey(),
+    accountId: text("account_id"),
+  },
+  (table) => [
+    check(
+      "activity_materialization_state_singleton_check",
+      sql`${table.id} = 1`,
+    ),
   ],
 );
 
@@ -266,11 +373,11 @@ export interface AppSettingsData {
     pendingMicrophoneName?: string;
   };
   shortcuts?: {
-    pushToTalk?: number[];
-    toggleRecording?: number[];
-    pasteLastTranscript?: number[];
-    newNote?: number[];
-    draftMode?: number[];
+    pushToTalk?: number[][];
+    toggleRecording?: number[][];
+    pasteLastTranscript?: number[][];
+    newNote?: number[][];
+    draftMode?: number[][];
   };
 
   modelProvidersConfig?: {
@@ -356,7 +463,6 @@ export interface AppSettingsData {
   // + offline render. Re-validated against RemoteConfigSchema on read.
   remoteConfig?: {
     config?: RemoteConfig;
-    lastFetchedAt?: string; // ISO 8601
   };
   dataMigrations?: {
     notesLexical?: number;
@@ -367,9 +473,17 @@ export interface AppSettingsData {
 
 // Notes table
 export const notes = sqliteTable("notes", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: text("id")
+    .primaryKey()
+    .notNull()
+    .$defaultFn(() => createEntityId("note")),
+  accountId: text("account_id"),
+  syncError: text("sync_error"),
   title: text("title").notNull(),
-  content: text("content").default(""), // Store the actual text content
+  content: text("content").default(""), // Authoritative body when contentFormat is markdown-v1
+  contentFormat: text("content_format").notNull().default("legacy"),
+  legacyContent: text("legacy_content"), // Retained pre-migration content column
+  migrationError: text("migration_error"),
   icon: text("icon"), // Store the icon (emoji) associated with the note
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
@@ -384,7 +498,7 @@ export const yjsUpdates = sqliteTable(
   "yjs_updates",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    noteId: integer("note_id")
+    noteId: text("note_id")
       .notNull()
       .references(() => notes.id, { onDelete: "cascade" }),
     updateData: blob("update_data", { mode: "buffer" }).notNull(), // Binary data stored as Buffer
@@ -398,8 +512,9 @@ export const yjsUpdates = sqliteTable(
   ],
 );
 
-export const dailyStats = sqliteTable(
-  "daily_stats",
+// Historical counters are retained unchanged; dictationStats owns live totals.
+export const dailyStatsBackup = sqliteTable(
+  "daily_stats_backup",
   {
     id: text("id").notNull().primaryKey(),
     date: text("date").notNull(),
@@ -410,6 +525,13 @@ export const dailyStats = sqliteTable(
   },
   (table) => [uniqueIndex("daily_stats_date_unique_idx").on(table.date)],
 );
+
+export const dictationStats = sqliteTable("dictation_stats", {
+  scope: text("scope").notNull().primaryKey(),
+  totalWords: integer("total_words").notNull().default(0),
+  totalTranscriptions: integer("total_transcriptions").notNull().default(0),
+  revision: integer("revision").notNull().default(0),
+});
 
 // Skills = personalization rules that the desktop resolves at dictation
 // time into the wire-format `Skill` proto message. Each row is one
@@ -484,9 +606,13 @@ export type NewVocabulary = typeof vocabulary.$inferInsert;
 export type Snippet = typeof snippets.$inferSelect;
 export type NewSnippet = typeof snippets.$inferInsert;
 export type SyncClientState = typeof syncClientState.$inferSelect;
+export type SyncScopeState = typeof syncScopeState.$inferSelect;
 export type SyncCollectionState = typeof syncCollectionState.$inferSelect;
 export type SyncItemState = typeof syncItemState.$inferSelect;
 export type SyncOutbox = typeof syncOutbox.$inferSelect;
+export type ActivityOutbox = typeof activityOutbox.$inferSelect;
+export type ActivityMaterializationState =
+  typeof activityMaterializationState.$inferSelect;
 export type Model = typeof models.$inferSelect;
 export type NewModel = typeof models.$inferInsert;
 export type AppSettings = typeof appSettings.$inferSelect;
@@ -495,7 +621,5 @@ export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
 export type YjsUpdate = typeof yjsUpdates.$inferSelect;
 export type NewYjsUpdate = typeof yjsUpdates.$inferInsert;
-export type DailyStat = typeof dailyStats.$inferSelect;
-export type NewDailyStat = typeof dailyStats.$inferInsert;
 export type Skill = typeof skills.$inferSelect;
 export type NewSkill = typeof skills.$inferInsert;

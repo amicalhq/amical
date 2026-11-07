@@ -28,7 +28,12 @@ const ctx = (
 // matter here — surface→preset resolution comes from the app catalog, not these
 // rows; listSkills only supplies the optional per-preset tone.
 const BUILT_INS = [
-  { id: "personal", isBuiltIn: true, preset: "personal_messages", tone: "casual" },
+  {
+    id: "personal",
+    isBuiltIn: true,
+    preset: "personal_messages",
+    tone: "casual",
+  },
   { id: "work", isBuiltIn: true, preset: "work_messages", tone: "casual" },
   { id: "email", isBuiltIn: true, preset: "email", tone: "formal" },
   { id: "default", isBuiltIn: true, preset: "default", tone: "casual" },
@@ -130,7 +135,10 @@ describe("resolveSessionSkills", () => {
       await resolveSessionSkills({
         isInstruct: false,
         enableFormatting: true,
-        accessibilityContext: ctx("com.google.Chrome", "https://app.notion.com/workspace"),
+        accessibilityContext: ctx(
+          "com.google.Chrome",
+          "https://app.notion.com/workspace",
+        ),
       }),
     ).toEqual([{ preset: "markdown_notes" }]);
   });
@@ -140,7 +148,10 @@ describe("resolveSessionSkills", () => {
       await resolveSessionSkills({
         isInstruct: false,
         enableFormatting: true,
-        accessibilityContext: ctx("com.google.Chrome", "https://www.notion.so/page"),
+        accessibilityContext: ctx(
+          "com.google.Chrome",
+          "https://www.notion.so/page",
+        ),
       }),
     ).toEqual([{ preset: "markdown_notes" }]);
   });
@@ -151,7 +162,10 @@ describe("resolveSessionSkills", () => {
       await resolveSessionSkills({
         isInstruct: false,
         enableFormatting: true,
-        accessibilityContext: ctx("com.unknown.example", "https://evilnotion.so/"),
+        accessibilityContext: ctx(
+          "com.unknown.example",
+          "https://evilnotion.so/",
+        ),
       }),
     ).toEqual([{ preset: "default" }]);
   });

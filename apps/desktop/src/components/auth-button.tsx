@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { LogIn, LogOut, Loader2 } from "lucide-react";
+import { LogIn, LogOut, Loader2, Smartphone } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/trpc/react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,6 +13,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
+import { Dialog } from "@/components/ui/dialog";
+import { MobileAppDialogContent } from "@/components/mobile-app-dialog";
+import { useLogout } from "@/hooks/useLogout";
 
 // Helper function to generate initials from email or name
 function getInitials(email?: string | null, name?: string | null): string {
@@ -32,7 +36,11 @@ function getInitials(email?: string | null, name?: string | null): string {
 }
 
 export function AuthButton() {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
+  const [mobileAppOpen, setMobileAppOpen] = useState(false);
+  const logout = useLogout();
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get current auth status
@@ -64,29 +72,11 @@ export function AuthButton() {
       }, 5000);
     },
     onSuccess: () => {
-      toast.info("Opening browser for sign in...");
+      toast.info(t("settings.sidebar.signInToast.opening"));
     },
     onError: (error) => {
       clearLoadingTimeout();
-      toast.error("Failed to initiate login", {
-        description: error.message,
-      });
-      setIsLoading(false);
-    },
-  });
-
-  const logoutMutation = api.auth.logout.useMutation({
-    onMutate: () => {
-      setIsLoading(true);
-    },
-    onSuccess: () => {
-      toast.success("Signed out successfully");
-      setIsLoading(false);
-      // Invalidate auth queries
-      authStatusQuery.refetch();
-    },
-    onError: (error) => {
-      toast.error("Failed to sign out", {
+      toast.error(t("settings.sidebar.signInToast.failed"), {
         description: error.message,
       });
       setIsLoading(false);
@@ -100,9 +90,13 @@ export function AuthButton() {
       clearLoadingTimeout();
       authStatusQuery.refetch();
       setIsLoading(false);
-      // Only show toast for actual authentication events, not initial state
-      if (data.eventType === "authenticated" && data.isAuthenticated) {
-        toast.success("Signed in successfully");
+      // Failed logout also emits authenticated to resume sync for the same session.
+      if (
+        data.eventType === "authenticated" &&
+        data.isAuthenticated &&
+        !authStatusQuery.data?.isAuthenticated
+      ) {
+        toast.success(t("settings.sidebar.signInToast.success"));
       }
     },
     onError: (error) => {
@@ -114,10 +108,7 @@ export function AuthButton() {
     loginMutation.mutate();
   };
 
-  const handleLogout = () => {
-    logoutMutation.mutate();
-  };
-
+  const isBusy = isLoading || logout.isBusy;
   const isAuthenticated = authStatusQuery.data?.isAuthenticated || false;
   const userEmail = authStatusQuery.data?.userEmail;
   const userName = authStatusQuery.data?.userName;
@@ -127,21 +118,21 @@ export function AuthButton() {
       <SidebarMenuItem>
         <SidebarMenuButton disabled>
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Loading...</span>
+          <span>{t("settings.sidebar.accountLoading")}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
     );
   }
 
-  if (isAuthenticated) {
+  if (isAuthenticated || authStatusQuery.data?.userId) {
     const initials = getInitials(userEmail, userName);
-    const displayName = userName || userEmail || "Account";
+    const displayName = userName || userEmail || t("settings.sidebar.account");
 
     return (
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <SidebarMenuButton disabled={isLoading}>
+            <SidebarMenuButton ref={accountButtonRef} disabled={isBusy}>
               <Avatar className="h-4 w-4">
                 <AvatarFallback className="text-[10px]">
                   {initials}
@@ -164,33 +155,45 @@ export function AuthButton() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setMobileAppOpen(true)}>
+              <Smartphone className="mr-2 h-4 w-4" />
+              {t("settings.sidebar.mobileApp.label")}
+            </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={handleLogout}
-              disabled={isLoading}
+              onClick={() => logout.requestLogout(accountButtonRef)}
+              disabled={isBusy}
               className="text-destructive focus:text-destructive"
             >
-              {isLoading ? (
+              {isBusy ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <LogOut className="mr-2 h-4 w-4" />
               )}
-              Sign Out
+              {t("settings.sidebar.signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Dialog open={mobileAppOpen} onOpenChange={setMobileAppOpen}>
+          <MobileAppDialogContent
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              accountButtonRef.current?.focus();
+            }}
+          />
+        </Dialog>
       </SidebarMenuItem>
     );
   }
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton onClick={handleLogin} disabled={isLoading}>
-        {isLoading ? (
+      <SidebarMenuButton onClick={handleLogin} disabled={isBusy}>
+        {isBusy ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
           <LogIn className="h-4 w-4" />
         )}
-        <span>Sign In</span>
+        <span>{t("settings.sidebar.signIn")}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );

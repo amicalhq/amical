@@ -1,14 +1,31 @@
 import { app } from "electron";
 import started from "electron-squirrel-startup";
+import path from "node:path";
 import { showFatalStartupDialog } from "./fatal-startup-dialog";
 
 // E2E harness hook (see e2e/): give each test run an isolated profile. Must
 // happen before ./app loads — requestSingleInstanceLock() there keys its lock
 // off userData, and an isolated path keeps test instances from colliding with
 // a real running Amical. sessionData is set too so Chromium caches follow.
-if (process.env.AMICAL_E2E_USER_DATA_DIR) {
-  app.setPath("userData", process.env.AMICAL_E2E_USER_DATA_DIR);
-  app.setPath("sessionData", process.env.AMICAL_E2E_USER_DATA_DIR);
+// Unpackaged dev builds get their own profile for the same reason, so dev can
+// run next to an installed Amical.
+const profileDir =
+  process.env.AMICAL_E2E_USER_DATA_DIR ||
+  (app.isPackaged
+    ? undefined
+    : path.join(app.getPath("appData"), "Amical-dev"));
+if (profileDir) {
+  app.setPath("userData", profileDir);
+  app.setPath("sessionData", profileDir);
+}
+
+// macOS activates a regular app when it launches from a terminal, which takes
+// focus and switches Spaces. Unpackaged builds launch as an accessory app
+// (never activated at launch), then turn regular at ready; the startup windows
+// open with showInactive (see AppManager.initialize).
+if (!app.isPackaged && process.platform === "darwin") {
+  app.setActivationPolicy("accessory");
+  app.once("ready", () => app.setActivationPolicy("regular"));
 }
 
 if (started) {

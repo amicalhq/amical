@@ -1,7 +1,7 @@
 /**
  * Build the `initial_prompt` / `prompt` string passed to Whisper.
  *
- * Ported from axis (`@axis/inference`) so local + cloud transcription share
+ * Ported from the cloud inference package so local + cloud transcription share
  * the same conditioning shape: vocabulary at the start, prior-text tail at
  * the end, with byte budgets that keep us under Whisper's ~224-token decoder
  * prefix and Groq's 896-byte cap.

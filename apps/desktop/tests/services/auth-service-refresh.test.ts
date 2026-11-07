@@ -1,12 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Cause, Effect, Exit, Fiber, Option } from "effect";
 
-import { AuthService, type AuthState } from "../../src/services/auth-service";
+import {
+  AuthService,
+  AuthServiceFailure,
+  runAuthEffect,
+  type AuthState,
+} from "../../src/services/auth-service";
 import {
   getSettingsSection,
   updateSettingsSection,
 } from "../../src/db/app-settings";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
+import { logger } from "../../src/main/logger";
 
 function idToken(subject: string): string {
   const payload = Buffer.from(JSON.stringify({ sub: subject })).toString(
@@ -16,6 +23,7 @@ function idToken(subject: string): string {
 }
 
 describe("AuthService refresh fencing", () => {
+  const contractFailure = vi.fn();
   let testDb: TestDatabase;
   let authService: AuthService;
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -29,6 +37,8 @@ describe("AuthService refresh fencing", () => {
     testDb = await createTestDatabase();
     setTestDatabase(testDb.db);
     authService = AuthService.createForTests();
+    contractFailure.mockReset();
+    authService.on("api-contract-failure", contractFailure);
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -44,12 +54,79 @@ describe("AuthService refresh fencing", () => {
   });
 
   afterEach(async () => {
+    await Effect.runPromise(authService.shutdown());
     vi.unstubAllGlobals();
     await testDb.close();
     delete process.env.AUTH_CLIENT_ID;
     delete process.env.AUTHORIZATION_ENDPOINT;
     delete process.env.AUTH_TOKEN_ENDPOINT;
     delete process.env.AUTH_REDIRECT_URI;
+  });
+
+  it("preserves a before-logout failure and its cleanup defect", async () => {
+    const error = new Error("sync cleanup failed");
+    const defect = new Error("finalizer failed");
+    authService.registerBeforeLogoutHandler(() =>
+      Effect.fail(error).pipe(Effect.ensuring(Effect.die(defect))),
+    );
+
+    const exit = await Effect.runPromiseExit(authService.logout());
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.findErrorOption(exit.cause);
+      expect(Option.isSome(failure)).toBe(true);
+      if (Option.isSome(failure)) {
+        expect(failure.value).toBeInstanceOf(AuthServiceFailure);
+        expect(failure.value.cause).toBe(error);
+      }
+      expect(
+        exit.cause.reasons
+          .filter(Cause.isDieReason)
+          .map((reason) => reason.defect),
+      ).toEqual([defect]);
+    }
+    expect((await getSettingsSection("auth"))?.isAuthenticated).toBe(true);
+  });
+
+  it("does not hide logout cleanup defects when a refresh token is rejected", async () => {
+    const error = new Error("sync cleanup failed");
+    const defect = new Error("logout finalizer failed");
+    const secondDefect = new Error("second logout finalizer failed");
+    const logError = vi.spyOn(logger.main, "error");
+    authService.registerBeforeLogoutHandler(() =>
+      Effect.fail(error).pipe(
+        Effect.ensuring(
+          Effect.die(defect).pipe(Effect.ensuring(Effect.die(secondDefect))),
+        ),
+      ),
+    );
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: async () => "invalid_grant",
+    });
+
+    const exit = await Effect.runPromiseExit(
+      authService.refreshTokenIfNeeded(true),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(
+        exit.cause.reasons
+          .filter(Cause.isDieReason)
+          .map((reason) => reason.defect),
+      ).toEqual([defect, secondDefect]);
+      expect(Cause.findErrorOption(exit.cause)).toEqual(Option.none());
+    }
+    expect(
+      logError.mock.calls.filter(
+        ([message, detail]) =>
+          message === "Token refresh failed:" && detail === error,
+      ),
+    ).toHaveLength(1);
+    expect((await getSettingsSection("auth"))?.isAuthenticated).toBe(true);
   });
 
   it("uses one refresh request for concurrent token readers", async () => {
@@ -65,7 +142,10 @@ describe("AuthService refresh fencing", () => {
     });
 
     await expect(
-      Promise.all([authService.getIdToken(), authService.getIdToken()]),
+      Promise.all([
+        runAuthEffect(authService.getIdToken()),
+        runAuthEffect(authService.getIdToken()),
+      ]),
     ).resolves.toEqual([refreshedToken, refreshedToken]);
     expect(fetchMock).toHaveBeenCalledOnce();
   });
@@ -86,13 +166,176 @@ describe("AuthService refresh fencing", () => {
       }),
     });
 
-    await authService.refreshTokenIfNeeded();
+    await Effect.runPromise(authService.refreshTokenIfNeeded());
     expect(fetchMock).not.toHaveBeenCalled();
 
-    await authService.refreshTokenIfNeeded(true);
+    await Effect.runPromise(authService.refreshTokenIfNeeded(true));
     expect(fetchMock).toHaveBeenCalledOnce();
     expect((await getSettingsSection("auth"))?.refreshToken).toBe(
       "refresh-user-1-next",
+    );
+  });
+
+  it("shares one in-flight refresh between concurrent forced callers", async () => {
+    let resolveFetch: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    const first = Effect.runPromise(authService.refreshTokenIfNeeded(true));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const second = Effect.runPromise(authService.refreshTokenIfNeeded(true));
+
+    resolveFetch?.({
+      ok: true,
+      json: async () => ({
+        id_token: idToken("user-1"),
+        refresh_token: "refresh-user-1-next",
+        access_token: "access-user-1-next",
+        expires_in: 3600,
+      }),
+    } as Response);
+
+    await Promise.all([first, second]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("does not lose a forced refresh that joins a non-forced check", async () => {
+    const authState = await getSettingsSection("auth");
+    await updateSettingsSection("auth", {
+      ...authState!,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    });
+
+    let releaseAuthStateRead: (() => void) | undefined;
+    let authStateReadStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      authStateReadStarted = resolve;
+    });
+    const blocked = new Promise<void>((resolve) => {
+      releaseAuthStateRead = resolve;
+    });
+    const originalGetAuthState = authService.getAuthState.bind(authService);
+    vi.spyOn(authService, "getAuthState").mockImplementationOnce(() =>
+      Effect.promise(async () => {
+        authStateReadStarted?.();
+        await blocked;
+      }).pipe(Effect.andThen(originalGetAuthState())),
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id_token: idToken("user-1"),
+        refresh_token: "refresh-user-1-next",
+        access_token: "access-user-1-next",
+        expires_in: 3600,
+      }),
+    });
+
+    const normalRefresh = Effect.runPromise(authService.refreshTokenIfNeeded());
+    await started;
+    const forcedRefresh = Effect.runPromise(
+      authService.refreshTokenIfNeeded(true),
+    );
+    releaseAuthStateRead?.();
+
+    await Promise.all([normalRefresh, forcedRefresh]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect((await getSettingsSection("auth"))?.refreshToken).toBe(
+      "refresh-user-1-next",
+    );
+  });
+
+  it.each([
+    {
+      name: "invalid JSON",
+      json: () => Promise.reject(new SyntaxError("Unexpected token <")),
+      kind: "invalid_json",
+    },
+    {
+      name: "a schema mismatch",
+      json: async () => ({ access_token: 42 }),
+      kind: "schema_mismatch",
+    },
+  ])("reports $name from a successful token response", async (scenario) => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: scenario.json,
+    });
+
+    await runAuthEffect(authService.getIdToken());
+
+    expect(contractFailure).toHaveBeenCalledExactlyOnceWith({
+      errorContext: "oauth_token_response_invalid",
+      failureKind: scenario.kind,
+      properties: { status: 200 },
+    });
+  });
+
+  it("runs every registered logout fence", async () => {
+    const first = vi.fn(() => Effect.void);
+    const second = vi.fn(() => Effect.void);
+    authService.registerBeforeLogoutHandler(first);
+    authService.registerBeforeLogoutHandler(second);
+
+    await runAuthEffect(authService.logout());
+
+    expect(first).toHaveBeenCalledOnce();
+    expect(second).toHaveBeenCalledOnce();
+  });
+
+  it("runs logout fences sequentially and stops before clearing on failure", async () => {
+    const order: string[] = [];
+    const loggedOut = vi.fn();
+    authService.on("logged-out", loggedOut);
+    authService.registerBeforeLogoutHandler(() =>
+      Effect.sync(() => order.push("first")),
+    );
+    authService.registerBeforeLogoutHandler(() =>
+      Effect.sync(() => order.push("second")).pipe(
+        Effect.andThen(Effect.fail(new Error("stop logout"))),
+      ),
+    );
+    authService.registerBeforeLogoutHandler(() =>
+      Effect.sync(() => order.push("third")),
+    );
+
+    await expect(runAuthEffect(authService.logout())).rejects.toThrow(
+      "stop logout",
+    );
+
+    expect(order).toEqual(["first", "second"]);
+    expect(await getSettingsSection("auth")).toBeDefined();
+    expect(loggedOut).not.toHaveBeenCalled();
+  });
+
+  it("expires credentials once but retains the data owner when refresh is rejected", async () => {
+    const loggedOut = vi.fn();
+    const refreshFailed = vi.fn();
+    authService.on("logged-out", loggedOut);
+    authService.on("token-refresh-failed", refreshFailed);
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: async () => "expired",
+    });
+
+    await Effect.runPromise(authService.refreshTokenIfNeeded(true));
+
+    expect(await getSettingsSection("auth")).toMatchObject({
+      isAuthenticated: false,
+      idToken: null,
+      refreshToken: null,
+      userInfo: { sub: "user-1" },
+    });
+    expect(loggedOut).toHaveBeenCalledOnce();
+    expect(refreshFailed).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ message: "Refresh token expired" }),
     );
   });
 
@@ -110,9 +353,9 @@ describe("AuthService refresh fencing", () => {
         }),
     );
 
-    const tokenPromise = authService.getIdToken();
+    const tokenPromise = runAuthEffect(authService.getIdToken());
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    await authService.logout();
+    await runAuthEffect(authService.logout());
 
     resolveFetch?.({
       ok: true,
@@ -128,6 +371,29 @@ describe("AuthService refresh fencing", () => {
     expect(await getSettingsSection("auth")).toBeUndefined();
   });
 
+  it("does not wipe data when another authentication generation overtakes logout", async () => {
+    let release!: () => void;
+    authService.registerBeforeLogoutHandler(() =>
+      Effect.promise(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      ),
+    );
+    const clear = vi.fn();
+    const logout = runAuthEffect(authService.logout(false, clear));
+    const rejected = expect(logout).rejects.toThrow(
+      "Authentication changed during sign-out",
+    );
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    await runAuthEffect(authService.login());
+    release();
+    await rejected;
+    expect(clear).not.toHaveBeenCalled();
+    expect((await getSettingsSection("auth"))?.userInfo?.sub).toBe("user-1");
+  });
+
   it("does not persist a refreshed token for another subject", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -139,12 +405,14 @@ describe("AuthService refresh fencing", () => {
       }),
     });
 
-    await expect(authService.getIdToken()).resolves.toBe(idToken("user-1"));
+    await expect(runAuthEffect(authService.getIdToken())).resolves.toBe(
+      idToken("user-1"),
+    );
     expect((await getSettingsSection("auth"))?.userInfo?.sub).toBe("user-1");
   });
 
   it("ignores an authentication callback that finishes after logout", async () => {
-    await authService.login();
+    await runAuthEffect(authService.login());
     const pendingAuth = (
       authService as unknown as {
         pendingAuth: { state: string };
@@ -166,12 +434,11 @@ describe("AuthService refresh fencing", () => {
         }),
     );
 
-    const callbackPromise = authService.handleAuthCallback(
-      "authorization-code",
-      pendingAuth.state,
+    const callbackPromise = runAuthEffect(
+      authService.handleAuthCallback("authorization-code", pendingAuth.state),
     );
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    await authService.logout();
+    await runAuthEffect(authService.logout());
 
     resolveFetch?.({
       ok: true,
@@ -186,5 +453,210 @@ describe("AuthService refresh fencing", () => {
     await expect(callbackPromise).resolves.toBeUndefined();
     expect(await getSettingsSection("auth")).toBeUndefined();
     expect(authenticated).not.toHaveBeenCalled();
+  });
+
+  it("ignores a callback superseded while reading the account owner", async () => {
+    await runAuthEffect(authService.login());
+    const pending = (
+      authService as unknown as { pendingAuth: { state: string } }
+    ).pendingAuth;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id_token: idToken("user-1"),
+        refresh_token: "stale-refresh",
+        access_token: "stale-access",
+        expires_in: 3600,
+      }),
+    });
+    const owner = await getSettingsSection("auth");
+    const read = Promise.withResolvers<AuthState | null>();
+    const getAuthState = vi
+      .spyOn(authService, "getAuthState")
+      .mockImplementationOnce(() => Effect.promise(() => read.promise));
+    const authenticated = vi.fn();
+    authService.on("authenticated", authenticated);
+    const callback = runAuthEffect(
+      authService.handleAuthCallback("code", pending.state),
+    );
+    await vi.waitFor(() => expect(getAuthState).toHaveBeenCalledOnce());
+    await runAuthEffect(authService.login());
+    read.resolve(owner!);
+    await callback;
+
+    expect(await getSettingsSection("auth")).toEqual(owner);
+    expect(authenticated).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { expired: false, email: "user@example.com" },
+    { expired: true, email: "user@example.com" },
+    { expired: true, email: undefined },
+  ])(
+    "requires logout before switching accounts (expired: $expired, email: $email)",
+    async ({ expired, email }) => {
+      const onAuthError = vi.fn();
+      authService.on("auth-error", onAuthError);
+      const owner = (await getSettingsSection("auth"))!;
+      await updateSettingsSection("auth", {
+        ...owner,
+        userInfo: { ...owner.userInfo!, email },
+      });
+      const message = `Please sign in with ${email || "your existing account"}, or sign out first to switch accounts.`;
+      if (expired) await runAuthEffect(authService.logout(true));
+      await runAuthEffect(authService.login());
+      const pending = (
+        authService as unknown as { pendingAuth: { state: string } }
+      ).pendingAuth;
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id_token: idToken("user-2"),
+          refresh_token: "refresh-user-2",
+          access_token: "access-user-2",
+          expires_in: 3600,
+        }),
+      });
+      await expect(
+        runAuthEffect(authService.handleAuthCallback("code", pending.state)),
+      ).rejects.toThrow(message);
+      expect(onAuthError).toHaveBeenCalledWith(new Error(message));
+      expect((await getSettingsSection("auth"))?.userInfo?.sub).toBe("user-1");
+    },
+  );
+
+  it("reports an untrusted account-handoff URL without including the URL", async () => {
+    const authState = await getSettingsSection("auth");
+    await updateSettingsSection("auth", {
+      ...authState!,
+      expiresAt: Date.now() + 60 * 60 * 1000,
+    });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: "https://untrusted.example/account" }),
+    });
+
+    await expect(
+      runAuthEffect(authService.openWebSession("/account")),
+    ).rejects.toThrow("Handoff URL not allowed");
+
+    expect(contractFailure).toHaveBeenCalledExactlyOnceWith({
+      errorContext: "account_handoff_response_invalid",
+      failureKind: "schema_mismatch",
+      properties: { status: 200, reason: "untrusted_url" },
+    });
+  });
+
+  it("does not cancel a shared refresh when one waiter is interrupted", async () => {
+    const refreshedToken = idToken("user-1");
+    let requestSignal: AbortSignal | undefined;
+    let resolveFetch: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((resolve) => {
+          requestSignal = init?.signal ?? undefined;
+          resolveFetch = resolve;
+        }),
+    );
+
+    const interruptedWaiter = Effect.runFork(authService.getIdToken());
+    const remainingWaiter = Effect.runFork(authService.getIdToken());
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    await Effect.runPromise(Fiber.interrupt(interruptedWaiter));
+    expect(requestSignal?.aborted).toBe(false);
+
+    resolveFetch?.({
+      ok: true,
+      json: async () => ({
+        id_token: refreshedToken,
+        refresh_token: "refresh-user-1-next",
+        access_token: "access-user-1-next",
+        expires_in: 3600,
+      }),
+    } as Response);
+
+    await expect(Effect.runPromise(Fiber.join(remainingWaiter))).resolves.toBe(
+      refreshedToken,
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("completes all refresh waiters when shutdown happens before the worker starts", async () => {
+    const waiters = [
+      Effect.runFork(authService.refreshTokenIfNeeded(true)),
+      Effect.runFork(authService.refreshTokenIfNeeded(true)),
+    ];
+    try {
+      expect(fetchMock).not.toHaveBeenCalled();
+      await Effect.runPromise(authService.shutdown());
+
+      const exits = await Effect.runPromise(
+        Fiber.awaitAll(waiters).pipe(Effect.timeout(1000)),
+      );
+      expect(exits.every(Exit.hasInterrupts)).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await Effect.runPromise(Fiber.interruptAll(waiters));
+    }
+  });
+
+  it("completes a refresh caller admitted after auth shutdown", async () => {
+    await Effect.runPromise(authService.shutdown());
+    const waiter = Effect.runFork(authService.refreshTokenIfNeeded(true));
+    try {
+      const exit = await Effect.runPromise(
+        Fiber.await(waiter).pipe(Effect.timeout(1000)),
+      );
+      expect(Exit.hasInterrupts(exit)).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await Effect.runPromise(Fiber.interrupt(waiter));
+    }
+  });
+
+  it("aborts the auth-scoped refresh and completes its waiter on shutdown", async () => {
+    let requestSignal: AbortSignal | undefined;
+    fetchMock.mockImplementation(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          requestSignal = init?.signal ?? undefined;
+          requestSignal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    );
+
+    const waiter = Effect.runFork(authService.getIdToken());
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    await Effect.runPromise(authService.shutdown());
+
+    expect(requestSignal?.aborted).toBe(true);
+    const exit = await Effect.runPromise(Fiber.await(waiter));
+    expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  it("clears a failed refresh so a later call can retry", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id_token: idToken("user-1"),
+          refresh_token: "refresh-user-1-next",
+          access_token: "access-user-1-next",
+          expires_in: 3600,
+        }),
+      });
+
+    await Effect.runPromise(authService.refreshTokenIfNeeded(true));
+    await Effect.runPromise(authService.refreshTokenIfNeeded(true));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((await getSettingsSection("auth"))?.refreshToken).toBe(
+      "refresh-user-1-next",
+    );
   });
 });

@@ -1,7 +1,7 @@
+import { useNoteTitleSave } from "@/renderer/main/hooks/use-note-title-save";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -11,13 +11,12 @@ import { Loader2, Plus, X } from "lucide-react";
 import { api } from "@/trpc/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { debounce } from "@/renderer/main/utils/debounce";
 import { NoteEditor } from "@/renderer/main/pages/notes/components/note-editor";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 interface NotesWindowPanelProps {
-  initialNoteId?: number;
+  initialNoteId?: string;
   shouldCreateInitialNote?: boolean;
 }
 
@@ -29,17 +28,29 @@ export function NotesWindowPanel({
   const utils = api.useUtils();
   const preferencesQuery = api.settings.getPreferences.useQuery();
   const createNoteMutation = api.notes.createNote.useMutation();
-  const updateNoteTitleMutation = api.notes.updateNoteTitle.useMutation();
   const closeNotesWindowMutation = api.widget.closeNotesWindow.useMutation();
   const startRecordingMutation = api.recording.signalStart.useMutation();
 
-  const [currentNoteId, setCurrentNoteId] = useState<number | null>(null);
+  const [currentNoteId, setCurrentNoteId] = useState<string | null>(null);
   const [noteTitle, setNoteTitle] = useState("");
   const [editorReady, setEditorReady] = useState(false);
 
-  const autoRecordPendingNoteIdRef = useRef<number | null>(null);
-  const autoRecordStartedNoteIdRef = useRef<number | null>(null);
-  const updateNoteTitleMutateRef = useRef(updateNoteTitleMutation.mutate);
+  const { pendingTitle, setPendingTitle } = useNoteTitleSave(currentNoteId);
+  const currentNoteQuery = api.notes.getNoteById.useQuery(
+    { id: currentNoteId ?? "" },
+    { enabled: currentNoteId !== null },
+  );
+  useEffect(() => {
+    if (currentNoteQuery.isError) {
+      setCurrentNoteId(null);
+      setNoteTitle("");
+      setPendingTitle(null);
+    } else if (currentNoteQuery.data)
+      setNoteTitle(pendingTitle.current?.title ?? currentNoteQuery.data.title);
+  }, [currentNoteQuery.data, currentNoteQuery.isError]);
+
+  const autoRecordPendingNoteIdRef = useRef<string | null>(null);
+  const autoRecordStartedNoteIdRef = useRef<string | null>(null);
 
   const createAndSwitchToNewNote = useCallback(async () => {
     if (createNoteMutation.isPending) {
@@ -86,7 +97,7 @@ export function NotesWindowPanel({
   ]);
 
   const openAndSwitchToExistingNote = useCallback(
-    async (noteId: number) => {
+    async (noteId: string) => {
       try {
         const note = await utils.notes.getNoteById.fetch({ id: noteId });
         if (!note) {
@@ -109,8 +120,8 @@ export function NotesWindowPanel({
   );
 
   const handleOpenRequest = useCallback(
-    (noteId?: number) => {
-      if (typeof noteId === "number" && Number.isFinite(noteId) && noteId > 0) {
+    (noteId?: string) => {
+      if (typeof noteId === "string" && noteId.length > 0) {
         void openAndSwitchToExistingNote(noteId);
         return;
       }
@@ -121,7 +132,7 @@ export function NotesWindowPanel({
   );
 
   useEffect(() => {
-    const handler = (noteId?: number) => {
+    const handler = (noteId?: string) => {
       handleOpenRequest(noteId);
     };
 
@@ -132,11 +143,7 @@ export function NotesWindowPanel({
   }, [handleOpenRequest]);
 
   useEffect(() => {
-    updateNoteTitleMutateRef.current = updateNoteTitleMutation.mutate;
-  }, [updateNoteTitleMutation.mutate]);
-
-  useEffect(() => {
-    if (typeof initialNoteId === "number" && initialNoteId > 0) {
+    if (typeof initialNoteId === "string" && initialNoteId.length > 0) {
       handleOpenRequest(initialNoteId);
       return;
     }
@@ -144,20 +151,6 @@ export function NotesWindowPanel({
       handleOpenRequest(undefined);
     }
   }, [handleOpenRequest, initialNoteId, shouldCreateInitialNote]);
-
-  const debouncedUpdateTitle = useMemo(
-    () =>
-      debounce((id: number, title: string) => {
-        updateNoteTitleMutateRef.current({ id, title });
-      }, 500),
-    [],
-  );
-
-  useEffect(() => {
-    return () => {
-      debouncedUpdateTitle.cancel();
-    };
-  }, [debouncedUpdateTitle]);
 
   useEffect(() => {
     if (!editorReady || currentNoteId === null) {
@@ -179,7 +172,17 @@ export function NotesWindowPanel({
   const handleTitleChange = (value: string) => {
     setNoteTitle(value);
     if (currentNoteId !== null) {
-      debouncedUpdateTitle(currentNoteId, value);
+      const previous = pendingTitle.current;
+      const remoteVersion = previous
+        ? previous.remoteVersion
+        : (currentNoteQuery.data?.remoteVersion ?? null);
+      const originalTitle = previous?.originalTitle ?? noteTitle;
+      setPendingTitle({
+        id: currentNoteId,
+        title: value,
+        remoteVersion,
+        originalTitle,
+      });
     }
   };
 
@@ -194,7 +197,7 @@ export function NotesWindowPanel({
   const headerTitle =
     currentNoteId === null
       ? createNoteMutation.isPending
-        ? t("loading")
+        ? t("settings.notes.loading")
         : t("settings.notes.note.titlePlaceholder")
       : noteTitle.trim().length > 0
         ? noteTitle
@@ -266,7 +269,7 @@ export function NotesWindowPanel({
                 {createNoteMutation.isPending ? (
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {t("loading")}
+                    {t("settings.notes.loading")}
                   </span>
                 ) : (
                   t("settings.notes.empty.description")
@@ -278,6 +281,13 @@ export function NotesWindowPanel({
                   className="flex-1 min-h-0 overflow-y-auto"
                   style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
                 >
+                  {currentNoteQuery.data?.syncError && (
+                    <p role="alert" className="py-2 text-sm text-destructive">
+                      {t("settings.notes.cloud.error", {
+                        reason: currentNoteQuery.data.syncError,
+                      })}
+                    </p>
+                  )}
                   <NoteEditor
                     noteId={currentNoteId}
                     onReady={() => setEditorReady(true)}

@@ -344,7 +344,7 @@ export default function SyncModelsDialog({
                         )}
                         <span>
                           {t("settings.aiModels.syncDialog.context", {
-                            context: model.context,
+                            replace: { context: model.context ?? "" },
                           })}
                         </span>
                       </div>

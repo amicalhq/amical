@@ -12,7 +12,7 @@ import {
   DESKTOP_BACKGROUND_UPDATES_FLAG,
   type RemoteConfigService,
 } from "../../services/remote-config-service";
-import type { RecordingManager } from "../managers/recording-manager";
+import type { RecordingLifecycle } from "../lifecycle/runtime";
 import type { RecordingState } from "../../types/recording";
 import { computeUpdatePrompt, type UpdatePrompt } from "./update-prompt";
 import { Effect, Layer } from "effect";
@@ -21,7 +21,7 @@ import {
   SettingsServiceTag,
   TelemetryServiceTag,
   RemoteConfigServiceTag,
-  RecordingManagerTag,
+  RecordingLifecycleTag,
   AppScopeTag,
 } from "../runtime/tags";
 import { addRelease, step, up } from "../runtime/layer-helpers";
@@ -88,7 +88,8 @@ export class AutoUpdaterService extends EventEmitter {
   private settingsService: SettingsService | null = null;
   private telemetryService: TelemetryService | null = null;
   private remoteConfigService: RemoteConfigService | null = null;
-  private recordingManager: RecordingManager | null = null;
+  private recordingLifecycle: RecordingLifecycle | null = null;
+  private unsubscribeRecording: (() => void) | null = null;
   private currentChannel: "stable" | "beta" = "stable";
   // Track the latest version we know about (downloaded or running) so the
   // feed URL always reflects the newest version we have, preventing
@@ -111,6 +112,18 @@ export class AutoUpdaterService extends EventEmitter {
   private initialCheckTimeout: ReturnType<typeof setTimeout> | null = null;
   private installTriggered = false;
   private recordingIdleSince: number | null = null;
+  private readonly handleUpdateChannelChanged = (
+    channel: "stable" | "beta",
+  ): void => {
+    if (this.isCheckingOrDownloading) {
+      // Can't safely switch while a native cycle is in flight — queue it.
+      this.deferChannelChange(channel);
+      return;
+    }
+    this.pendingChannel = null;
+    this.applyChannel(channel);
+    this.checkForUpdates();
+  };
   private readonly handleRecordingStateChanged = (
     state: RecordingState,
   ): void => {
@@ -141,7 +154,7 @@ export class AutoUpdaterService extends EventEmitter {
     | SettingsServiceTag
     | TelemetryServiceTag
     | RemoteConfigServiceTag
-    | RecordingManagerTag
+    | RecordingLifecycleTag
     | AppScopeTag
   > = Layer.effect(
     AutoUpdaterServiceTag,
@@ -149,7 +162,7 @@ export class AutoUpdaterService extends EventEmitter {
       const settingsService = yield* SettingsServiceTag;
       const telemetryService = yield* TelemetryServiceTag;
       const remoteConfigService = yield* RemoteConfigServiceTag;
-      const recordingManager = yield* RecordingManagerTag;
+      const recordingLifecycle = yield* RecordingLifecycleTag;
       const appScope = yield* AppScopeTag;
       const service = new AutoUpdaterService();
       yield* addRelease(
@@ -163,7 +176,7 @@ export class AutoUpdaterService extends EventEmitter {
           settingsService,
           telemetryService,
           remoteConfigService,
-          recordingManager,
+          recordingLifecycle,
         ),
       );
       up("autoUpdaterService");
@@ -184,7 +197,7 @@ export class AutoUpdaterService extends EventEmitter {
     settingsService: SettingsService,
     telemetryService: TelemetryService,
     remoteConfigService: RemoteConfigService,
-    recordingManager: RecordingManager,
+    recordingLifecycle: RecordingLifecycle,
   ): Promise<void> {
     if (!app.isPackaged) {
       logger.updater.info("Skipping auto-updater: app is not packaged");
@@ -199,9 +212,13 @@ export class AutoUpdaterService extends EventEmitter {
     this.settingsService = settingsService;
     this.telemetryService = telemetryService;
     this.remoteConfigService = remoteConfigService;
-    this.recordingManager = recordingManager;
-    recordingManager.on("state-changed", this.handleRecordingStateChanged);
-    this.handleRecordingStateChanged(recordingManager.getState());
+    this.recordingLifecycle = recordingLifecycle;
+    this.unsubscribeRecording = recordingLifecycle.onSnapshot((snapshot) =>
+      this.handleRecordingStateChanged(snapshot.projection.publicState),
+    );
+    this.handleRecordingStateChanged(
+      recordingLifecycle.getSnapshot().projection.publicState,
+    );
     this.currentChannel = await settingsService.getUpdateChannel();
 
     this.setFeedURL(this.currentChannel);
@@ -210,16 +227,7 @@ export class AutoUpdaterService extends EventEmitter {
     // Listen for channel changes
     settingsService.on(
       "update-channel-changed",
-      (channel: "stable" | "beta") => {
-        if (this.isCheckingOrDownloading) {
-          // Can't safely switch while a native cycle is in flight — queue it.
-          this.deferChannelChange(channel);
-          return;
-        }
-        this.pendingChannel = null;
-        this.applyChannel(channel);
-        this.checkForUpdates();
-      },
+      this.handleUpdateChannelChanged,
     );
 
     // Start periodic checks with platform-appropriate initial delay
@@ -290,7 +298,11 @@ export class AutoUpdaterService extends EventEmitter {
   private maybeInstallStagedUpdate(): void {
     if (!this.staged || this.installTriggered) return;
     if (!this.isBackgroundUpdateEnabled()) return;
-    if (this.recordingManager?.getState() !== "idle") return;
+    if (
+      this.recordingLifecycle?.getSnapshot().projection.publicState !== "idle"
+    ) {
+      return;
+    }
     if (
       this.recordingIdleSince === null ||
       Date.now() - this.recordingIdleSince < IDLE_INSTALL_THRESHOLD_MS
@@ -576,7 +588,19 @@ export class AutoUpdaterService extends EventEmitter {
         return null;
       }
 
-      const raw: unknown = await response.json();
+      let raw: unknown;
+      try {
+        raw = await response.json();
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          this.telemetryService?.captureContractFailure(
+            "update_metadata_response_invalid",
+            "invalid_json",
+            { status: response.status },
+          );
+        }
+        throw error;
+      }
       const data = this.parseUpdateMetadata(raw);
       logger.updater.info("Update metadata fetched", {
         action: data.action,
@@ -594,6 +618,11 @@ export class AutoUpdaterService extends EventEmitter {
       logger.updater.warn(
         "Invalid metadata response shape, falling back to silent",
       );
+      this.telemetryService?.captureContractFailure(
+        "update_metadata_response_invalid",
+        "schema_mismatch",
+        { reason: "invalid_shape" },
+      );
       return { action: "silent" };
     }
     const obj = raw as Record<string, unknown>;
@@ -601,6 +630,11 @@ export class AutoUpdaterService extends EventEmitter {
       logger.updater.warn("Invalid metadata action, falling back to silent", {
         action: obj.action,
       });
+      this.telemetryService?.captureContractFailure(
+        "update_metadata_response_invalid",
+        "schema_mismatch",
+        { reason: "invalid_action" },
+      );
       return { action: "silent" };
     }
     return {
@@ -699,17 +733,16 @@ export class AutoUpdaterService extends EventEmitter {
     }
     this.stopIdleInstallChecks();
     if (this.settingsService) {
-      this.settingsService.removeAllListeners("update-channel-changed");
+      this.settingsService.off(
+        "update-channel-changed",
+        this.handleUpdateChannelChanged,
+      );
       this.settingsService = null;
     }
-    if (this.recordingManager) {
-      this.recordingManager.off(
-        "state-changed",
-        this.handleRecordingStateChanged,
-      );
-    }
+    this.unsubscribeRecording?.();
+    this.unsubscribeRecording = null;
     this.recordingIdleSince = null;
     this.remoteConfigService = null;
-    this.recordingManager = null;
+    this.recordingLifecycle = null;
   }
 }

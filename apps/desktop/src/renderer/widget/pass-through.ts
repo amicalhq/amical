@@ -2,15 +2,12 @@ import { trpcClient } from "@/trpc/react";
 
 // Single source of truth for the widget window's mouse pass-through.
 //
-// Three independent surfaces want the widget to be clickable at different
-// times: an active notification toast, a hovered FAB, and an open draft
-// review. Each used to call setIgnoreMouseEvents directly from its own state,
-// so whichever fired last won — and a subsystem clearing its own reason (e.g.
-// a toast auto-closing) could force the whole widget click-through while the
-// user was mid-hover. Here each surface only reports its own reason and we
-// derive ignore from the union: the window stays interactive while ANY reason
-// is active, and only goes click-through once they're all gone.
-export type PassThroughReason = "toast" | "hover" | "draft";
+// Independent surfaces want the widget to be clickable at different times:
+// an active notification toast, a hovered FAB, an open draft review, or the
+// renderer error fallback. Each only reports its own reason and we derive
+// ignore from the union: the window stays interactive while ANY reason is
+// active, and only goes click-through once they're all gone.
+export type PassThroughReason = "toast" | "hover" | "draft" | "error";
 
 const activeReasons = new Set<PassThroughReason>();
 

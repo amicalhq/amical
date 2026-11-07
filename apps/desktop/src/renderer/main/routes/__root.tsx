@@ -1,9 +1,13 @@
+import { RequiredUpdateGate } from "@/components/required-update-gate";
+import { SessionExpiredDialog } from "@/components/session-expired-dialog";
+import { LogoutProvider } from "@/hooks/useLogout";
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api, trpcClient } from "@/trpc/react";
-import { usePostHog } from "../lib/posthog";
+import { usePostHog } from "@/renderer/lib/posthog";
 import { UpdatePrompt } from "../components/update-prompt/update-prompt";
+import { useNotesRefresh } from "../hooks/use-notes-refresh";
 import { useEffect } from "react";
 
 // Create a client
@@ -22,13 +26,16 @@ export const Route = createRootRoute({
 
 // Inner component that uses hooks requiring provider context
 function AppShell() {
-  usePostHog(); // Initialize and sync telemetry
+  useNotesRefresh();
+  usePostHog("main"); // Initialize and sync telemetry
   const utils = api.useUtils();
 
   useEffect(() => {
     const handleSettingsSync = () => {
       void utils.vocabulary.getVocabulary.invalidate();
+      void utils.vocabulary.getScopeAccess.invalidate();
       void utils.snippets.getSnippets.invalidate();
+      void utils.snippets.getScopeAccess.invalidate();
     };
 
     window.electronAPI.on("settings-sync-updated", handleSettingsSync);
@@ -40,8 +47,13 @@ function AppShell() {
 
   return (
     <>
-      <Outlet />
-      <UpdatePrompt />
+      <RequiredUpdateGate>
+        <LogoutProvider>
+          <Outlet />
+          <UpdatePrompt />
+          <SessionExpiredDialog />
+        </LogoutProvider>
+      </RequiredUpdateGate>
       {process.env.NODE_ENV === "development" && (
         <TanStackRouterDevtools position="bottom-right" />
       )}

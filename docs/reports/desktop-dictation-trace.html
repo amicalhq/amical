@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amical · Desktop dictation trace</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0f1117;--panel:#161a23;--panel2:#1b202b;--line:#2c3443;--text:#e2e8f0;--muted:#a4afbf;--yellow:#f4c76b;--blue:#81b8ff;--green:#7cddb0;--gray:#a7b1c1;--red:#ff9d91;--sidebar:244px}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 "Avenir Next","Segoe UI",sans-serif}button,input,select{font:inherit}button,a,input,select,summary{touch-action:manipulation}a{color:var(--blue);text-underline-offset:4px}button{cursor:pointer}button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--blue);outline-offset:4px}code,pre,.mono,.eyebrow,.pill,.nav-group,.ruler{font-family:"SFMono-Regular",Consolas,monospace}code{font-size:.85em;overflow-wrap:anywhere;color:#d5e3f6}pre{margin:0;padding:22px;white-space:pre;overflow:auto;font-size:12px;line-height:1.85;background:#10141c;border-radius:8px}p{margin:0 0 17px}strong{font-weight:650;color:#f5f7fc}.muted{color:var(--muted)}
+    aside{position:fixed;inset:0 auto 0 0;width:var(--sidebar);border-right:1px solid var(--line);background:#12151d;padding:30px 20px;overflow:auto;z-index:10}.brand{font-size:20px;font-weight:700;letter-spacing:-.7px;color:#f1f5fb}.brand-mark{display:inline-block;width:12px;height:12px;border:3px solid var(--yellow);transform:rotate(45deg);margin-right:10px}.side-caption{font-size:12px;color:var(--muted);margin:9px 0 30px}.nav-group{font-size:10px;letter-spacing:1.5px;color:#8f9aaa;margin:24px 12px 8px}nav a{display:block;text-decoration:none;color:#afbacb;border-left:2px solid transparent;padding:7px 10px;font-size:13px}nav a.sub{font-size:12px;padding-left:26px}nav a:hover{background:#202632;color:white}nav a.active{color:var(--yellow);border-left-color:var(--yellow);background:#25251f}.side-foot{border-top:1px solid var(--line);margin-top:28px;padding-top:16px;font-size:11px;color:var(--muted)}
+    main{margin-left:var(--sidebar);max-width:1610px;padding:54px clamp(24px,4vw,68px) 80px}.eyebrow{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--yellow);margin-bottom:16px}h1{font-family:"Iowan Old Style",Georgia,serif;font-size:clamp(36px,4.5vw,64px);font-weight:500;line-height:1.08;letter-spacing:-1.6px;margin:0 0 22px;max-width:850px}h1 em{color:var(--yellow);font-style:normal}h2{font-size:25px;line-height:1.25;letter-spacing:-.5px;margin:0 0 18px}h3{font-size:17px;margin:22px 0 12px}h4{font-size:14px;margin:14px 0 8px}section{padding:42px 0;border-top:1px solid var(--line)}header{padding-bottom:40px}.lede{max-width:850px;font-size:18px;color:#b6c1d1}.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:23px}.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--line);border-radius:4px;font-size:10px;letter-spacing:.3px;white-space:nowrap}.pill.duration{color:var(--yellow);border-color:#66563a}.pill.offset{color:var(--blue);border-color:#385379}.pill.aggregate{color:var(--green);border-color:#345d4a}.pill.local{color:var(--gray)}.pill.gap{color:var(--red);border-style:dashed}.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}.box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:22px}.box h3:first-child{margin-top:0}.callout{border-left:3px solid var(--yellow);padding:15px 18px;background:#211e18;color:#dbcba9;margin:20px 0}.callout.blue{background:#141e2d;border-color:var(--blue);color:#bad2ef}.formula{color:var(--yellow);font-family:"SFMono-Regular",Consolas,monospace;font-size:13px;display:block;margin:10px 0}.number{color:#69788d;font:14px "SFMono-Regular",Consolas,monospace;margin-right:13px}details{border:1px solid var(--line);border-radius:7px;margin:12px 0;background:#141821}summary{padding:15px 18px;cursor:pointer;font-weight:600}details[open]>summary{border-bottom:1px solid var(--line)}.detail-body{padding:18px}.detail-body>:last-child{margin-bottom:0}ul,ol{padding-left:21px}li{margin:7px 0}small{font-size:12px;color:var(--muted)}
+    .toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin:20px 0 12px}.tabs{display:flex;gap:4px;flex-wrap:wrap}.tabs button{background:transparent;color:var(--muted);border:1px solid var(--line);padding:7px 12px;border-radius:5px;font-size:12px}.tabs button[aria-pressed="true"]{color:#10141c;background:var(--yellow);border-color:var(--yellow);font-weight:650}.legend{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}.legend span{font-size:11px;color:var(--muted)}.swatch{display:inline-block;width:9px;height:9px;margin-right:5px;background:var(--yellow)}.swatch.offset{background:var(--blue);transform:rotate(45deg)}.swatch.aggregate{background:var(--green)}.swatch.local{background:#6c7c91}.swatch.gap{background:transparent;border:1px dashed var(--red)}
+    .trace-wrap{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}.trace-scroll{overflow:auto}.trace{min-width:790px;padding:14px 18px 20px}.ruler{height:38px;margin-left:278px;position:relative;font-size:10px;color:#99a9bf}.ruler span{white-space:nowrap;position:absolute;transform:translateX(-50%);top:3px}.ruler span:first-child{transform:none}.ruler span:last-child{transform:translateX(-100%)}.trace-group{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--muted);margin:14px 0 4px;border-top:1px solid #252d3a;padding-top:9px}.trace-row{display:grid;grid-template-columns:266px 1fr;gap:12px;min-height:32px;align-items:center}.trace-label{font-size:11px;line-height:1.3;color:#b3c0d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.trace-label .tag{display:inline-block;min-width:17px;font:10px monospace;color:var(--yellow)}.trace-label .tag.offset{color:var(--blue)}.trace-label .tag.aggregate{color:var(--green)}.trace-label .tag.local{color:#8798ad}.trace-label .tag.gap{color:var(--red)}.track{position:relative;height:29px;background:repeating-linear-gradient(to right,#2c344375 0,#2c344375 1px,transparent 1px,transparent 25%)}.bar{position:absolute;top:6px;height:17px;min-width:4px;background:#bd9143;border:1px solid #f4c76b;border-radius:3px;padding:0;opacity:.9}.bar.offset{background:#81b8ff;border-color:#a8d0ff;width:9px!important;min-width:9px;height:9px;top:10px;transform:translateX(-50%) rotate(45deg);border-radius:1px}.bar.aggregate{background:#31694e;border-color:#7cddb0}.bar.local{background:#48556b;border-color:#79899f}.bar.gap{background:#5b3537;border:1px dashed #ff9d91}.bar.selected,.bar:hover{opacity:1;box-shadow:0 0 0 3px #ffffff35}.bar.selected{outline:1px solid white;outline-offset:3px}.trace-row:has(.bar.selected) .trace-label{color:#fff}.inspector{border-top:1px solid var(--line);padding:22px;background:#1a202c;min-height:180px}.inspector-head{display:flex;gap:12px;justify-content:space-between;align-items:flex-start}.inspector h3{margin:0 0 10px;font-family:"SFMono-Regular",Consolas,monospace;font-size:14px;overflow-wrap:anywhere}.inspector p{font-size:13px;max-width:980px;margin-bottom:8px}.inspector .fields{color:var(--yellow)}.inspector .timing{color:var(--blue);font-size:12px;margin-bottom:10px}.prelude{border:1px dashed #78554f;background:#211b1c;border-radius:7px;padding:15px 18px;margin:18px 0;font-size:13px}.prelude strong{color:var(--red)}
+    .sequence{padding:22px;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:auto}.sequence svg{display:block;min-width:790px;width:100%;height:auto;max-width:none!important}.mermaid-status{font-size:12px;color:var(--muted);margin-top:12px}.flow-fallback{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.flow-fallback div{border:1px solid var(--line);border-top:2px solid var(--yellow);padding:12px;font-size:12px;background:var(--panel)}
+    .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:7px}table{width:100%;border-collapse:collapse;text-align:left;font-size:12px}th{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:#1d2330;padding:12px 14px;border-bottom:1px solid var(--line)}td{padding:13px 14px;vertical-align:top;border-bottom:1px solid #252d3a}tbody tr:last-child td{border-bottom:0}tbody tr:hover{background:#171d28}td code{font-size:11px}td:first-child{min-width:210px}td p{margin:5px 0 0}.mapping td:nth-child(2){min-width:230px}.mapping td:nth-child(3){min-width:300px}.field-search{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}.field-search input{flex:1;min-width:230px}.field-search input,.field-search select{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:5px;padding:9px 12px;font-size:12px}#field-count{align-self:center;font-size:11px;color:var(--muted)}.empty{padding:20px;text-align:center;color:var(--muted)}.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}.fact{border-top:1px solid var(--yellow);padding:16px;background:var(--panel)}.fact .value{font:32px Georgia,serif;color:var(--yellow)}.fact .caption{color:var(--muted);font-size:12px;margin-top:5px}.sources{columns:2;column-gap:30px}.source-item{break-inside:avoid;margin-bottom:18px;font-size:12px}.source-item code{display:block;color:#adc7e7;line-height:1.6}.source-item strong{display:block;margin-bottom:4px}.footer{color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:22px}.nowrap{white-space:nowrap}[hidden]{display:none!important}
+    @media(max-width:1050px){:root{--sidebar:208px}main{padding:36px 24px 65px}aside{padding:24px 12px}.two{grid-template-columns:1fr}.flow-fallback{grid-template-columns:1fr 1fr}.sources{columns:1}}
+    @media(max-width:720px){aside{position:relative;width:auto;border-right:0;border-bottom:1px solid var(--line);padding:18px}.side-caption,.side-foot,.nav-group,nav .sub{display:none}nav{display:flex;overflow:auto;gap:6px;margin-top:14px}nav a{white-space:nowrap;font-size:11px;padding:5px 7px}main{margin-left:0;padding:30px 18px 50px}h1{font-size:40px}.lede{font-size:16px}section{padding:30px 0}.facts{grid-template-columns:1fr}.inspector-head{display:block}.sources{columns:1}.flow-fallback{grid-template-columns:1fr}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+    @media print{aside,.toolbar,.field-search{display:none}main{margin:0;padding:20px}details>*{display:block}.trace-scroll,.table-wrap,.sequence{overflow:visible}body{font-size:11px}.box,details,.trace-wrap{break-inside:avoid}}
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="brand"><span class="brand-mark"></span>amical</div>
+    <div class="side-caption">Desktop engineering · trace atlas</div>
+    <nav aria-label="Table of contents">
+      <div class="nav-group">TRACE MODEL</div>
+      <a href="#reading">0 · Read the trace</a>
+      <a href="#waterfall">1 · Trace waterfall</a>
+      <a href="#sequence">2 · Desktop sequence</a>
+      <a class="sub" href="#recorder-start-gate">2.1 · Startup audio gate</a>
+      <a class="sub" href="#backend-time">2.2 · Backend time</a>
+      <div class="nav-group">TELEMETRY</div>
+      <a href="#fields">3 · PostHog field map</a>
+      <a class="sub" href="#durations">3.1 · Durations & offsets</a>
+      <a class="sub" href="#aggregates">3.2 · Chunk aggregates</a>
+      <a class="sub" href="#payload">3.3 · Example payload</a>
+      <a href="#measured">4 · Local measurements</a>
+      <a class="sub" href="#playback-probes">4.1 · Playback probes</a>
+      <a href="#gaps">5 · Missing timing</a>
+      <a class="sub" href="#proposed-fields">5.1 · Proposed fields</a>
+      <div class="nav-group">REFERENCE</div>
+      <a href="#branches">6 · Branches & flush rules</a>
+      <a class="sub" href="#other-outcomes">6.1 · Other outcomes</a>
+      <a class="sub" href="#draft-mode">6.2 · Draft mode</a>
+      <a class="sub" href="#two-drains">6.3 · Two drains</a>
+      <a href="#sources">7 · Source map</a>
+      <div class="nav-group">AUDIT BEFORE IMPLEMENTATION</div>
+      <a href="#span-evidence">8 · Span evidence</a>
+      <a class="sub" href="#capture-evidence">8.1 · Input & capture</a>
+      <a class="sub" href="#ambiance-evidence">8.2 · Native ambiance</a>
+      <a class="sub" href="#streaming-evidence">8.3 · Streaming</a>
+      <a class="sub" href="#ending-evidence">8.4 · Stop & delivery</a>
+      <a href="#clock-contract">9 · Names & clocks</a>
+      <a class="sub" href="#span-contract">9.1 · Attribute contract</a>
+      <a class="sub" href="#clock-source">9.2 · Clock sources</a>
+      <a class="sub" href="#evidence-limits">9.3 · Evidence limits</a>
+      <div class="nav-group">IMPLEMENTED LOCALLY</div>
+      <a href="#implemented">10 · Added v2 attributes</a>
+      <a class="sub" href="#implemented-contract">10.1 · Payload contract</a>
+      <a class="sub" href="#implemented-fields">10.2 · Field pairs</a>
+      <a class="sub" href="#implemented-limits">10.3 · Limits & coverage</a>
+    </nav>
+    <div class="side-foot">Baseline flow: 1.12.2<br>Code: <span class="mono">097ffe4</span><br>Inspected: 23 September 2026</div>
+  </aside>
+  <main>
+    <header>
+      <div class="eyebrow">Engineering reference / desktop 1.12.2 baseline + local telemetry changes</div>
+      <div class="callout blue"><strong>Implementation update · 24 September 2026.</strong> <a href="#implemented">Section 10 documents the attributes now added in this workspace.</a> Sections 0–8 retain the original 1.12.2 audit, mock trace, measurements and candidate list for comparison. In sections 0–8, “current” coverage means the baseline before these changes. Sections 9–10 reflect the simplified implementation. This is not a deployed release.</div>
+      <h1>From shortcut<br>to <em>delivered text.</em></h1>
+      <p class="lede">A complete map of the normal desktop dictation path: what runs, what overlaps, what blocks the first chunk, and what survives into PostHog.</p>
+      <div class="meta"><span class="pill">One event: transcription_completed_v2</span><span class="pill duration">D · elapsed duration</span><span class="pill offset">O · offset from session open</span><span class="pill aggregate">Σ · per-session aggregate</span></div>
+    </header>
+
+    <section id="reading">
+      <h2><span class="number">0</span>Read the trace</h2>
+      <div class="two">
+        <div class="box"><h3>The time origin is session open</h3><p><strong>T0 = <code>openSessionTrace()</code></strong> during the <code>IDLE → STARTING</code> snapshot. Input handling, start admission, and the synchronous prefix of <code>transcription.open()</code> happen before this anchor.</p><span class="formula">offset = timestamp − T0</span><p class="muted">T0 is not physical key-down, mic acquisition start, or recording-live. UI buttons and hands-free toggles can also start a session.</p></div>
+        <div class="box"><h3>PostHog receives a summary</h3><p>The client collects named spans, synthetic durations, points, and chunk statistics. At flush it builds <strong>one flattened event</strong>. Raw <code>startedAt</code>, <code>endedAt</code>, span IDs, and the span tree are not included in that event.</p><span class="formula">duration = span end − span start</span><p class="muted">A 261 ms <code>mute_duration_ms</code> says how long the phase took. It does not locate its start or end relative to the shortcut.</p></div>
+      </div>
+      <div class="callout"><strong>Illustration, not a sampled production trace.</strong> The waterfall and example payload below use deliberately constructed times to show ordering and overlap. They are not cohort percentiles. Section 4 contains the separate local measurements.</div>
+      <p class="muted">Scope: a successful live dictation with sounds enabled and automatic paste. The native audio detail is the current macOS <code>AVAudioPlayer</code> implementation. The AVAudioEngine experiment is not part of this flow. Other outcomes and draft mode are covered in section 6.</p>
+    </section>
+
+    <section id="waterfall">
+      <h2><span class="number">1</span>Inspect the trace waterfall</h2>
+      <p>Select a bar or diamond to see its exact boundaries, PostHog mapping, and limitations. Gray and dashed bars show supporting work; they are not all real named spans.</p>
+      <div class="prelude"><strong>Before T0 · duration unknown in PostHog</strong><br>Physical shortcut → native key event → Electron shortcut manager → input grammar / verb queue → admission checks (including selected model) → STARTING snapshot → stream open / warmup launch → trace opens. The admission lookup has a 3 s bound; it is not a fixed startup delay.</div>
+      <div class="toolbar"><div class="tabs" aria-label="Trace view"><button type="button" data-view="startup" aria-pressed="true">Startup · 0–350 ms</button><button type="button" data-view="full" aria-pressed="false">Full session · 0–4 s</button><button type="button" data-view="ending" aria-pressed="false">Stop & delivery · 3–3.8 s</button></div><span class="pill gap">ALL WATERFALL TIMES ARE ILLUSTRATIVE</span></div>
+      <div class="legend"><span><i class="swatch"></i>Duration export</span><span><i class="swatch offset"></i>Offset export</span><span><i class="swatch aggregate"></i>Aggregate export</span><span><i class="swatch local"></i>Local / internal only</span><span><i class="swatch gap"></i>No separate timing export</span></div>
+      <div class="trace-wrap"><div class="trace-scroll"><div id="trace" class="trace" aria-label="Illustrative dictation trace"></div></div><div id="inspector" class="inspector" aria-live="polite"></div></div>
+      <div class="callout blue"><strong>Three different readiness points:</strong> capture confirmation produces <code>recording_live_offset_ms</code>; the first PCM arriving in main ends <code>recorder_spinup_duration_ms</code>; the first frame admitted past readiness and the startup audio gate produces <code>first_chunk_offset_ms</code>. That last timestamp is set before VAD, provider work, and transcription-lock processing.</div>
+    </section>
+
+    <section id="sequence">
+      <h2><span class="number">2</span>The actual desktop sequence</h2>
+      <p>Startup branches overlap. On a normal stop, recorder closure permits transcript resolution while WAV closure and audio restoration can continue. Storage finishes before automatic delivery is staged.</p>
+      <div class="sequence"><div id="sequence-diagram"></div><div id="flow-fallback" class="flow-fallback"><div><strong>Input → session</strong><br>Shortcut / UI → admission → STARTING → trace T0</div><div><strong>Parallel startup</strong><br>Mic + worklet ∥ start sound + mute ∥ provider warmup</div><div><strong>Recording</strong><br>PCM → readiness + startup audio gate → VAD → provider, with WAV writes alongside</div><div><strong>Stop → resolve</strong><br>Final frame → recorder closed → drain → flush → format; close WAV and restore audio alongside</div><div><strong>Settle → deliver</strong><br>Commit → dispatch paste → IDLE → native reply → telemetry flush</div></div><p id="mermaid-status" class="mermaid-status">Loading the detailed sequence diagram. The flow summary above remains available if the diagram CDN cannot load.</p></div>
+      <details id="recorder-start-gate"><summary>2.1 · What the startup audio gate actually waits for</summary><div class="detail-body"><p><code>Recorder.start()</code> immediately sets <code>beepPending = true</code>. Main reads preferences and sends <code>startRecording</code>. On macOS the helper serializes ambiance operations, waits for <code>rec-start</code> playback completion, calls the system-mute setter if enabled, and replies. The promise then releases the gate.</p><p>Non-final frames are dropped while the recorder is still starting or the startup audio gate is closed. First-PCM liveness is measured <em>before</em> these checks. A final frame bypasses the startup audio gate, but not the recorder-starting check. If dictation sounds are muted, the gate releases after reading preferences without waiting for the native RPC.</p><p>The mute setter returning successfully does not prove physical silence. The implementation does not wait for a CoreAudio property-change notification.</p></div></details>
+      <details id="backend-time"><summary>2.2 · Resolution and backend time</summary><div class="detail-body"><p><code>resolve.drain</code> waits for already admitted chunk work. <code>resolve.flush</code> then obtains the transcription lock and flushes the provider. For cloud dictation, this can include waiting for a backend final result and cloud formatting. <code>resolve.format</code> prepares the returned text and may perform additional configured formatting.</p><p><code>resolve_duration_ms</code> covers this whole chain plus other work in the resolve effect. It is not a pure server-latency metric. Provider warmup and server-internal spans are not separately exported by this desktop event.</p></div></details>
+    </section>
+
+    <section id="fields">
+      <h2><span class="number">3</span>What reaches PostHog</h2>
+      <p>Event: <code>transcription_completed_v2</code>. Ten named phase durations, a separate session duration, and four offset fields can be emitted. Fields are conditional on which work ran and finished in time; a missing field is not zero.</p>
+      <h3 id="durations">3.1 · Durations and offsets</h3>
+      <div class="field-search"><input id="field-search" type="search" aria-label="Search telemetry fields" placeholder="Find a span, field, or boundary…"><select id="field-kind" aria-label="Filter telemetry type"><option value="all">All exported timings</option><option value="duration">Duration</option><option value="offset">Offset</option></select><span id="field-count"></span></div>
+      <div class="table-wrap"><table class="mapping"><thead><tr><th>PostHog field</th><th>Source span / point</th><th>What is actually measured</th></tr></thead><tbody id="mapping-body"></tbody></table><div id="mapping-empty" class="empty" hidden>No matching fields.</div></div>
+      <div class="callout"><strong>Durations are not positions on a shared timeline.</strong> Recorder spinup begins at <code>recorder.start()</code>. Native-start timing begins inside <code>ambiance.begin()</code>. Only exported offsets use the session-open anchor. Do not add parallel phases, or subtract population percentiles to estimate a per-session gap.</div>
+      <h3 id="aggregates">3.2 · Chunk aggregates and descriptive fields</h3>
+      <div class="table-wrap"><table><thead><tr><th>Fields</th><th>Meaning / caveat</th></tr></thead><tbody>
+        <tr><td><code>chunk_count</code></td><td>Count of calls admitted into streaming-chunk processing. Frames dropped by readiness or beep gating are not included. This is not a count of server requests.</td></tr>
+        <tr><td><code>vad_duration_sum_ms</code><br><code>vad_duration_max_ms</code></td><td>Sum and maximum of per-chunk VAD timings. The timer starts before the VAD lock, so waiting for that lock is included. These are aggregates, not a single contiguous span.</td></tr>
+        <tr><td><code>transcribe_duration_sum_ms</code><br><code>transcribe_duration_max_ms</code></td><td>Sum and maximum of per-chunk provider <code>transcribe()</code> calls. Starts inside the transcription lock after materialization; excludes the prior lock wait. Meaning depends on the provider, and may include local buffering or enqueueing rather than a complete remote transcription.</td></tr>
+        <tr><td><code>materialize_duration_ms</code></td><td>One-time setup on the first processed chunk: load dictation context and configuration, select model, open and attach the provider session. Timing starts inside the transcription lock. Zero can mean no materialization was recorded.</td></tr>
+        <tr><td><code>model_id</code>, <code>provider</code></td><td>Recorded model/provider when the session materializes. No warmup duration or connection-ready offset accompanies these fields.</td></tr>
+        <tr><td><code>audio_input_channel_count</code><br><code>audio_track_channel_count</code><br><code>audio_stereo_downmix_enabled</code></td><td>Copied from the <code>lifecycle.audio-capture</code> point. Format metadata only; that point's timestamp is not exported.</td></tr>
+        <tr><td><code>session_id</code>, <code>disposition</code>, <code>flush_reason</code><br><code>failed_stage</code>, <code>error_code</code>, <code>error_tag</code>, <code>defect</code></td><td>Identity, outcome, and failure attribution. The terminal-latch point can supply failure details, but no latch offset is exported. App/version/machine/system metadata is added through the telemetry envelope.</td></tr>
+      </tbody></table></div>
+      <h3 id="payload">3.3 · The flattened event for this mock session</h3>
+      <p class="muted">All numbers below are illustrative and match the waterfall. Routine identity/system properties are omitted. Notice that <code>pasted_offset_ms</code> can exceed <code>session_duration_ms</code> because native confirmation may arrive after the lifecycle reaches idle.</p>
+      <details><summary>Expand example PostHog payload</summary><pre id="payload-json"></pre></details>
+      <details><summary>Derived values that are safe to interpret</summary><div class="detail-body"><p><code>first_chunk_offset_ms − recording_live_offset_ms</code> measures the elapsed time from recording-live to first chunk admission within the same session. It can include frame buffering, IPC/scheduling, and beep gating; it does not isolate any one of them.</p><p><code>pasted_offset_ms − last_chunk_offset_ms</code> measures last admitted chunk → native paste confirmation. It is not exact shortcut-release → paste latency: the stop input can precede the final admitted frame.</p><p>A native paste acknowledgement means the helper reported success posting the paste command. It does not verify insertion or timestamp when another app renders the text.</p></div></details>
+    </section>
+
+    <section id="measured">
+      <h2><span class="number">4</span>The local delay we measured</h2>
+      <p>This is separate evidence from the illustrative waterfall: a recording in the installed desktop app's local log on this M4 Max, <strong>23 September 2026 at 13:21:41 IST</strong>. Its time origin here is the native RPC dispatch, not T0 or shortcut press. The installed app was reporting 1.12.0.</p>
+      <div class="facts"><div class="fact"><div class="value">248 ms</div><div class="caption">Native start request → helper response</div></div><div class="fact"><div class="value">243 ms</div><div class="caption">Sound request → subsequent mute request; includes setup</div></div><div class="fact"><div class="value">156 ms</div><div class="caption">Native request → first PCM observed in renderer</div></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Position from native RPC dispatch</th><th>Observed event</th></tr></thead><tbody>
+        <tr><td>0 ms</td><td>Main sends <code>startRecording</code>.</td></tr><tr><td>3 ms</td><td>Renderer begins capture startup.</td></tr><tr><td>5 ms</td><td>Native sound request begins.</td></tr><tr><td>45 ms</td><td><code>play()</code> has returned successfully; the code logs “Playing sound”. This is not a measured acoustic onset.</td></tr><tr><td>128 ms</td><td>Renderer graph setup has completed. Its local total-startup timer reports 125.8 ms.</td></tr><tr><td>156 ms</td><td>Renderer sees its first PCM frame; the native playback wait is still in progress.</td></tr><tr><td>248 ms</td><td>Playback completion has released the native wait; mute setter succeeds and helper replies. The mute call is below the log's 1 ms resolution, not a measurement of physical silence.</td></tr>
+      </tbody></table></div>
+      <p style="margin-top:17px">In that capture startup: <strong>getUserMedia 83.9 ms</strong>, <strong>AudioContext resume 36.2 ms</strong>, <strong>first-frame wait 28.7 ms</strong>. Those renderer operations overlap the native sound path.</p>
+      <details id="playback-probes"><summary>4.1 · Standalone playback experiments</summary><div class="detail-body"><p>The sound contains 99.68 ms of audio. A standalone <code>AVAudioPlayer</code> probe reached the end of its playback timeline about 121–123 ms after <code>play()</code> returned, but the completion callback arrived at about 201–214 ms. A WAV version and <code>prepareToPlay()</code> did not remove the callback wait. <code>play()</code> itself took roughly 16–19 ms warm and 92 ms in one cold run.</p><p>A separate AVAudioEngine prototype using the same sound and <code>.dataPlayedBack</code> completed in 142–150 ms while warm and 157–168 ms after pausing between plays. These are isolated local probes, not an integrated desktop change or a population result. The current source still uses AVAudioPlayer.</p></div></details>
+    </section>
+
+    <section id="gaps">
+      <h2><span class="number">5</span>What the current event cannot tell us</h2>
+      <div class="two"><div class="box"><h3>Before and during capture</h3><ul><li>Physical key-down → accepted start / trace open.</li><li>Renderer scheduling, capture-mutex wait, and config IPC individually.</li><li>Device enumeration, <code>getUserMedia</code>, AudioContext resume, worklet load, and graph setup as separate PostHog timings. Several are already measured in local console logs.</li><li>First PCM arrival as an offset from T0; only recorder-spinup duration is exported.</li></ul></div><div class="box"><h3>Sound, mute, and ending</h3><ul><li>Native request start/end offsets or sound-enabled setting per trace.</li><li>Sound setup / audible start / playback completion / mute setter as separate timings.</li><li>Beep-gate release, frames dropped by the gate, and confirmed device mute.</li><li>Stop input / recording-stop offset and exact backend-internal stages.</li></ul></div></div>
+      <details id="proposed-fields"><summary>5.1 · Proposed additions — not currently implemented</summary><div class="detail-body"><p>The detailed, source-audited proposal is now in <a href="#span-evidence">section 8</a>: each interval has its boundary, a concrete reason it could exceed 20 ms, a local measurement or explicit gap, and its current v2 coverage.</p><p><a href="#clock-contract">Section 9</a> defines the shared names and clock contract. It preserves session-open T0 and uses shared epoch timestamps for offsets with local duration measurements. Native timing is limited to caller-observed RPCs. The event names and proposed field pairs there supersede the earlier sketch.</p></div></details>
+    </section>
+
+    <section id="branches">
+      <h2><span class="number">6</span>Branches and trace-flush rules</h2>
+      <div class="two"><div class="box"><h3>The lifecycle ends before every tail must end</h3><p>The root duration stops when the public state returns to <code>idle</code>. Telemetry waits for registered obligations, including recorder closure, storage, native audio restoration, and a dispatched paste response.</p><p>Flush occurs once: when the root is closed and all expected obligations settle, or after a <strong>15 s grace period</strong> from root close. Late records after flush are dropped. Shutdown force-flushes remaining traces.</p></div><div class="box"><h3>Presence does not always prove success</h3><p>An Effect span may end with failure or interruption and still supply a duration. Some best-effort spans catch their own errors. By contrast, <code>delivery.pasted</code> is recorded only for a confirmed successful native paste.</p><p>The flat payload takes the first mapped duration/offset for each key. Individual span status and timestamps remain in internal/debug records; failure attribution is summarized separately.</p></div></div>
+      <details id="other-outcomes"><summary>6.1 · Quick release, cancel, empty, and failure</summary><div class="detail-body"><p>A quick release or interrupted start can seal a discard before usable audio exists. Empty, dismissed, failed, and discarded sessions still go through settlement and emit the session summary if the app gets to flush it. An admission refusal before session creation does not create this trace.</p><p>Capture failures and provider terminal failures can seal the result during STARTING or RECORDING. The happy-path finalization and paste spans may therefore be absent. Cancellation can retire chunk work before late timings finish.</p></div></details>
+      <details id="draft-mode"><summary>6.2 · Draft mode and post-session actions</summary><div class="detail-body"><p>On stop, draft mode may wait for a bounded clipboard-copy capture barrier of up to 2.5 s <em>before</em> entering the measured <code>transcription.resolve</code> effect. That wait is not a dedicated exported timing.</p><p>Successful draft sessions stage text for review instead of immediately pasting. The later “confirm draft” paste and “paste latest transcription” action are outside this live session's <code>delivery.pasted</code> timing.</p></div></details>
+      <details id="two-drains"><summary>6.3 · Two different drains</summary><div class="detail-body"><p>The <strong>renderer/recorder drain</strong> flushes the worklet, accepts final in-flight PCM, then emits <code>recorderClosed</code>. There is no dedicated PostHog duration for that stop-to-close-decision interval.</p><p><strong><code>resolve.drain</code></strong> begins after that decision and waits for chunk-processing tasks already admitted to transcription. <code>recorder_close_duration_ms</code> is another distinct measurement: the asynchronous WAV write/finalize/enrichment tail, which may overlap resolve.</p></div></details>
+    </section>
+
+    <section id="sources">
+      <h2><span class="number">7</span>Source map</h2>
+      <p class="muted">Paths are relative to <code>/Users/z/exa9/@amical/amical</code>. This document describes revision <code>097ffe4</code>; local experimental results were collected on 23 September 2026.</p>
+      <div class="sources">
+        <div class="source-item"><strong>Trace fields, anchors, and flush</strong><code>apps/desktop/src/main/telemetry/dictation-trace.ts:58</code><code>apps/desktop/src/main/telemetry/dictation-trace.ts:129</code><code>apps/desktop/src/main/telemetry/dictation-trace.ts:407</code></div>
+        <div class="source-item"><strong>Start admission, T0, recording-live, idle close</strong><code>apps/desktop/src/main/lifecycle/runtime.ts:354</code><code>apps/desktop/src/main/lifecycle/runtime.ts:445</code><code>apps/desktop/src/main/lifecycle/runtime.ts:481</code><code>apps/desktop/src/main/lifecycle/runtime.ts:524</code></div>
+        <div class="source-item"><strong>Native startup/restoration and draft barrier</strong><code>apps/desktop/src/main/lifecycle/live.ts:99</code><code>apps/desktop/src/main/lifecycle/live.ts:158</code><code>apps/desktop/src/main/lifecycle/live.ts:205</code></div>
+        <div class="source-item"><strong>Capture, readiness, and 32 ms PCM frames</strong><code>apps/desktop/src/hooks/useAudioCapture.ts:212</code><code>apps/desktop/src/hooks/audioCaptureDevice.ts:24</code><code>apps/desktop/src/hooks/audioCaptureContext.ts:6</code><code>apps/desktop/src/hooks/audioCaptureWorklet.ts:17</code><code>apps/desktop/src/assets/audio-recorder-processor.js:4</code></div>
+        <div class="source-item"><strong>Gate, spinup, WAV custody</strong><code>apps/desktop/src/main/lifecycle/adapters/recorder.ts:182</code><code>apps/desktop/src/main/lifecycle/adapters/recorder.ts:253</code><code>apps/desktop/src/main/lifecycle/adapters/recorder.ts:336</code></div>
+        <div class="source-item"><strong>Streaming and resolution</strong><code>apps/desktop/src/main/lifecycle/adapters/transcription.ts:119</code><code>apps/desktop/src/services/transcription-service.ts:567</code><code>apps/desktop/src/services/transcription-service.ts:941</code></div>
+        <div class="source-item"><strong>Storage and paste confirmation</strong><code>apps/desktop/src/main/lifecycle/adapters/storage.ts:172</code><code>apps/desktop/src/main/lifecycle/adapters/host.ts:110</code><code>apps/desktop/src/main/lifecycle/adapters/host.ts:157</code></div>
+        <div class="source-item"><strong>macOS sound and mute</strong><code>packages/native-helpers/swift-helper/Sources/SwiftHelper/RecordingAmbianceController.swift:22</code><code>packages/native-helpers/swift-helper/Sources/SwiftHelper/AudioService.swift:142</code><code>packages/native-helpers/swift-helper/Sources/SwiftHelper/AccessibilityService.swift:146</code><a href="https://developer.apple.com/documentation/coreaudio/audioobjectsetpropertydata(_:_:_:_:_:_:)">Apple: asynchronous property-set semantics</a></div>
+        <div class="source-item"><strong>Local measured evidence</strong><code>/Users/z/Library/Logs/Amical/amical.log</code><span class="muted">Recording beginning 2026-09-23 13:21:41 IST. Native-helper and standalone Swift playback probes were separate diagnostic runs.</span></div>
+      </div>
+    </section>
+    <section id="span-evidence">
+      <h2><span class="number">8</span>Proposed spans: evidence before implementation</h2>
+      <p><span class="pill gap">PROPOSAL ONLY · NO TELEMETRY ADDED</span></p>
+      <p>The earlier list was too broad to treat every item as an established &gt;20 ms bottleneck. Below, measured slow work, concrete waits, and lower-priority diagnostic candidates are distinguished explicitly. Existing span names stay unchanged; new names follow the same dotted namespace and hyphenated operation convention.</p>
+      <div class="callout"><strong>Local evidence:</strong> 31 captures in this machine's installed-app log, 23 September 2026, 04:38–14:09 IST. The latest explicit preceding version is <strong>1.12.0</strong>. These are local observations, not 1.12.2 population statistics. Values are <strong>median and observed min–max, in milliseconds</strong>. Cold context operations have n=12; resumed contexts have n=19.</div>
+      <p><strong>“Not measured separately” means unknown, not zero.</strong> The log contains no “Dictation trace” debug records, so missing v2 phase values cannot be recovered from it. No number from the illustrative waterfall is used in these tables. A faster CPU does not shorten the audio file, remove the 32 ms frame size, or determine backend latency.</p>
+      <details id="capture-evidence"><summary>8.1 · Input and renderer capture</summary><div class="detail-body">
+      <div class="table-wrap"><table><thead><tr><th>Span and exact boundary</th><th>Why it could exceed 20 ms</th><th>This machine</th><th>Current v2 coverage</th></tr></thead><tbody>
+        <tr><td><code>lifecycle.recording-start-queue-wait</code><p>Start request enqueued → admission begins.</p></td><td>Can wait behind earlier asynchronous lifecycle verbs. Contention candidate; not inherently slow.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>lifecycle.recording-start-checks</code><p>Admission begins → start accepted/refused.</p></td><td>Selected-model settings read and possible migration/write; 3 s guard. Ordinary local reads are expected to be short. Lower priority.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.dispatch</code><p>Main publishes starting → renderer enters startCapture().</p></td><td>Process scheduling and React work can delay handling. This is a cross-process interval, not pure wire/IPC latency.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.lock-wait</code><p>startCapture() requests mutex → its body enters.</p></td><td>An earlier stop, context close, or cleanup can still hold the capture mutex.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.config-read.rpc</code><p>Renderer starts cached-config query → query settles.</p></td><td>Cached memory read itself is small; only queueing, IPC scheduling, or an event-loop stall justifies &gt;20 ms. Lower priority.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.enumerate-devices</code><p>enumerateDevices() call → result.</p></td><td>Actual slow samples exist on this machine: 5/31 exceeded 20 ms. Device discovery crosses browser/OS boundaries.</td><td>2.1 ms median; 0.3–63.9 ms; n=31.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.get-user-media</code><p>getUserMedia() call → stream returned or error.</p></td><td>Microphone permission/device opening and browser/OS audio setup. 31/31 exceeded 20 ms.</td><td>83.9 ms median; 68.9–137.7 ms; n=31.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.audio-context-create</code><p>AudioContext constructor entry → return.</p></td><td>Creating the audio engine opens/initializes browser and OS audio resources. 12/12 exceeded 20 ms.</td><td>35.0 ms median; 32.8–37.2 ms; n=12 cold contexts. Excludes worklet loading.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.audio-context-resume</code><p>AudioContext.resume() call → promise settles.</p></td><td>Audio engine/device restart and scheduling. 19/19 exceeded 20 ms.</td><td>36.2 ms median; 34.6–40.9 ms; n=19 warm contexts.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.worklet-load</code><p>audioWorklet.addModule() call → promise settles.</p></td><td>Cold module loading, evaluation, and audio-thread scheduling can be slower on other machines. No &gt;20 ms sample here. Conditional candidate.</td><td>2.45 ms median; 1.8–16.7 ms; n=12; 0/12 &gt;20 ms.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.graph-setup</code><p>Source/worklet construction → graph and analyser connected.</p></td><td>No evidence of intrinsic &gt;20 ms cost. Keep inside capture-startup coverage unless an actual slow sample appears; not a priority standalone span.</td><td>Full interval not measured. Node construction alone: 0.1 ms median; 0.0–0.7 ms; n=31.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.first-frame-wait</code><p>Frame handler attached → first nonempty renderer PCM frame observed.</p></td><td>Regular frames contain 512 samples at 16 kHz: 32 ms of audio. Includes audio scheduling and the final graph-connection work after handler attachment.</td><td>34.0 ms median; 27.3–46.7 ms; n=31; all &gt;20 ms.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.first-frame-ipc</code><p>Renderer sends first PCM → main receives it.</p></td><td>Ordinary local IPC should be short. &gt;20 ms would mainly indicate process scheduling/backlog. Cross-process interval; lower priority.</td><td>Not measured separately. First renderer PCM was 156 ms after native-start RPC dispatch in the 13:21 sample; that is not IPC duration.</td><td>Not exported</td></tr>
+        <tr><td><code>lifecycle.recorder-spinup</code><p>recorder.start() → first nonempty PCM observed in main.</p></td><td>Existing parent includes renderer scheduling, acquisition, context work, buffering, and IPC.</td><td>Not measured separately. Renderer startup diagnostic is a different interval: 126.4 ms median, 110.2–221.2 ms, n=31.</td><td>Duration: recorder_spinup_duration_ms</td></tr>
+      </tbody></table></div></div></details>
+      <details id="ambiance-evidence"><summary>8.2 · Native sound, mute, and gate — internal candidates deferred</summary><div class="detail-body"><p><strong>Current scope:</strong> main measures RPC duration and start offset. Internal native spans below are candidates only; they are not implemented.</p>
+      <div class="table-wrap"><table><thead><tr><th>Span and exact boundary</th><th>Why it could exceed 20 ms</th><th>This machine</th><th>Current v2 coverage</th></tr></thead><tbody>
+        <tr><td><code>lifecycle.ambiance-preferences</code><p>Preference read begins → sound/mute settings available.</p></td><td>Local settings read; no evidence of normal &gt;20 ms work. Lower priority, useful only to explain a parent-span gap.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>native.start-recording.rpc</code><p>Main calls startRecording → helper response/error.</p></td><td>Includes dispatch, helper scheduling, start sound, and mute. Every measured round trip exceeded 20 ms.</td><td>254 ms median; 218–285 ms; n=31.</td><td>Contained in mute_duration_ms; exact RPC not separately exported</td></tr>
+        <tr><td><code>native.start-recording.queue-wait</code><p>Helper start operation requests ambiance mutex → lock acquired.</p></td><td>Can wait behind a prior stop sound/restoration operation. Actual queue wait is not separately logged.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>native.start-recording.sound-setup</code><p>Native sound work starts → play() returns.</p></td><td>Per-play AVAudioPlayer creation and playback setup; 29/31 observed setup intervals exceeded 20 ms.</td><td>≈47 ms median; 9–64 ms; n=31. Wall-log proxy, includes work before player creation.</td><td>Not exported</td></tr>
+        <tr><td><code>native.start-recording.sound-wait</code><p>play() returns → playback completion is processed.</p></td><td>The sound itself contains ≈99.68 ms of audio; completion also includes output/callback scheduling. Faster CPU cannot remove the sound duration.</td><td>≈203 ms median; 199–203 ms; n=31. Proxy endpoint is the subsequent mute request, not a direct callback timestamp.</td><td>Not exported</td></tr>
+        <tr><td><code>native.start-recording.system-mute</code><p>Mute setter call → returned result.</p></td><td>No &gt;20 ms evidence here. Device/driver stalls are possible; retain as a small diagnostic child to distinguish actual mute cost from playback.</td><td>≈1 ms median; 0–2 ms; n=31; 0/31 &gt;20 ms. Physical silence is not measured.</td><td>Not exported</td></tr>
+        <tr><td><code>lifecycle.recorder-start-gate-wait</code><p>Recorder start sets beepPending → gate clears.</p></td><td>Normally waits for the start operation when sounds are enabled. Regular frames are dropped while closed; sounds-disabled path opens earlier.</td><td>Not measured separately. Do not substitute native RPC duration.</td><td>Not exported</td></tr>
+        <tr><td><code>lifecycle.mute-ambiance</code><p>Existing ambiance.begin timer → start operation resolves.</p></td><td>Parent includes remaining preference read, native request, sound completion, and optional mute.</td><td>Not measured separately. Sound-request → mute-request proxy alone: ≈250 ms median, 211–264 ms, n=31.</td><td>Duration: mute_duration_ms</td></tr>
+        <tr><td><code>lifecycle.unmute-ambiance</code><p>End ambiance effect begins → native stop settles/error handled.</p></td><td>Can first join a pending start, then restore audio and await the stop sound.</td><td>Not measured separately. The narrower native stop RPC is measured below.</td><td>Duration: unmute_duration_ms</td></tr>
+        <tr><td><code>native.stop-recording.rpc</code><p>Main calls stopRecording → helper response/error.</p></td><td>Restoration plus stop sound and helper scheduling. 31/31 exceeded 20 ms. Excludes any main-side wait for pending startup.</td><td>261 ms median; 218–270 ms; n=31.</td><td>Contained in unmute_duration_ms; exact RPC not separately exported</td></tr>
+        <tr><td><code>native.stop-recording.queue-wait</code><p>Helper stop operation requests ambiance mutex → lock acquired.</p></td><td>May wait for an earlier start/stop operation that is still playing a sound.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>native.stop-recording.system-restore</code><p>Restore original output properties → API result.</p></td><td>No measured &gt;20 ms case isolated here. OS/device calls can stall; diagnostic child, not a known bottleneck.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>native.stop-recording.sound-setup</code><p>Stop-sound work starts → play() returns.</p></td><td>Same player setup as start; 26/31 observed setup intervals exceeded 20 ms.</td><td>≈56 ms median; 10–65 ms; n=31.</td><td>Not exported</td></tr>
+        <tr><td><code>native.stop-recording.sound-wait</code><p>play() returns → stop-sound completion processed.</p></td><td>Waits for audio playback and the callback. The &gt;200 ms stop RPC establishes a slow parent, but does not isolate this child.</td><td>Not measured separately. Do not subtract medians to estimate it.</td><td>Not exported</td></tr>
+      </tbody></table></div></div></details>
+      <details id="streaming-evidence"><summary>8.3 · Context and streaming transcription</summary><div class="detail-body">
+      <div class="table-wrap"><table><thead><tr><th>Span and exact boundary</th><th>Why it could exceed 20 ms</th><th>This machine</th><th>Current v2 coverage</th></tr></thead><tbody>
+        <tr><td><code>context.accessibility-refresh</code><p>Refresh requested → accessibility snapshot propagated into session memory.</p></td><td>Helper queue and accessibility calls into another app, tree walks and selection fallbacks. Foreground-app responsiveness matters.</td><td>Whole interval not measured. Native extraction only: 16.80 ms median; 8.03–72.01 ms; n=31; 10/31 &gt;20 ms.</td><td>Not exported</td></tr>
+        <tr><td><code>transcription.provider-warmup</code><p>Provider warmup requested → settles.</p></td><td>Cloud can refresh an expired token over the network; local Whisper can load a model/worker. Warm calls may be short.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>transcription.vad-reset</code><p>Reset requested → VAD lock acquired and state reset.</p></td><td>Reset itself is small synchronous work. &gt;20 ms would usually be waiting behind earlier inference/retry work.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>transcription.session-setup</code><p>Inside transcription lock: context/config loading begins → provider session attached.</p></td><td>SQLite context, vocabulary, snippet and settings reads plus provider-session setup. Useful setup parent; model loading is not necessarily inside this interval.</td><td>Not measured separately.</td><td>Duration: materialize_duration_ms, in chunk aggregate; no offset</td></tr>
+        <tr><td><code>transcription.vad-lock-wait</code><p>Chunk requests VAD lock → lock acquired.</p></td><td>Prior inference, reset, or history retry can hold the lock and create a backlog.</td><td>Not measured separately.</td><td>Included in VAD sum/max only</td></tr>
+        <tr><td><code>transcription.vad-process</code><p>VAD frame-processing call → result.</p></td><td>ONNX inference and its scheduling can cross 20 ms under CPU load or on slower devices. No isolated local timing in this log.</td><td>Not measured separately.</td><td>Included in VAD sum/max only</td></tr>
+        <tr><td><code>transcription.chunk-lock-wait</code><p>Chunk requests transcription lock → lock acquired.</p></td><td>Earlier materialization, inference, provider work or flush can hold the shared lock.</td><td>Not measured separately.</td><td>Not exported separately</td></tr>
+        <tr><td><code>transcription.provider-transcribe</code><p>Provider transcribe() called → result/error.</p></td><td>Local model loading/inference, or cloud auth/transport/fallback work. Some provider calls only buffer data and return quickly.</td><td>Not measured separately.</td><td>Transcribe sum/max only; these exclude lock wait and materialization</td></tr>
+      </tbody></table></div></div></details>
+      <details id="ending-evidence"><summary>8.4 · Stop, resolution, storage, and paste</summary><div class="detail-body">
+      <div class="table-wrap"><table><thead><tr><th>Span and exact boundary</th><th>Why it could exceed 20 ms</th><th>This machine</th><th>Current v2 coverage</th></tr></thead><tbody>
+        <tr><td><code>lifecycle.recorder-final-frame-wait</code><p>Recorder.stop() → recorder-close decision.</p></td><td>Waits for renderer drain/final-frame IPC. A missing final frame can reach the 3 s bound.</td><td>Not measured separately.</td><td>Not exported; not recorder_close_duration_ms</td></tr>
+        <tr><td><code>capture.worklet-flush</code><p>Flush request posted → final frame handed off or timeout.</p></td><td>Worklet/audio-thread scheduling; timeout is 1 s. Main processing of the final frame is outside this renderer wait.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>capture.teardown</code><p>Post-flush teardown begins → context suspended and mic/nodes released.</p></td><td>AudioContext suspension and audio-device/resource cleanup can wait on browser/OS work.</td><td>Not measured separately. Stopping → stopped log gap was ≈1 ms in the 13:21 sample; final-frame handoff was logged 1 ms later. Neither isolates this teardown span.</td><td>Not exported</td></tr>
+        <tr><td><code>lifecycle.recorder-close</code><p>Close-tail execution → queued writes, WAV finalization and duration enrichment finish.</p></td><td>File write queue, stream completion, header rewrite/file close, then metadata update can wait for I/O.</td><td>Not measured separately.</td><td>Duration: recorder_close_duration_ms</td></tr>
+        <tr><td><code>context.draft-selection-copy</code><p>Draft fallback begins → copied selection merged into session.</p></td><td>Native Cmd+C and clipboard polling every 25 ms, up to 300 ms; RPC is bounded at 2 s.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>resolve.draft-selection-wait</code><p>Resolve adapter reaches copy barrier → barrier releases/times out.</p></td><td>Waits for the preceding copy fallback, bounded at 2.5 s. May overlap most of the copy operation.</td><td>Not measured separately.</td><td>Not exported; outside transcription.resolve</td></tr>
+        <tr><td><code>transcription.resolve</code><p>Resolve effect entry → resolved result assembled.</p></td><td>Parent covers admitted-work drain, provider flush, formatting and remaining resolve work.</td><td>Not measured separately. Stop RPC dispatch → resolved log was 1,224 ms in one sample; this broader gap is not resolve duration.</td><td>Duration: resolve_duration_ms</td></tr>
+        <tr><td><code>resolve.drain</code><p>Begin waiting for admitted chunk work → that work settles.</p></td><td>Outstanding inference, network/provider work and lock backlogs can hold finalization.</td><td>Not measured separately.</td><td>Duration: resolve_drain_duration_ms</td></tr>
+        <tr><td><code>resolve.flush</code><p>Attempt transcription lock → provider flush and final-result merge finish.</p></td><td>Includes lock wait, final local inference or cloud result/formatting. Network/backend cost is not determined by the CPU in this machine.</td><td>Not measured separately.</td><td>Duration: resolve_flush_duration_ms</td></tr>
+        <tr><td><code>resolve.format</code><p>prepareTranscriptText() → completion.</p></td><td>Can call a separate remote formatter or Ollama when configured; otherwise often only settings/text processing. Cloud formatting may already be in resolve.flush.</td><td>Not measured separately.</td><td>Duration: resolve_format_duration_ms</td></tr>
+        <tr><td><code>storage.transcription-metadata-write</code><p>Post-resolve enrichment requested → metadata update finishes.</p></td><td>Local SQLite read/update; only I/O contention/stalls make &gt;20 ms compelling. Lower priority.</td><td>Not measured separately.</td><td>Not exported</td></tr>
+        <tr><td><code>storage.commit</code><p>First disposition-commit attempt begins → result/error.</p></td><td>Can await WAV custody (configured 5 s bound), then perform transaction/file cleanup. Later repair retries are outside this first attempt.</td><td>Not measured separately.</td><td>Duration: storage_duration_ms</td></tr>
+        <tr><td><code>delivery.paste</code><p>Delivery effect begins → native paste dispatched.</p></td><td>Preserve-clipboard preference read and dispatch. Expected short unless local DB/event-loop work stalls. Lower priority.</td><td>Not measured separately.</td><td>Internal span only</td></tr>
+        <tr><td><code>delivery.pasted</code><p>Delivery effect begins → successful native paste acknowledgement.</p></td><td>Helper queue, clipboard format snapshot, clipboard writes and key-event dispatch can take time, especially with large clipboard data.</td><td>Not measured separately.</td><td>Duration: paste_duration_ms; end offset: pasted_offset_ms</td></tr>
+      </tbody></table></div></div></details>
+      <div class="callout blue"><strong>Paste acknowledgement is not visible insertion.</strong> On macOS the helper returns success after posting Cmd+V; it does not verify the target application's text. Clipboard restoration scheduled 700 ms later is outside this acknowledgement. Keep the existing <code>delivery.pasted</code> name and <code>pasted_offset_ms</code> key for compatibility, but label their meaning correctly.</div>
+      <p class="muted">The existing session root is retained as the lifecycle envelope. It starts at T0 and ends at idle; outstanding native responses and other obligations can end after it. Parent and child intervals overlap, so their durations must not be added.</p>
+    </section>
+    <section id="clock-contract">
+      <h2><span class="number">9</span>Names and clocks — simplified contract</h2>
+      <p><strong>Measure existing operations first.</strong> Native RPCs are measured entirely in main. Native code, response contracts, and generators are unchanged. Internal playback/mute subphases are deferred until later analysis justifies them.</p>
+      <h3 id="span-contract">9.1 · Interval attributes</h3>
+      <pre>name              dotted namespace + hyphenated operation
+span_id           unique within the event
+parent_span_id    logical parent
+process           main | renderer
+start_offset_ms   epoch start timestamp − session-open epoch timestamp
+duration_ms       elapsed milliseconds
+status            ok | failed | interrupted
+chunk_index       present for repeated chunk work</pre>
+      <h3 id="clock-source">9.2 · Clock sources</h3>
+      <p>Cross-process starts use <code>Date.now()</code> Unix-epoch milliseconds. Main and renderer share the machine's wall clock, so their offsets need no clock mapping. Local <code>performance.now()</code> and existing Effect timers supply elapsed durations where already used. Existing synthetic main spans can use Date differences.</p>
+      <pre>start_offset_ms = startedAtMs − sessionStartMs</pre>
+      <p>Renderer timing batches contain only phase name, epoch start, and elapsed duration for completed operations. The original cached-config query is retained. There is no clock-sync endpoint, uncertainty metadata, clock-change correction, or native timing payload.</p>
+      <h3 id="evidence-limits">9.3 · Measurement scope</h3>
+      <ul><li>The session anchor remains session open, not physical shortcut press. Early provider warmup can have a negative offset.</li><li>Native RPC duration includes transport, scheduling, playback and mute work inside that RPC. It does not isolate those internal parts.</li><li>A helper reply does not establish acoustic silence or visible text insertion in another application.</li><li>The local measurements in sections 4 and 8 remain historical evidence, not results from this change. Unmeasured internal work remains unmeasured.</li></ul>
+    </section>
+    <section id="implemented">
+      <h2><span class="number">10</span>Implemented v2 attributes</h2>
+      <p>The event remains <code>transcription_completed_v2</code>. It contains the selected main/renderer span durations and start offsets, with existing field meanings preserved. For native operations, it contains caller-observed RPC timing only.</p>
+      <h3 id="implemented-contract">10.1 · Payload contract</h3>
+      <p><code>trace_spans</code> holds the interval attributes in section 9. <code>trace_points</code> holds <code>name</code>, <code>offset_ms</code>, and <code>process</code>. The implicit root, identified by <code>trace_root_span_id</code>, starts at offset 0 and ends at <code>session_duration_ms</code>. Logical children can finish after the lifecycle returns to idle.</p>
+      <details><summary>Example added properties — illustrative values</summary><pre>{
+  &quot;trace_schema_version&quot;: 1,
+  &quot;trace_offset_anchor&quot;: &quot;session_open&quot;,
+  &quot;trace_root_span_id&quot;: &quot;root-example&quot;,
+  &quot;trace_spans&quot;: [
+    {
+      &quot;span_id&quot;: &quot;phase-example&quot;,
+      &quot;parent_span_id&quot;: &quot;root-example&quot;,
+      &quot;name&quot;: &quot;native.start-recording.rpc&quot;,
+      &quot;process&quot;: &quot;main&quot;,
+      &quot;start_offset_ms&quot;: 5,
+      &quot;duration_ms&quot;: 248.1,
+      &quot;status&quot;: &quot;ok&quot;
+    }
+  ],
+  &quot;trace_points&quot;: [
+    {
+      &quot;name&quot;: &quot;lifecycle.recording-stopping&quot;,
+      &quot;offset_ms&quot;: 3000,
+      &quot;process&quot;: &quot;main&quot;
+    }
+  ],
+  &quot;native_start_recording_rpc_start_offset_ms&quot;: 5,
+  &quot;native_start_recording_rpc_duration_ms&quot;: 248
+}</pre></details>
+      <h3 id="implemented-fields">10.2 · Flat duration / start-offset pairs</h3>
+      <p><strong>24 September trim:</strong> retained 12 additional spans for microphone/device startup, audio readiness, native start/stop RPCs, the recorder start gate, provider warmup, and context capture. Removed admission checks/queue, capture lock/config read, worklet load/flush, teardown/context close, VAD reset, recorder final-frame wait, WAV write/finalize, and metadata-write timers. Existing aggregate timings remain. The candidate audit in section 8 is historical; this table is the current field list.</p>
+      <p>These selected spans also have top-level properties for percentile queries. The first recorded instance supplies the flat pair; individual instances remain in <code>trace_spans</code>.</p>
+      <details><summary>Expand implemented field pairs (22 spans)</summary><div class="table-wrap"><table><thead><tr><th>Span name</th><th>Event attributes</th></tr></thead><tbody><tr><td><code>lifecycle.mute-ambiance</code></td><td><code>mute_duration_ms</code><br><code>mute_start_offset_ms</code></td></tr>
+<tr><td><code>lifecycle.recorder-spinup</code></td><td><code>recorder_spinup_duration_ms</code><br><code>recorder_spinup_start_offset_ms</code></td></tr>
+<tr><td><code>lifecycle.recorder-close</code></td><td><code>recorder_close_duration_ms</code><br><code>recorder_close_start_offset_ms</code></td></tr>
+<tr><td><code>delivery.pasted</code></td><td><code>paste_duration_ms</code><br><code>paste_start_offset_ms</code></td></tr>
+<tr><td><code>storage.commit</code></td><td><code>storage_duration_ms</code><br><code>storage_start_offset_ms</code></td></tr>
+<tr><td><code>lifecycle.unmute-ambiance</code></td><td><code>unmute_duration_ms</code><br><code>unmute_start_offset_ms</code></td></tr>
+<tr><td><code>transcription.resolve</code></td><td><code>resolve_duration_ms</code><br><code>resolve_start_offset_ms</code></td></tr>
+<tr><td><code>resolve.drain</code></td><td><code>resolve_drain_duration_ms</code><br><code>resolve_drain_start_offset_ms</code></td></tr>
+<tr><td><code>resolve.flush</code></td><td><code>resolve_flush_duration_ms</code><br><code>resolve_flush_start_offset_ms</code></td></tr>
+<tr><td><code>resolve.format</code></td><td><code>resolve_format_duration_ms</code><br><code>resolve_format_start_offset_ms</code></td></tr>
+
+
+<tr><td><code>lifecycle.recorder-start-gate-wait</code></td><td><code>recorder_start_gate_wait_duration_ms</code><br><code>recorder_start_gate_wait_start_offset_ms</code></td></tr>
+
+
+
+<tr><td><code>capture.enumerate-devices</code></td><td><code>capture_enumerate_devices_duration_ms</code><br><code>capture_enumerate_devices_start_offset_ms</code></td></tr>
+<tr><td><code>capture.get-user-media</code></td><td><code>capture_get_user_media_duration_ms</code><br><code>capture_get_user_media_start_offset_ms</code></td></tr>
+<tr><td><code>capture.audio-context-create</code></td><td><code>capture_audio_context_create_duration_ms</code><br><code>capture_audio_context_create_start_offset_ms</code></td></tr>
+<tr><td><code>capture.audio-context-resume</code></td><td><code>capture_audio_context_resume_duration_ms</code><br><code>capture_audio_context_resume_start_offset_ms</code></td></tr>
+
+
+<tr><td><code>capture.first-frame-wait</code></td><td><code>capture_first_frame_wait_duration_ms</code><br><code>capture_first_frame_wait_start_offset_ms</code></td></tr>
+
+
+<tr><td><code>native.start-recording.rpc</code></td><td><code>native_start_recording_rpc_duration_ms</code><br><code>native_start_recording_rpc_start_offset_ms</code></td></tr>
+<tr><td><code>native.stop-recording.rpc</code></td><td><code>native_stop_recording_rpc_duration_ms</code><br><code>native_stop_recording_rpc_start_offset_ms</code></td></tr>
+<tr><td><code>context.accessibility-refresh</code></td><td><code>accessibility_refresh_duration_ms</code><br><code>accessibility_refresh_start_offset_ms</code></td></tr>
+<tr><td><code>context.draft-selection-copy</code></td><td><code>draft_selection_copy_duration_ms</code><br><code>draft_selection_copy_start_offset_ms</code></td></tr>
+<tr><td><code>resolve.draft-selection-wait</code></td><td><code>draft_selection_wait_duration_ms</code><br><code>draft_selection_wait_start_offset_ms</code></td></tr>
+<tr><td><code>transcription.provider-warmup</code></td><td><code>provider_warmup_duration_ms</code><br><code>provider_warmup_start_offset_ms</code></td></tr>
+
+
+
+</tbody></table></div></details>
+      <p>Additional intervals in <code>trace_spans</code> include <code>transcription.session-setup</code>, <code>transcription.provider-transcribe</code>, and completed VAD work and lock waits. Existing VAD/provider aggregates and <code>materialize_duration_ms</code> retain their previous names and scope.</p>
+      <p>New point properties: <code>recording_stopping_offset_ms</code> (lifecycle entering stopping) and <code>first_accepted_frame_offset_ms</code> (main admits first PCM). Settings: <code>dictation_sounds_enabled</code> and <code>system_audio_mute_enabled</code>.</p>
+      <h3 id="implemented-limits">10.3 · Coverage and limits</h3>
+      <ul><li>Native <code>startRecording</code> and <code>stopRecording</code> use their original requests and responses. Main records call start and elapsed time. No native subphase timestamps are returned.</li><li>The 12 selected additional spans are kept even when fast. Added operation timers record successful completions; a failed operation has no duration for that operation. Existing failure reporting and lifecycle spans remain. Completed VAD/provider work and lock waits are retained above 20 ms, capped at 64 per session with a dropped count. Full-session aggregates remain available.</li><li>Completed startup timings piggyback existing renderer reports, including completed steps before a later capture failure. First-frame reports and the final completion batch are nonblocking. Capture cleanup is not timed. Format metadata sent with audio is retained as its latest value, not expanded into per-frame trace points.</li><li>The existing 15 s telemetry grace bounds late reports after lifecycle idle. Incomplete obligations are listed without fabricated completion times.</li><li>Paste confirmation retains its existing meaning: native acknowledgement, not observed insertion.</li><li>No transcript, audio, clipboard/window text, device identifier, email or credential is added to these timing properties.</li></ul>
+    </section>
+    <div class="footer">Baseline audit + local instrumentation update · Mock timings are not production samples · Recording behavior preserved</div>
+  </main>
+
+  <script>
+    const fields = [
+      ['session_duration_ms','duration','Synthetic session root','Trace open → public state returns to idle. Excludes pre-trace admission and may exclude native-confirmation tails that finish after idle.'],
+      ['mute_duration_ms','duration','lifecycle.mute-ambiance','Timer within ambiance.begin() → startup promise resolves. Includes remaining preference work, native dispatch, sound playback (if enabled), and the mute API call (if enabled). Starts just after the async startup operation is launched; not a physical-mute confirmation.'],
+      ['recorder_spinup_duration_ms','duration','lifecycle.recorder-spinup','recorder.start() → first nonempty PCM frame received in main. Recorded before readiness and startup-gate drop checks. Includes renderer round trip, capture setup, buffering, and IPC.'],
+      ['recorder_close_duration_ms','duration','lifecycle.recorder-close','Close-tail execution → queued WAV writes, writer.finalize(), and duration enrichment finish. Starts at the custody-close decision, not the stop input; the recorderClosed fact is emitted without waiting for this tail.'],
+      ['unmute_duration_ms','duration','lifecycle.unmute-ambiance','Ambiance ending effect → stopRecording RPC completes or its error is handled. Can first wait for pending startup. On macOS: restore output state, then await the stop sound if enabled.'],
+      ['resolve_duration_ms','duration','transcription.resolve','Resolve effect entry → drain, provider flush, text preparation, and remaining resolve work complete. Excludes draft capture barrier before entry and adapter enrichment afterward.'],
+      ['resolve_drain_duration_ms','duration','resolve.drain','Wait for chunk work already admitted to transcription to finish. This is not the worklet/recorder drain.'],
+      ['resolve_flush_duration_ms','duration','resolve.flush','Acquire transcription lock, flush provider, and merge its final result. May include backend/network time and cloud formatting; not an isolated backend span.'],
+      ['resolve_format_duration_ms','duration','resolve.format','prepareTranscriptText() call → completion. May include configured formatting; cloud formatting may already have happened during provider flush.'],
+      ['storage_duration_ms','duration','storage.commit','First disposition-commit attempt: wait for WAV custody (bounded), then persist/update/delete the row and related data. Does not cover all earlier provisional writes or later repair retries.'],
+      ['paste_duration_ms','duration','delivery.pasted','Delivery effect start, including clipboard-preference read → native paste success response. Not the shorter delivery.paste dispatch span. Omitted when native confirmation is unsuccessful or never arrives before trace flush.'],
+      ['recording_live_offset_ms','offset','lifecycle.recording-live','T0 → public state enters recording after captureStarted confirms the connected graph. Does not require a PCM frame or an open startup audio gate.'],
+      ['first_chunk_offset_ms','offset','ChunkAggregate.firstChunkAt','T0 → first chunk accepted at processStreamingChunk() entry. Before VAD/lock/provider work; after recorder readiness and beep gating. Not a first server response.'],
+      ['last_chunk_offset_ms','offset','ChunkAggregate.lastChunkAt','T0 → last accepted chunk at processStreamingChunk() entry. Not necessarily stop input, last speech sample, or the end of chunk processing.'],
+      ['pasted_offset_ms','offset','delivery.pasted (end)','T0 → successful native paste response. May exceed session_duration_ms. Does not measure visible text rendering in the target app.']
+    ];
+    const stages = [
+      {id:'root',g:'Lifecycle',n:'Session root / lifecycle',k:'duration',s:0,e:3763,f:['session_duration_ms'],d:'Synthetic root anchored at openSessionTrace(). Closes at the IDLE transition. Registered obligation tails may continue beyond the root and delay telemetry flush.'},
+      {id:'warm',g:'Parallel startup',n:'VAD reset + provider warmup',k:'gap',s:0,e:190,f:[],d:'transcription.open() launches these immediately before T0. This bar represents their illustrative in-flight work after T0. No dedicated warmup duration or ready offset is exported.'},
+      {id:'spin',g:'Renderer capture',n:'lifecycle.recorder-spinup',k:'duration',s:2,e:167,f:['recorder_spinup_duration_ms'],d:'Starts at recorder.start(), not T0. Ends when main receives the first nonempty PCM frame, even if that frame is dropped by the readiness or startup audio gate.'},
+      {id:'renderer',g:'Renderer capture',n:'State update / React / capture mutex',k:'gap',s:3,e:10,f:[],d:'The starting state reaches useRecording; the capture effect enters its mutex. Scheduling and mutex wait are not separately exported.'},
+      {id:'config',g:'Renderer capture',n:'Read cached remote config over IPC',k:'gap',s:10,e:12,f:[],d:'A local renderer-to-main tRPC query reads in-memory configuration. No network request on this read. This mock 2 ms interval is illustrative, not a measured RPC percentile.'},
+      {id:'devices',g:'Renderer capture',n:'enumerateDevices (when configured)',k:'local',s:12,e:14,f:[],d:'Device enumeration happens when a microphone-priority list is present. Local diagnostic duration only; not a named exported PostHog span.'},
+      {id:'mic',g:'Renderer capture',n:'getUserMedia',k:'local',s:14,e:98,f:[],d:'Browser microphone-stream acquisition. Its duration is logged locally. No separate PostHog field isolates it from the broader startup measurements.'},
+      {id:'context',g:'Renderer capture',n:'AudioContext resume / setup',k:'local',s:98,e:134,f:[],d:'This mock depicts a resumed context. A cold context also requires AudioContext creation and audioWorklet.addModule(). These steps have local timings, not separate PostHog timings.'},
+      {id:'graph',g:'Renderer capture',n:'Create/connect source + worklet',k:'local',s:134,e:135,f:[],d:'Create audio nodes, attach the frame handler, connect the graph, and attach the visualizer. Node creation and overall startup are locally logged.'},
+      {id:'captureAck',g:'Renderer capture',n:'captureStarted IPC → recorderReady',k:'gap',s:135,e:138,f:[],d:'Renderer reports the connected graph. Main changes the recorder to capturing and enters public recording state. This handshake is not exported as a duration.'},
+      {id:'live',g:'Renderer capture',n:'Recording live',k:'offset',s:138,e:138,f:['recording_live_offset_ms'],d:'Point at public recording state. No audio frame or completed start sound is required for this point.'},
+      {id:'framewait',g:'Renderer capture',n:'Accumulate first 512-sample frame',k:'local',s:135,e:167,f:[],d:'The worklet emits 512 samples per regular frame: 32 ms at 16 kHz. Scheduling and delivery add variability. A renderer first-frame diagnostic is logged locally.'},
+      {id:'pcm',g:'Renderer capture',n:'First nonempty PCM received in main',k:'local',s:167,e:167,f:['recorder_spinup_duration_ms (end only)'],d:'This ends the spinup duration, but no first_pcm_offset_ms field is currently sent. The raw frame is observed before readiness/beep-drop checks.'},
+      {id:'mute',g:'Native ambiance · concurrent',n:'lifecycle.mute-ambiance',k:'duration',s:4,e:254,f:['mute_duration_ms'],d:'Broad native-start phase: remaining preference wait plus request, sound completion, and mute setter. It is not playback-only, a mute-start offset, or physical silence confirmation.'},
+      {id:'prefs',g:'Native ambiance · concurrent',n:'Read dictation preferences',k:'gap',s:4,e:6,f:[],d:'Select muteDictationSounds and muteSystemAudio. If sounds are disabled, release the startup audio gate here, even while the native operation continues.'},
+      {id:'rpc',g:'Native ambiance · concurrent',n:'startRecording RPC',k:'local',s:6,e:254,f:[],d:'Exact request and response timestamps plus durationMs are written to local native-bridge logs. Successful RPC duration is not separately sent to PostHog.'},
+      {id:'soundsetup',g:'Native ambiance · concurrent',n:'AVAudioPlayer creation / play() setup',k:'local',s:10,e:50,f:[],d:'Current helper creates an AVAudioPlayer from preloaded bytes for each playback. Native logs bound the setup but do not emit a separate sound-setup field.'},
+      {id:'soundwait',g:'Native ambiance · concurrent',n:'Wait for playback-completion callback',k:'local',s:50,e:253,f:[],d:'This mock 203 ms wait resembles a local observation, but is still illustrative here. play() returning is not measured acoustic onset. The bundled sound contains about 100 ms of audio.'},
+      {id:'mutecall',g:'Native ambiance · concurrent',n:'System-mute API call',k:'gap',s:253,e:254,f:[],d:'After the start sound completes, set the output mute property when enabled (with volume-zero fallback). Return status is checked; no listener wait confirms the device has actually become silent.'},
+      {id:'gate',g:'Native ambiance · concurrent',n:'Startup audio gate releases',k:'gap',s:254,e:254,f:[],d:'The baseline has no dedicated gate-open offset. For sounds enabled, the gate releases after the startup promise settles, including failure handling. It opens earlier when sounds are muted.'},
+      {id:'dropped',g:'Audio admission',n:'PCM arrives while gate is closed',k:'gap',s:167,e:254,f:[],d:'In this mock, regular frames at 167, 199, and 231 ms are observed then dropped. No exported count or gate-wait span records this loss. The final-frame exception can pass through beep gating.'},
+      {id:'first',g:'Audio admission',n:'First chunk admitted to transcription',k:'offset',s:263,e:263,f:['first_chunk_offset_ms'],d:'The next illustrative regular frame after gate release. Timestamp is assigned at processStreamingChunk() entry, before VAD, first-chunk materialization, or provider transcription.'},
+      {id:'chunks',g:'Streaming while user speaks',n:'VAD + provider chunk processing',k:'aggregate',s:263,e:3040,f:['chunk_count','vad_duration_sum_ms','vad_duration_max_ms','transcribe_duration_sum_ms','transcribe_duration_max_ms'],d:'Repeated chunk work, not one exported duration. VAD timings include its lock wait; provider-transcribe timings start after the transcription lock is acquired. Admitted work may finish after the last chunk timestamp.'},
+      {id:'materialize',g:'Streaming while user speaks',n:'First-chunk session materialization',k:'aggregate',s:266,e:271,f:['materialize_duration_ms'],d:'Load context/config, select a model, and attach a provider session once, inside the transcription lock. This is accumulated as one setup duration, without an exported start offset.'},
+      {id:'writes',g:'Streaming while user speaks',n:'Queued WAV writes / provisional row',k:'gap',s:263,e:3030,f:[],d:'Accepted PCM is queued to the WAV writer while transcription proceeds. Provisional custody creation and individual writes are not standalone fields in this event.'},
+      {id:'stop',g:'Stop and drain',n:'Stop input / stopRequested',k:'gap',s:3000,e:3000,f:[],d:'A normal stop enters RESOLVING and stops the recorder. No exact stop-input offset is exported; last_chunk_offset_ms is not a substitute.'},
+      {id:'unmute',g:'Stop and drain',n:'lifecycle.unmute-ambiance',k:'duration',s:3001,e:3255,f:['unmute_duration_ms'],d:'Runs concurrently with capture drain and resolution. Joins pending startup if needed; native stopRecording restores output state, then plays the stop sound when enabled.'},
+      {id:'rendererdrain',g:'Stop and drain',n:'Flush worklet / final frame / mic release',k:'local',s:3003,e:3030,f:[],d:'The renderer flushes while the graph is connected, then suspends the AudioContext and stops mic tracks. Main accepts draining PCM until custody closes. No separate stop-to-recorderClosed duration is exported.'},
+      {id:'last',g:'Stop and drain',n:'Last admitted chunk',k:'offset',s:3028,e:3028,f:['last_chunk_offset_ms'],d:'Timestamp of the last chunk accepted at streaming-service entry. It may be later than stop input and earlier than completion of its processing.'},
+      {id:'closed',g:'Stop and drain',n:'recorderClosed fact',k:'gap',s:3030,e:3030,f:[],d:'This fact permits finalization. It is emitted at the recorder close decision without waiting for WAV closure to finish.'},
+      {id:'wavclose',g:'Stop and drain',n:'lifecycle.recorder-close',k:'duration',s:3030,e:3045,f:['recorder_close_duration_ms'],d:'Wait for the write queue, finalize WAV, and enrich custody duration. This tail is an obligation and overlaps transcript resolution.'},
+      {id:'resolve',g:'Resolve transcript',n:'transcription.resolve',k:'duration',s:3031,e:3745,f:['resolve_duration_ms'],d:'Parent effect covering admitted-work drain, provider flush, text preparation, and remaining resolve work. Draft mode can have an additional barrier before this measured effect.'},
+      {id:'drain',g:'Resolve transcript',n:'resolve.drain',k:'duration',s:3031,e:3040,f:['resolve_drain_duration_ms'],d:'Wait for already admitted streaming-chunk tasks. Distinct from worklet/recorder drain and WAV closure.'},
+      {id:'flush',g:'Resolve transcript',n:'resolve.flush',k:'duration',s:3042,e:3732,f:['resolve_flush_duration_ms'],d:'Lock wait, provider flush, and final-result merge. Cloud backend processing/formatting may be inside this interval, but the desktop event has no server-stage breakdown.'},
+      {id:'format',g:'Resolve transcript',n:'resolve.format',k:'duration',s:3732,e:3740,f:['resolve_format_duration_ms'],d:'prepareTranscriptText() call. Not necessarily all formatting: the cloud provider may already have formatted during flush.'},
+      {id:'enrich',g:'Settlement and delivery',n:'Adapter metadata enrichment → final fact',k:'gap',s:3745,e:3750,f:[],d:'After resolve returns, its adapter enriches the custody row before publishing transcriptionFinal. No separate duration export.'},
+      {id:'storage',g:'Settlement and delivery',n:'storage.commit',k:'duration',s:3750,e:3760,f:['storage_duration_ms'],d:'Commit the sealed outcome, including any bounded custody wait. Normal success proceeds to delivery after storageFinished. Repair retries are outside this first-attempt duration.'},
+      {id:'pasteDispatch',g:'Settlement and delivery',n:'delivery.paste (dispatch only)',k:'local',s:3760,e:3762,f:[],d:'Real internal Effect span for preparation and dispatch. Its duration is not exported as paste_duration_ms; that field uses delivery.pasted instead.'},
+      {id:'pastedSpan',g:'Settlement and delivery',n:'delivery.pasted (confirmation)',k:'duration',s:3760,e:3770,f:['paste_duration_ms','pasted_offset_ms'],d:'Synthetic span from delivery effect start through successful native response. Supplies both a duration and an end offset. Omitted if unconfirmed before telemetry flush.'},
+      {id:'idle',g:'Settlement and delivery',n:'IDLE / session root closes',k:'local',s:3763,e:3763,f:['session_duration_ms (end)'],d:'deliveryStaged advances the lifecycle to idle without awaiting the native paste response. The trace remains held for its outstanding confirmation obligation.'},
+      {id:'pasted',g:'Settlement and delivery',n:'Native paste success response',k:'offset',s:3770,e:3770,f:['pasted_offset_ms'],d:'Successful helper response. This is not a measurement of text appearing on screen in the target application.'},
+      {id:'emit',g:'Telemetry',n:'Flush transcription_completed_v2',k:'local',s:3770,e:3770,f:[],d:'Emit one flattened summary after root close and all expected obligations settle, or force a partial flush after the 15 s grace period. Event timestamp is not the shortcut or trace-open timestamp.'}
+    ];
+    const examplePayload = {event:'transcription_completed_v2',properties:{session_id:'illustrative-session',app_version:'1.12.2',disposition:'success',flush_reason:'settled',session_duration_ms:3763,mute_duration_ms:250,recorder_spinup_duration_ms:165,recording_live_offset_ms:138,first_chunk_offset_ms:263,last_chunk_offset_ms:3028,unmute_duration_ms:254,recorder_close_duration_ms:15,resolve_duration_ms:714,resolve_drain_duration_ms:9,resolve_flush_duration_ms:690,resolve_format_duration_ms:8,storage_duration_ms:10,paste_duration_ms:10,pasted_offset_ms:3770,chunk_count:88,vad_duration_sum_ms:80,vad_duration_max_ms:3,transcribe_duration_sum_ms:60,transcribe_duration_max_ms:4,materialize_duration_ms:5,model_id:'amical-cloud',provider:'amical-cloud',audio_input_channel_count:2,audio_track_channel_count:1,audio_stereo_downmix_enabled:true}};
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const kinds = {duration:['D','Duration exported'],offset:['O','Offset exported'],aggregate:['Σ','Aggregate exported'],local:['L','Local / internal timing'],gap:['—','No separate timing export']};
+    const views = {startup:{min:0,max:350,ids:['warm','spin','renderer','config','devices','mic','context','graph','captureAck','live','framewait','pcm','mute','prefs','rpc','soundsetup','soundwait','mutecall','gate','dropped','first','materialize']},full:{min:0,max:4000,ids:['root','warm','spin','live','mute','first','chunks','writes','stop','unmute','rendererdrain','last','wavclose','resolve','drain','flush','format','storage','pasteDispatch','pastedSpan','idle','pasted','emit']},ending:{min:3000,max:3800,ids:['stop','unmute','rendererdrain','last','closed','wavclose','resolve','drain','flush','format','enrich','storage','pasteDispatch','pastedSpan','idle','pasted','emit']}};
+    let currentView = 'startup'; let selectedId = 'mute';
+    function showStage(id){
+      selectedId = id;
+      const item = stages.find(stage => stage.id === id);
+      document.querySelectorAll('.bar').forEach(bar => { const selected = bar.dataset.id === id; bar.classList.toggle('selected',selected); bar.setAttribute('aria-pressed',String(selected)); });
+      const timing = item.s === item.e ? `Illustrative point: T0 + ${item.s.toLocaleString()} ms` : `Illustrative interval: T0 + ${item.s.toLocaleString()} → ${item.e.toLocaleString()} ms · elapsed ${item.e-item.s} ms`;
+      document.getElementById('inspector').innerHTML = `<div class="inspector-head"><h3>${escapeHtml(item.n)}</h3><span class="pill ${item.k}">${kinds[item.k][0]} · ${kinds[item.k][1]}</span></div><div class="timing mono">${timing}</div><p>${escapeHtml(item.d)}</p><p class="fields"><strong>PostHog:</strong> ${item.f.length ? item.f.map(field => `<code>${escapeHtml(field)}</code>`).join(' · ') : 'No separate timing field for this operation.'}</p>`;
+    }
+    function renderTrace(){
+      const view = views[currentView]; const width = view.max-view.min; let group='';
+      let html='<div class="ruler">';
+      for(let i=0;i<=4;i++) html+=`<span style="left:${i*25}%">${(view.min+width*i/4).toLocaleString()} ms</span>`;
+      html+='</div>';
+      for(const id of view.ids){
+        const item=stages.find(stage=>stage.id===id);
+        if(item.g!==group){group=item.g;html+=`<div class="trace-group">${escapeHtml(group)}</div>`;}
+        const left=Math.max(0,(item.s-view.min)/width*100); const length=Math.max(.35,(Math.min(item.e,view.max)-Math.max(item.s,view.min))/width*100);
+        html+=`<div class="trace-row"><div class="trace-label" title="${escapeHtml(item.n)}"><span class="tag ${item.k}">${kinds[item.k][0]}</span>${escapeHtml(item.n)}</div><div class="track"><button type="button" class="bar ${item.k}${item.s===item.e?' offset':''}" style="left:${left}%;width:${length}%" data-id="${item.id}" aria-label="${escapeHtml(item.n)}; illustrative ${item.s} to ${item.e} milliseconds" aria-pressed="false" title="${escapeHtml(item.n)} · ${item.e-item.s} ms"></button></div></div>`;
+      }
+      document.getElementById('trace').innerHTML=html;
+      document.querySelectorAll('.bar').forEach(bar=>bar.addEventListener('click',()=>showStage(bar.dataset.id)));
+      if(!view.ids.includes(selectedId))selectedId={startup:'mute',full:'root',ending:'resolve'}[currentView];
+      showStage(selectedId);
+    }
+    document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{currentView=button.dataset.view;document.querySelectorAll('[data-view]').forEach(tab=>tab.setAttribute('aria-pressed',String(tab===button)));renderTrace();}));
+    function renderFields(){
+      const query=document.getElementById('field-search').value.toLowerCase(); const kind=document.getElementById('field-kind').value;
+      const matching=fields.filter(field=>(kind==='all'||field[1]===kind)&&field.join(' ').toLowerCase().includes(query));
+      document.getElementById('mapping-body').innerHTML=matching.map(([name,type,span,description])=>`<tr><td><code>${escapeHtml(name)}</code><p><span class="pill ${type}">${type==='duration'?'D · duration':'O · T0 offset'}</span></p></td><td><code>${escapeHtml(span)}</code></td><td>${escapeHtml(description)}</td></tr>`).join('');
+      document.getElementById('field-count').textContent=`${matching.length} / ${fields.length} fields`;document.getElementById('mapping-empty').hidden=matching.length>0;
+    }
+    document.getElementById('field-search').addEventListener('input',renderFields);document.getElementById('field-kind').addEventListener('change',renderFields);
+    document.getElementById('payload-json').textContent=JSON.stringify(examplePayload,null,2);
+    renderTrace();renderFields();
+    const navLinks=[...document.querySelectorAll('nav a')];const observed=navLinks.map(link=>document.querySelector(link.getAttribute('href')));
+    function setActive(id){navLinks.forEach(link=>{const active=link.hash==='#'+id;link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});}
+    const observer=new IntersectionObserver(()=>{const current=[...observed].reverse().find(element=>element.getBoundingClientRect().top<=120)||observed[0];setActive(current.id);},{rootMargin:'-120px 0px -35% 0px',threshold:0});observed.forEach(element=>observer.observe(element));navLinks.forEach(link=>link.addEventListener('click',()=>{const target=document.querySelector(link.hash);if(target.tagName==='DETAILS')target.open=true;setActive(target.id);}));setActive('reading');
+  </script>
+  <script type="module">
+    const definition = `sequenceDiagram
+      autonumber
+      participant I as Shortcut or UI
+      participant M as Main lifecycle
+      participant R as Renderer + worklet
+      participant N as Native helper
+      participant T as Transcription/provider
+      participant H as Storage + host
+      participant P as PostHog
+      I->>M: Start input, grammar, admission checks
+      M->>T: Open stream, launch VAD reset and warmup
+      Note over M: T0 — openSessionTrace, before startRecorder command
+      par Capture startup
+        M-->>R: State = starting
+        R->>M: Read cached config over IPC
+        R->>R: Enumerate mic, getUserMedia, context, worklet, connect graph
+        R->>M: captureStarted
+        Note over M: recording_live_offset_ms
+        R->>M: First nonempty PCM frame
+        Note over M: End recorder_spinup_duration_ms, even if frame is dropped
+      and Native ambiance
+        M->>M: Read preferences
+        M->>N: startRecording
+        N->>N: Wait for start sound completion, set mute if enabled
+        N-->>M: Native response, release startup audio gate
+        Note over M,N: mute_duration_ms — combined phase, no start/end offset
+      end
+      loop Accepted nonempty audio frames
+        R->>M: PCM over IPC
+        M->>M: Readiness and startup-gate checks, queue WAV write
+        M->>T: processStreamingChunk, stamp first/last chunk offsets
+        T->>T: VAD, first-chunk setup, provider transcribe
+      end
+      I->>M: Stop request
+      par Capture drain, resolve and delivery
+        M-->>R: Leave recording, flush worklet
+        R->>M: Final frame, recorderClosed decision
+        Note over M: Recorder close tail continues as obligation
+        M->>T: Finalize after recorderClosed
+        T->>T: resolve.drain → resolve.flush → resolve.format
+        Note over T: WAV close can overlap resolve
+        T-->>M: Resolved result, adapter enriches metadata
+        M->>H: storage.commit
+        H-->>M: storageFinished
+        M->>H: Stage delivery, read preference, dispatch paste
+        H->>N: pasteText
+        H-->>M: deliveryStaged
+        Note over M: IDLE, close root / session_duration_ms
+        N-->>H: Confirmed native paste success
+        Note over H: delivery.pasted → paste_duration_ms + pasted_offset_ms
+      and Restore audio
+        M->>N: stopRecording, join pending start if needed
+        N->>N: Restore system audio, await stop sound
+        N-->>M: End unmute_duration_ms
+      end
+      M->>P: One flattened event after obligations settle (15 s grace bound)`;
+    try {
+      const {default:mermaid}=await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs');
+      mermaid.initialize({startOnLoad:false,theme:'dark',securityLevel:'strict',fontFamily:'Avenir Next, Segoe UI, sans-serif',sequence:{useMaxWidth:false,wrap:true,actorMargin:26,messageMargin:28},themeVariables:{darkMode:true,background:'#161a23',primaryColor:'#233044',primaryTextColor:'#e2e8f0',primaryBorderColor:'#50698c',lineColor:'#93a5bc',secondaryColor:'#2c281e',tertiaryColor:'#1a2433',noteBkgColor:'#302b20',noteTextColor:'#eadcb8',noteBorderColor:'#786442'}});
+      const {svg}=await mermaid.render('desktop-sequence-svg',definition);document.getElementById('sequence-diagram').innerHTML=svg;document.getElementById('flow-fallback').hidden=true;document.getElementById('mermaid-status').textContent='Normal automatic-paste path. Order is based on source; arrow spacing does not represent measured latency.';
+    } catch(error){document.getElementById('mermaid-status').textContent='Detailed diagram could not load; the full trace waterfall and flow summary remain interactive.';}
+  </script>
+</body>
+</html>

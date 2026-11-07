@@ -9,6 +9,8 @@ export interface DraftReviewState {
   insert: () => Promise<void>;
   /** Discard the reviewed text and close. */
   dismiss: () => Promise<void>;
+  /** Copy the reviewed text to the clipboard. */
+  copy: () => Promise<void>;
 }
 
 export function useDraftReview(): DraftReviewState {
@@ -19,6 +21,7 @@ export function useDraftReview(): DraftReviewState {
 
   const confirmDraft = api.recording.confirmDraft.useMutation();
   const dismissDraft = api.recording.dismissDraft.useMutation();
+  const copyDraft = api.recording.copyDraft.useMutation();
 
   // Single source of truth: the main process pushes the current draft, or null
   // when it's cleared by insert / dismiss / a new dictation. The widget must be
@@ -39,5 +42,9 @@ export function useDraftReview(): DraftReviewState {
     await dismissDraft.mutateAsync();
   };
 
-  return { review, insert, dismiss };
+  const copy = async () => {
+    if (review) await copyDraft.mutateAsync(review.text);
+  };
+
+  return { review, insert, dismiss, copy };
 }

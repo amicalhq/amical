@@ -3,7 +3,14 @@
     "loading": "Amical wird geladen..."
   },
   "errors": {
-    "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+    "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+    "renderer": {
+      "title": "Etwas ist schiefgelaufen",
+      "description": "In Amical ist ein unerwarteter Fehler aufgetreten.",
+      "tryAgain": "Erneut versuchen",
+      "reload": "Fenster neu laden",
+      "supportNote": "Falls das immer wieder passiert, wende dich an den Support."
+    }
   },
   "menu": {
     "file": "Datei",
@@ -27,6 +34,17 @@
   "updater": {
     "updateAvailable": "Update verfügbar",
     "requiredUpdate": "Erforderliches Update",
+    "appBlocked": "Diese Version von Amical wird nicht mehr unterstützt. Bitte aktualisiere jetzt, um fortzufahren.",
+    "finishingRecording": "Beende deine aktuelle Aufnahme. Amical speichert sie, bevor du das Update installierst.",
+    "requiredUpdateFailed": "Das Update konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
+    "checking": "Wird geprüft…",
+    "downloading": "Wird heruntergeladen…",
+    "restarting": "Wird neu gestartet…",
+    "tryAgain": "Erneut versuchen",
+    "updateNow": "Jetzt aktualisieren",
+    "manualDownload": "Manuell herunterladen",
+    "manualDownloadFailed": "Die Downloadseite konnte nicht geöffnet werden. Bitte versuche es erneut.",
+    "quit": "Amical beenden",
     "versionAvailable": "Version {{version}} ist verfügbar.",
     "versionRequired": "Version {{version}} ist erforderlich.",
     "restartAndUpdate": "Neu starten & aktualisieren",
@@ -50,13 +68,6 @@
       "completeFailed": "Einrichtung konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
       "resetSuccess": "Einrichtung erfolgreich zurückgesetzt",
       "resetFailed": "Einrichtung konnte nicht zurückgesetzt werden"
-    },
-    "errorBoundary": {
-      "title": "Etwas ist schiefgelaufen",
-      "description": "Während der Einrichtung ist ein Fehler aufgetreten. Bitte versuche es erneut.",
-      "tryAgain": "Erneut versuchen",
-      "restart": "Einrichtung neu starten",
-      "supportNote": "Falls das immer wieder passiert, wende dich an den Support."
     },
     "welcome": {
       "title": "Wie wirst du Amical nutzen?",
@@ -89,7 +100,8 @@
       },
       "microphone": {
         "title": "Mikrofon",
-        "description": "Damit Amical dein Diktat hören kann"
+        "description": "Damit Amical dein Diktat hören kann",
+        "windowsBlocked": "Windows blockiert den Mikrofonzugriff für Amical. Öffne die Einstellungen und erlaube Amical den Zugriff auf das Mikrofon. Wenn Amical mehrmals aufgeführt ist, schalte jeden Eintrag ein."
       },
       "accessibility": {
         "title": "Bedienungshilfen",
@@ -165,6 +177,12 @@
       "error": {
         "loginStartFailed": "Anmeldung konnte nicht geöffnet werden. Bitte versuche es erneut."
       }
+    },
+    "telemetry": {
+      "title": "Hilf, Amical zu verbessern",
+      "subtitle": "Nutzungsdaten und Absturzberichte helfen uns, Probleme zu finden und Amical zu verbessern.",
+      "share": "Anonyme Nutzungsdaten teilen",
+      "decline": "Nicht teilen"
     },
     "download": {
       "title": "Dein Modell wird vorbereitet",
@@ -321,7 +339,9 @@
         "settings": "Einstellungen",
         "aiModels": "KI-Modelle",
         "configureMicrophone": "Mikrofon konfigurieren",
-        "upgradePlan": "Tarif upgraden"
+        "upgradePlan": "Tarif upgraden",
+        "undo": "Rückgängig",
+        "view": "Anzeigen"
       },
       "type": {
         "noAudio": {
@@ -339,6 +359,9 @@
         "recordingAutoStopped": {
           "title": "Diktat automatisch beendet",
           "description": "Maximale Diktatdauer erreicht. Starte bei Bedarf ein neues Diktat."
+        },
+        "vocabularyLearned": {
+          "title": "{{terms}} zum Vokabular hinzugefügt"
         }
       },
       "errorCode": {
@@ -352,7 +375,7 @@
         },
         "quotaExceeded": {
           "title": "Tariflimit erreicht",
-          "description": "Du hast alle Transkriptionsminuten deines aktuellen Tarifs aufgebraucht. Führe ein Upgrade durch, um weiter zu diktieren."
+          "description": "Du hast alle Transkriptionswörter deines aktuellen Tarifs aufgebraucht. Führe ein Upgrade durch, um weiter zu diktieren."
         },
         "internalServerError": {
           "title": "Serverfehler",
@@ -373,6 +396,10 @@
         "modelMissing": {
           "title": "Kein Modell ausgewählt",
           "description": "Bitte wähle ein Transkriptionsmodell aus."
+        },
+        "retryInProgress": {
+          "title": "Transkription wird wiederholt",
+          "description": "Warte, bis der Wiederholungsversuch abgeschlossen ist, bevor du eine neue Aufnahme startest."
         },
         "workerInitializationFailed": {
           "title": "Initialisierung fehlgeschlagen",
@@ -450,7 +477,58 @@
       "discordAlt": "Discord",
       "logoAlt": "Amical-Logo",
       "brand": "Amical",
-      "backToApp": "Zurück zur App"
+      "backToApp": "Zurück zur App",
+      "account": "Konto",
+      "signOut": "Abmelden",
+      "signIn": "Anmelden",
+      "accountLoading": "Wird geladen...",
+      "signInToast": {
+        "opening": "Browser wird zur Anmeldung geöffnet...",
+        "failed": "Anmeldung konnte nicht gestartet werden",
+        "success": "Erfolgreich angemeldet"
+      },
+      "signOutFailed": "Abmeldung konnte nicht abgeschlossen werden",
+      "sessionExpired": {
+        "title": "Deine Sitzung ist abgelaufen",
+        "description": "Melde dich erneut mit <strong>{{account}}</strong> an, um fortzufahren.",
+        "existingAccount": "deinem bestehenden Konto",
+        "signInFailed": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
+        "signOut": "Abmelden",
+        "signingOut": "Wird abgemeldet…",
+        "signIn": "Erneut anmelden",
+        "openingBrowser": "Browser wird geöffnet…"
+      },
+      "logoutDialog": {
+        "loggingOutTitle": "Wird abgemeldet…",
+        "loggingOutDescription": "Amical wird gleich neu gestartet.",
+        "unsyncedTitle": "Du hast nicht synchronisierte Änderungen",
+        "unsyncedDescription": "Wenn du dich ohne Synchronisierung abmeldest, werden diese Änderungen endgültig verworfen. Sie werden nicht wiederhergestellt, wenn du dich erneut anmeldest.",
+        "syncingTitle": "Nicht gespeicherte Änderungen werden synchronisiert…",
+        "syncingDescription": "Das kann bis zu 15 Sekunden dauern. Amical meldet dich ab und startet neu, sobald die Synchronisierung abgeschlossen ist.",
+        "cancel": "Abbrechen",
+        "discardAndLogOut": "Änderungen verwerfen und abmelden"
+      },
+      "mobileApp": {
+        "label": "Mobile App herunterladen",
+        "title": "Hol dir Amical aufs Handy",
+        "description": "Scanne den Code mit deiner Handykamera, um Amical für iPhone oder Android herunterzuladen.",
+        "qrAlt": "QR-Code zum Herunterladen der mobilen Amical-App"
+      },
+      "usage": {
+        "label": "Cloud-Diktat",
+        "wordsLeft_one": "{{words}} Wort übrig",
+        "wordsLeft_other": "{{words}} Wörter übrig",
+        "noWordsLeft": "Keine Wörter übrig",
+        "detail": "{{used}} von {{limit}} Wörtern genutzt – Zurücksetzung am {{date}}",
+        "detailRelative": "{{used}} von {{limit}} Wörtern genutzt – wird {{when}} zurückgesetzt",
+        "upgradeUnlimited": "Upgrade auf unbegrenzt",
+        "openFailed": "Konnte nicht im Browser geöffnet werden"
+      },
+      "starNudge": {
+        "title": "Du hast {{words}} Wörter mit Amical diktiert",
+        "body": "Amical ist Open Source. Wenn du GitHub nutzt, hilft ein Stern anderen, Amical zu finden.",
+        "cta": "GitHub-Stern geben"
+      }
     },
     "search": {
       "buttonLabel": "Suchen",
@@ -501,6 +579,7 @@
           "de": "Deutsch",
           "es": "Español",
           "ja": "日本語",
+          "ko": "한국어",
           "zh-TW": "繁體中文"
         },
         "restartDialog": {
@@ -649,7 +728,7 @@
           "description": "Versionshinweise und Updates anzeigen"
         },
         "github": {
-          "title": "GitHub-Repository",
+          "title": "Amical auf GitHub einen Stern geben",
           "description": "Quellcode und Issue-Tracking",
           "alt": "GitHub"
         },
@@ -681,6 +760,8 @@
         "downloadAudio": "Audio herunterladen",
         "delete": "Löschen",
         "retry": "Transkription wiederholen",
+        "retryDisabledRecording": "Beende die aktuelle Aufnahme, bevor du die Transkription erneut versuchst.",
+        "retryDisabledInProgress": "Warte, bis der aktuelle Wiederholungsversuch abgeschlossen ist.",
         "report": "Problem melden",
         "reportDisabledTelemetry": "Aktiviere die Telemetrie in den erweiterten Einstellungen, um Probleme zu melden"
       },
@@ -745,7 +826,8 @@
         },
         "languagesLabel": "Sprachen",
         "languagesPlaceholder": "Sprachen auswählen...",
-        "noResults": "Keine Sprachen gefunden."
+        "noResults": "Keine Sprachen gefunden.",
+        "cloudOnlyHint": "Nur Cloud. Lokale Modelle verwenden die Grundsprache."
       },
       "microphone": {
         "label": "Mikrofon",
@@ -841,18 +923,24 @@
         "noKeysDetected": "Keine Tasten erkannt",
         "tooManyKeys": "Zu viele Tasten – verwende {{max}} oder weniger",
         "invalidKeyCombination": "Ungültige Tastenkombination",
-        "alreadyAssigned": "Tastenkürzel ist bereits einer anderen Aktion zugewiesen",
+        "alreadyAssigned": "Tastenkürzel ist bereits zugewiesen",
         "conflictsWithSystem": "{{shortcut}} steht in Konflikt mit einem System-Tastenkürzel",
-        "addModifier": "Füge eine Modifikator-Taste wie Cmd, Ctrl oder Fn hinzu",
+        "addModifier": "Füge eine Modifikator-Taste wie {{mod1}}, {{mod2}} oder {{mod3}} hinzu",
         "duplicateModifierPairs": "Linke und rechte {{modifier}}-Taste können nicht gleichzeitig verwendet werden",
         "overlapsWithPushToTalk": "Dies überschneidet sich mit deinem Push-to-Talk-Tastenkürzel und kann zu Problemen führen"
       },
       "input": {
-        "pressKeys": "Tasten drücken..."
+        "pressKeys": "Tasten drücken...",
+        "unassigned": "Nicht zugewiesen",
+        "edit": "Tastenkürzel bearbeiten",
+        "clear": "Tastenkürzel entfernen",
+        "cancel": "Bearbeitung abbrechen",
+        "add": "Tastenkürzel hinzufügen"
       }
     },
     "notes": {
       "create": "Notiz erstellen",
+      "loading": "Notiz wird geladen...",
       "defaultTitleWithDate": "Notiz – {{date}}",
       "untitledTitle": "Unbenannte Notiz",
       "empty": {
@@ -898,12 +986,35 @@
           "description": "Verbinde deinen Kalender, um zu beginnen",
           "button": "Kalender verbinden"
         }
+      },
+      "recovery": {
+        "loadFailed": "Die Notiz konnte nicht geladen werden. Schließe sie und öffne sie erneut.",
+        "blocked": "Diese Notiz konnte nicht konvertiert werden. Ihre ursprünglichen Daten bleiben zur Wiederherstellung erhalten.",
+        "details": "Details zur Wiederherstellung",
+        "deletedNote": "Diese Notiz wurde gelöscht oder ist in diesem Konto nicht verfügbar.",
+        "recovered": "Diese Notiz wurde auf einem anderen Gerät gelöscht. Deine Änderungen wurden als Konfliktkopie in deinen Notizen gespeichert.",
+        "format": "Diese Formatierung kann nicht als Markdown gespeichert werden. Verwende Fettschrift, Kursivschrift, durchgestrichenen Text oder Code. Mache das Einfügen nicht unterstützter Formatierungen rückgängig, um die Notiz zu speichern.",
+        "error": "Änderungen konnten nicht gespeichert werden. Lass dieses Fenster geöffnet und versuche erneut, die Notiz zu bearbeiten."
+      },
+      "cloud": {
+        "error": "Auf diesem Gerät gespeichert. Bei der Cloud-Synchronisierung gibt es ein Problem: {{reason}}"
       }
     },
     "vocabulary": {
       "title": "Vokabular",
       "description": "Verwalte dein benutzerdefiniertes Vokabular und Wortersetzungen für das Diktat.",
       "addButton": "Wort hinzufügen",
+      "scope": {
+        "label": "Vokabularbereich",
+        "all": "Alle",
+        "user": "Persönlich",
+        "org": "Organisation",
+        "personalBadge": "Persönlich",
+        "organizationBadge": "Organisation",
+        "addOrganization": "Organisationswort hinzufügen",
+        "readOnly": "Das Organisationsvokabular ist für deine aktuelle Rolle schreibgeschützt.",
+        "unavailable": "Kein Organisationsvokabular ist verfügbar."
+      },
       "loading": "Vokabular wird geladen...",
       "empty": "Keine Vokabulareinträge gefunden. Füge dein erstes Wort hinzu, um zu beginnen.",
       "toast": {
@@ -932,12 +1043,27 @@
         "cancel": "Abbrechen",
         "deleting": "Wird gelöscht...",
         "confirm": "Löschen"
+      },
+      "learned": {
+        "badge": "Gelernt",
+        "tooltip": "Aus deiner Korrektur hinzugefügt. Gehört als „{{heard}}“."
       }
     },
     "snippets": {
       "title": "Textbausteine",
       "description": "Erstelle kurze Auslöser, die sich beim Diktieren zu längerem Text ausweiten.",
       "addButton": "Hinzufügen",
+      "scope": {
+        "label": "Textbausteinbereich",
+        "all": "Alle",
+        "user": "Persönlich",
+        "org": "Organisation",
+        "personalBadge": "Persönlich",
+        "organizationBadge": "Organisation",
+        "addOrganization": "Organisationstextbaustein hinzufügen",
+        "readOnly": "Organisationstextbausteine sind für deine aktuelle Rolle schreibgeschützt.",
+        "unavailable": "Keine Organisationstextbausteine sind verfügbar."
+      },
       "loading": "Textbausteine werden geladen...",
       "empty": "Noch keine Textbausteine. Füge deinen ersten Textbaustein hinzu, um zu beginnen.",
       "noResults": "Keine Textbausteine stimmen mit \"{{query}}\" überein.",

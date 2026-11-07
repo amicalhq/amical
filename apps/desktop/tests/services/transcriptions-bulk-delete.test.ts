@@ -13,7 +13,7 @@ vi.mock("../../src/db/transcriptions.ts", () => ({
   searchTranscriptions: vi.fn(),
 }));
 
-vi.mock("../../src/db/daily-stats.ts", () => ({
+vi.mock("../../src/db/dictation-stats", () => ({
   getLifetimeStats: vi.fn(),
 }));
 
@@ -56,5 +56,65 @@ describe("transcriptionsRouter.deleteAllTranscriptions", () => {
       deletedCount: 2,
       deletedAudioFiles: 2,
     });
+  });
+});
+
+const lifecycleSnapshotFor = (state: string) => ({
+  sessionId: state === "idle" ? null : "session-1",
+  projection: {
+    publicState: state,
+    stopKind: "none",
+    stopOrigin: "none",
+    terminal: null,
+  },
+  metadata: null,
+});
+
+describe("transcriptionsRouter.retryTranscription", () => {
+  it.each(["starting", "recording", "stopping"] as const)(
+    "rejects retry while the recording lifecycle is %s",
+    async (state) => {
+      const retryTranscription = vi.fn();
+      const { transcriptionsRouter } = await import(
+        "../../src/trpc/routers/transcriptions"
+      );
+      const caller = transcriptionsRouter.createCaller({
+        services: {
+          recordingLifecycle: {
+            getSnapshot: vi.fn(() => lifecycleSnapshotFor(state)),
+          },
+          transcriptionService: { retryTranscription },
+        },
+      } as never);
+
+      await expect(caller.retryTranscription({ id: 42 })).rejects.toMatchObject(
+        {
+          code: "CONFLICT",
+          message: "Cannot retry while a recording is in progress",
+        },
+      );
+      expect(retryTranscription).not.toHaveBeenCalled();
+    },
+  );
+
+  it("delegates retry while the recording lifecycle is idle", async () => {
+    const retryTranscription = vi.fn().mockResolvedValue("retried text");
+    const { transcriptionsRouter } = await import(
+      "../../src/trpc/routers/transcriptions"
+    );
+    const caller = transcriptionsRouter.createCaller({
+      services: {
+        recordingLifecycle: {
+          getSnapshot: vi.fn(() => lifecycleSnapshotFor("idle")),
+        },
+        transcriptionService: { retryTranscription },
+      },
+    } as never);
+
+    await expect(caller.retryTranscription({ id: 42 })).resolves.toBe(
+      "retried text",
+    );
+    expect(retryTranscription).toHaveBeenCalledOnce();
+    expect(retryTranscription).toHaveBeenCalledWith(42);
   });
 });

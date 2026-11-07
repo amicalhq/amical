@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { migrateDatabase } from "./migrate";
 import { app } from "electron";
 import * as path from "path";
 import * as fs from "fs";
@@ -62,7 +62,7 @@ export async function initializeDatabase() {
     }
 
     // Run migrations to ensure database is up to date
-    migrate(db, {
+    migrateDatabase(db, {
       migrationsFolder: migrationsPath,
     });
 

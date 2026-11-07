@@ -53,6 +53,17 @@ describe("default settings seed", () => {
     });
   });
 
+  it("replaces English with the English variant of a regional OS locale", async () => {
+    vi.mocked(app.getPreferredSystemLanguages).mockReturnValue(["en-AU"]);
+
+    const settings = await getAppSettings();
+
+    expect(settings.dictation).toEqual({
+      autoDetectEnabled: false,
+      languages: ["en-GB"],
+    });
+  });
+
   it("falls back to English only for unsupported OS languages", async () => {
     vi.mocked(app.getPreferredSystemLanguages).mockReturnValue(["eo-001"]);
 
@@ -73,6 +84,16 @@ describe("default settings seed", () => {
     const settings = await getAppSettings();
 
     expect(settings.dictation?.languages).toEqual(["en", "fr"]);
+  });
+
+  it("seeds each default shortcut as one binding", async () => {
+    const settings = await getAppSettings();
+
+    expect(settings.shortcuts).toBeDefined();
+    for (const bindings of Object.values(settings.shortcuts ?? {})) {
+      expect(bindings).toHaveLength(1);
+      expect(bindings?.[0]?.length).toBeGreaterThan(0);
+    }
   });
 
   it("preserves concurrent updates to different sections", async () => {

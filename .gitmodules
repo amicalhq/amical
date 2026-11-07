@@ -1,3 +1,4 @@
 [submodule "packages/whisper-wrapper/whisper.cpp"]
 	path = packages/whisper-wrapper/whisper.cpp
 	url = https://github.com/ggerganov/whisper.cpp.git
+	ignore = dirty

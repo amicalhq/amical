@@ -26,6 +26,10 @@ let package = Package(
                 .embedInCode("Resources/rec-stop.mp3"),
                 .embedInCode("Resources/error-chime.mp3")
             ]
+        ),
+        .testTarget(
+            name: "SwiftHelperTests",
+            dependencies: ["SwiftHelper"]
         )
     ]
 )

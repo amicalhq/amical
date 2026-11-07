@@ -1,16 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Effect, Fiber } from "effect";
 
 import {
+  NOTE_SYNC_LIMITS,
+  NotePayloadSchema,
+} from "@amical/api-contracts/apps/v1";
+import {
+  SettingsSyncPullRequestSchema,
   SettingsSyncPullCollectionRequestSchema,
   SettingsSyncPushRequestSchema,
-} from "@amical/types";
+} from "../../src/types/settings-sync";
 import type { AuthService } from "../../src/services/auth-service";
+import { SettingsSyncClient } from "../../src/services/settings-sync-client";
+import { SettingsSyncContractFailure } from "../../src/services/settings-sync-errors";
 import {
-  SettingsSyncClient,
-  SettingsSyncHttpError,
-} from "../../src/services/settings-sync-client";
+  AuthenticationRequired,
+  CloudHttpFailure,
+  CloudNetworkFailure,
+  settleExit,
+} from "../../src/types/errors";
 
 const SYNC_ID = "11111111-1111-4111-8111-111111111111";
+const runClient = <A>(effect: Effect.Effect<A, unknown>): Promise<A> =>
+  Effect.runPromiseExit(effect).then(settleExit);
 
 describe("SettingsSyncClient", () => {
   let client: SettingsSyncClient;
@@ -21,13 +33,136 @@ describe("SettingsSyncClient", () => {
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     client = new SettingsSyncClient({
-      getIdToken: vi.fn().mockResolvedValue("id-token"),
+      getIdToken: vi.fn(() => Effect.succeed("id-token")),
     } as unknown as AuthService);
   });
 
   afterEach(() => {
     delete process.env.CORE_API_URL;
     vi.unstubAllGlobals();
+  });
+
+  it("enforces note payload size, Unicode, scope and batch limits", () => {
+    const payload = {
+      schemaVersion: 1,
+      title: "",
+      icon: null,
+      body: { format: "markdown", content: "" },
+      createdAtMs: 0,
+      updatedAtMs: 0,
+    };
+    const freeBytes =
+      NOTE_SYNC_LIMITS.maxPayloadBytes -
+      Buffer.byteLength(JSON.stringify(payload));
+    payload.body.content = "x".repeat(freeBytes);
+    expect(NotePayloadSchema.safeParse(payload).success).toBe(true);
+    expect(
+      NotePayloadSchema.safeParse({ ...payload, title: "x" }).success,
+    ).toBe(false);
+    expect(
+      NotePayloadSchema.safeParse({
+        ...payload,
+        body: { format: "markdown", content: "\u0000" },
+      }).success,
+    ).toBe(false);
+    expect(
+      NotePayloadSchema.safeParse({
+        ...payload,
+        body: { format: "markdown", content: "\ud800" },
+      }).success,
+    ).toBe(false);
+    const mutation = {
+      collection: "note",
+      scopeType: "user",
+      scopeId: "user-1",
+      syncId: SYNC_ID,
+      expectedSyncVersion: null,
+      payload: null,
+    };
+    expect(
+      SettingsSyncPushRequestSchema.safeParse({
+        mutations: Array(3).fill(mutation),
+      }).success,
+    ).toBe(true);
+    expect(
+      SettingsSyncPushRequestSchema.safeParse({
+        mutations: Array(4).fill(mutation),
+      }).success,
+    ).toBe(false);
+    expect(
+      SettingsSyncPushRequestSchema.safeParse({
+        mutations: [{ ...mutation, scopeType: "org" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      SettingsSyncPullRequestSchema.safeParse({
+        scopeType: "org",
+        scopeId: "org-1",
+        collections: [{ collection: "note", cursor: 0, limit: 20 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("discovers note limits and requests a bounded note page", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        scopes: [
+          {
+            scopeType: "user",
+            scopeId: "user-1",
+            role: null,
+            canWrite: true,
+            latestSyncVersion: 0,
+          },
+        ],
+        capabilities: {
+          collections: ["vocabulary", "snippet", "note", "future"],
+          maxPushBatch: 100,
+          maxPushBytes: 524288,
+          defaultPullLimit: 200,
+          maxPullLimit: 500,
+          maxPullBytes: 524288,
+          oneScopePerPush: true,
+          note: {
+            scopeType: "user",
+            maxPayloadBytes: 65536,
+            maxPushBatch: 2,
+            maxPullLimit: 10,
+          },
+        },
+      }),
+    });
+    const capabilities = await runClient(client.bootstrap("user-1"));
+    expect(capabilities.collections).toEqual(["vocabulary", "snippet", "note"]);
+    expect(capabilities.note).toEqual({
+      maxPayloadBytes: 65536,
+      maxPushBatch: 2,
+      maxPullLimit: 10,
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        scopeType: "user",
+        scopeId: "user-1",
+        collections: [
+          { collection: "note", cursor: 0, hasMore: false, items: [] },
+        ],
+      }),
+    });
+    await runClient(
+      client.pull(
+        "user",
+        "user-1",
+        [{ collection: "note", cursor: 0 }],
+        200,
+        capabilities.note?.maxPullLimit,
+      ),
+    );
+    const url = fetchMock.mock.calls[1][0] as URL;
+    expect(JSON.parse(url.searchParams.get("collections")!)).toEqual([
+      { collection: "note", cursor: 0, limit: 10 },
+    ]);
   });
 
   it("validates bootstrap and sends the current bearer token", async () => {
@@ -58,9 +193,16 @@ describe("SettingsSyncClient", () => {
       }),
     });
 
-    await expect(
-      client.bootstrap("user-1", new AbortController().signal),
-    ).resolves.toEqual({
+    await expect(runClient(client.bootstrap("user-1"))).resolves.toEqual({
+      scopes: [
+        {
+          scopeType: "user",
+          scopeId: "user-1",
+          role: null,
+          canWrite: true,
+          latestSyncVersion: 0,
+        },
+      ],
       collections: ["vocabulary", "snippet"],
       maxPushBatch: 100,
       maxPushBytes: 524288,
@@ -73,6 +215,50 @@ describe("SettingsSyncClient", () => {
     ];
     expect(url.toString()).toBe("https://core.test/apps/v1/sync/bootstrap");
     expect(init.headers.Authorization).toBe("Bearer id-token");
+  });
+
+  it("returns the active organization scope and advertised write capability", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        scopes: [
+          {
+            scopeType: "user",
+            scopeId: "user-1",
+            role: null,
+            canWrite: true,
+            latestSyncVersion: 7,
+          },
+          {
+            scopeType: "org",
+            scopeId: "org-1",
+            role: "member",
+            canWrite: false,
+            latestSyncVersion: 12,
+          },
+        ],
+        capabilities: {
+          collections: ["vocabulary", "snippet"],
+          maxPushBatch: 100,
+          maxPushBytes: 524288,
+          defaultPullLimit: 200,
+          maxPullLimit: 500,
+          maxPullBytes: 524288,
+          oneScopePerPush: true,
+        },
+      }),
+    });
+
+    await expect(runClient(client.bootstrap("user-1"))).resolves.toMatchObject({
+      scopes: [
+        expect.objectContaining({ scopeType: "user", scopeId: "user-1" }),
+        expect.objectContaining({
+          scopeType: "org",
+          scopeId: "org-1",
+          canWrite: false,
+        }),
+      ],
+    });
   });
 
   it("validates request shape without imposing advertised operation limits", () => {
@@ -140,12 +326,13 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [{ collection: "vocabulary", cursor: 0 }],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [{ collection: "vocabulary", cursor: 0 }],
+          200,
+        ),
       ),
     ).rejects.toThrow("strictly cursor ordered");
   });
@@ -184,15 +371,16 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [
-          { collection: "vocabulary", cursor: 7 },
-          { collection: "snippet", cursor: 3 },
-        ],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [
+            { collection: "vocabulary", cursor: 7 },
+            { collection: "snippet", cursor: 3 },
+          ],
+          200,
+        ),
       ),
     ).resolves.toEqual({
       collections: [
@@ -234,7 +422,7 @@ describe("SettingsSyncClient", () => {
         scopeId: "user-1",
         collections: [
           {
-            collection: "notes",
+            collection: "snippet",
             items: [],
             cursor: 0,
             hasMore: false,
@@ -244,12 +432,13 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [{ collection: "vocabulary", cursor: 0 }],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [{ collection: "vocabulary", cursor: 0 }],
+          200,
+        ),
       ),
     ).rejects.toThrow("unrequested collection");
   });
@@ -272,17 +461,18 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [{ collection: "vocabulary", cursor: 1 }],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [{ collection: "vocabulary", cursor: 1 }],
+          200,
+        ),
       ),
     ).rejects.toThrow("Empty pull");
   });
 
-  it("applies Axis's null default for an omitted vocabulary replacement", async () => {
+  it("applies the cloud default for an omitted vocabulary replacement", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -307,12 +497,13 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.pull(
-        "user",
-        "user-1",
-        [{ collection: "vocabulary", cursor: 0 }],
-        200,
-        new AbortController().signal,
+      runClient(
+        client.pull(
+          "user",
+          "user-1",
+          [{ collection: "vocabulary", cursor: 0 }],
+          200,
+        ),
       ),
     ).resolves.toEqual({
       collections: [
@@ -340,8 +531,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "vocabulary",
             scopeType: "user",
@@ -350,8 +541,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: null,
             payload: { word: "Amical", replacement: null },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("result count");
   });
@@ -372,8 +562,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "snippet",
             scopeType: "user",
@@ -382,8 +572,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: null,
             payload: { trigger: "sig", content: "hello" },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("identity");
   });
@@ -409,8 +598,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "snippet",
             scopeType: "user",
@@ -419,8 +608,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: null,
             payload: { trigger: "sig", content: "hello" },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("canonical identity");
   });
@@ -447,8 +635,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "snippet",
             scopeType: "user",
@@ -457,8 +645,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: null,
             payload: { trigger: "sig", content: "local" },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("does not match request key");
   });
@@ -487,8 +674,8 @@ describe("SettingsSyncClient", () => {
     });
 
     await expect(
-      client.push(
-        [
+      runClient(
+        client.push([
           {
             collection: "snippet",
             scopeType: "user",
@@ -497,8 +684,7 @@ describe("SettingsSyncClient", () => {
             expectedSyncVersion: 2,
             payload: { trigger: "sig", content: "local" },
           },
-        ],
-        new AbortController().signal,
+        ]),
       ),
     ).rejects.toThrow("non-conflicting version");
   });
@@ -506,12 +692,126 @@ describe("SettingsSyncClient", () => {
   it("surfaces HTTP status without changing durable state itself", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 503 });
 
-    await expect(
-      client.bootstrap("user-1", new AbortController().signal),
-    ).rejects.toEqual(
-      expect.objectContaining<Partial<SettingsSyncHttpError>>({
-        status: 503,
+    await expect(runClient(client.bootstrap("user-1"))).rejects.toEqual(
+      expect.objectContaining<Partial<CloudHttpFailure>>({
+        _tag: "CloudHttpFailure",
+        meta: expect.objectContaining({ httpStatus: 503 }),
       }),
     );
+  });
+
+  it("uses the cloud error envelope and keeps authentication metadata", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "AUTH_REQUIRED",
+            message: "Token expired",
+            traceId: "trace-1",
+            requestId: "request-1",
+          },
+        }),
+        { status: 403 },
+      ),
+    );
+
+    await expect(runClient(client.bootstrap("user-1"))).rejects.toMatchObject({
+      _tag: "AuthenticationRequired",
+      message: "Token expired",
+      meta: {
+        wireCode: "AUTH_REQUIRED",
+        httpStatus: 403,
+        traceId: "trace-1",
+        requestId: "request-1",
+      },
+    } satisfies Partial<AuthenticationRequired>);
+  });
+
+  it("classifies a rejected fetch as a cloud network failure", async () => {
+    const cause = new TypeError("offline");
+    fetchMock.mockRejectedValue(cause);
+
+    await expect(runClient(client.bootstrap("user-1"))).rejects.toEqual(
+      new CloudNetworkFailure({ message: "offline", cause }),
+    );
+  });
+
+  it("classifies an invalid success body as a response contract failure", async () => {
+    const cause = new SyntaxError("invalid JSON");
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => Promise.reject(cause),
+    });
+
+    await expect(runClient(client.bootstrap("user-1"))).rejects.toEqual(
+      new SettingsSyncContractFailure({
+        message: "invalid JSON",
+        operation: "bootstrap",
+        phase: "response",
+        cause,
+      }),
+    );
+  });
+
+  it("classifies a missing local token as authentication required", async () => {
+    const tokenlessClient = new SettingsSyncClient({
+      getIdToken: vi.fn(() => Effect.succeed(null)),
+    } as unknown as AuthService);
+
+    await expect(
+      runClient(tokenlessClient.bootstrap("user-1")),
+    ).rejects.toMatchObject({
+      _tag: "AuthenticationRequired",
+      meta: { httpStatus: 401 },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts an in-flight request when its client effect is interrupted", async () => {
+    let requestSignal: AbortSignal | undefined;
+    fetchMock.mockImplementation(
+      (_url: URL, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          requestSignal = init.signal as AbortSignal;
+          requestSignal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+
+    const fiber = Effect.runFork(client.bootstrap("user-1"));
+    await vi.waitFor(() => expect(requestSignal).toBeDefined());
+    await Effect.runPromise(Fiber.interrupt(fiber));
+
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it("keeps the request signal cancellable while decoding the response", async () => {
+    let requestSignal: AbortSignal | undefined;
+    let decodingStarted = false;
+    fetchMock.mockImplementation((_url: URL, init: RequestInit) => {
+      requestSignal = init.signal as AbortSignal;
+      return Promise.resolve({
+        ok: true,
+        json: () => {
+          decodingStarted = true;
+          return new Promise((_resolve, reject) => {
+            requestSignal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        },
+      });
+    });
+
+    const fiber = Effect.runFork(client.bootstrap("user-1"));
+    await vi.waitFor(() => expect(decodingStarted).toBe(true));
+    await Effect.runPromise(Fiber.interrupt(fiber));
+
+    expect(requestSignal?.aborted).toBe(true);
   });
 });

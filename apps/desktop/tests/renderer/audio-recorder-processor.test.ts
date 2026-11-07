@@ -4,12 +4,17 @@ interface PostedFrame {
   type: string;
   frame: Float32Array;
   isFinal: boolean;
+  inputChannelCount: number;
 }
 
 interface Processor {
   port: {
     postMessage: (msg: PostedFrame) => void;
-    onmessage: ((event: { data: { type: string } }) => void) | null;
+    onmessage:
+      | ((event: {
+          data: { type: string; stereoDownmixEnabled?: boolean };
+        }) => void)
+      | null;
   };
   process: (
     inputs: Float32Array[][],
@@ -40,11 +45,16 @@ beforeAll(async () => {
   await import("@/assets/audio-recorder-processor.js");
 });
 
-function makeProcessor() {
+function makeProcessor(stereoDownmixEnabled = true) {
   const inst = new ProcessorClass();
   const posted: PostedFrame[] = [];
   inst.port.postMessage = (msg) => posted.push(msg);
+  start(inst, stereoDownmixEnabled);
   return { inst, posted };
+}
+
+function start(inst: Processor, stereoDownmixEnabled = true): void {
+  inst.port.onmessage?.({ data: { type: "start", stereoDownmixEnabled } });
 }
 
 // Ascending ramp so frame boundaries / ordering are easy to assert. Values stay
@@ -64,6 +74,70 @@ function flush(inst: Processor): void {
 }
 
 describe("audio-recorder-processor worklet", () => {
+  it("retains right-only stereo speech at half amplitude and reports both input channels", () => {
+    const { inst, posted } = makeProcessor();
+    inst.process(
+      [[new Float32Array(512), new Float32Array(512).fill(0.5)]],
+      [],
+      {},
+    );
+    expect(posted[0].frame).toEqual(new Float32Array(512).fill(0.25));
+    expect(posted[0].inputChannelCount).toBe(2);
+  });
+
+  it("preserves mono and duplicated stereo samples without changing gain", () => {
+    const samples = ramp(512);
+    for (const channels of [[samples], [samples, samples]]) {
+      const { inst, posted } = makeProcessor();
+      inst.process([channels], [], {});
+      expect(posted[0].frame).toEqual(samples);
+      expect(posted[0].inputChannelCount).toBe(channels.length);
+    }
+  });
+
+  it("uses a fixed mean even when the louder stereo channel changes", () => {
+    const { inst, posted } = makeProcessor();
+    const left = Float32Array.from({ length: 512 }, (_, i) =>
+      i % 2 ? 0.25 : 0.75,
+    );
+    const right = Float32Array.from(left, (value) => 1 - value);
+    inst.process([[left, right]], [], {});
+    expect(posted[0].frame).toEqual(new Float32Array(512).fill(0.5));
+  });
+
+  it("restores first-channel capture when the remote control is disabled", () => {
+    const { inst, posted } = makeProcessor(false);
+    const first = new Float32Array(512).fill(0.25);
+    inst.process([[first, new Float32Array(512).fill(0.75)]], [], {});
+    expect(posted[0].frame).toEqual(first);
+    expect(posted[0].inputChannelCount).toBe(2);
+  });
+
+  it("does not mix additional interface or loopback channels", () => {
+    const { inst, posted } = makeProcessor();
+    const first = new Float32Array(512).fill(0.25);
+    inst.process(
+      [[first, new Float32Array(512), new Float32Array(512).fill(1)]],
+      [],
+      {},
+    );
+    expect(posted[0].frame).toEqual(first);
+    expect(posted[0].inputChannelCount).toBe(3);
+  });
+
+  it("reports the channel count on a short final frame", () => {
+    const { inst, posted } = makeProcessor();
+    inst.process(
+      [[new Float32Array(64), new Float32Array(64).fill(0.5)]],
+      [],
+      {},
+    );
+    flush(inst);
+    expect(posted[0].frame).toEqual(new Float32Array(64).fill(0.25));
+    expect(posted[0].inputChannelCount).toBe(2);
+    expect(posted[0].isFinal).toBe(true);
+  });
+
   it("buffers sub-frame input and emits nothing until it has a full 512-sample frame", () => {
     const { inst, posted } = makeProcessor();
     feed(inst, ramp(300));
@@ -108,27 +182,41 @@ describe("audio-recorder-processor worklet", () => {
     expect(posted[0].frame).toHaveLength(0);
   });
 
-  it("does not bleed audio across dictations: post-flush input is not prepended with stale samples", () => {
+  it("stays inactive after flush and starts the next dictation with an empty buffer", () => {
     const { inst, posted } = makeProcessor();
     feed(inst, ramp(400, 1)); // values 1..400
     flush(inst); // drains the 400
     posted.length = 0;
 
-    feed(inst, ramp(100, 9000)); // a later utterance on the same instance
+    feed(inst, ramp(100, 5000)); // no post-flush audio may enter the next session
+    expect(posted).toHaveLength(0);
+    start(inst);
+    feed(inst, ramp(100, 9000));
     flush(inst);
     expect(posted).toHaveLength(1);
-    expect(posted[0].frame).toHaveLength(100); // would be 500 if it bled
+    expect(posted[0].frame).toHaveLength(100);
     expect(posted[0].frame[0]).toBe(9000); // starts with new audio, no stale 1..400
   });
 
-  it("a fresh processor instance starts empty (the per-dictation-node guarantee)", () => {
-    const a = makeProcessor();
-    feed(a.inst, ramp(400)); // never flushed; left buffered on instance A
+  it("start resets an unflushed partial frame and updates downmix for the next session", () => {
+    const { inst, posted } = makeProcessor(true);
+    feed(inst, ramp(400));
+    start(inst, false);
+    const left = new Float32Array(512).fill(0.25);
+    inst.process([[left, new Float32Array(512).fill(0.75)]], [], {});
+    expect(posted).toHaveLength(1);
+    expect(posted[0].frame).toEqual(left);
+  });
 
-    // The hook creates a brand-new node per dictation; instance B must be empty.
-    const b = makeProcessor();
-    flush(b.inst);
-    expect(b.posted[0].frame).toHaveLength(0);
+  it("does not record before its first start message", () => {
+    const inst = new ProcessorClass();
+    const posted: PostedFrame[] = [];
+    inst.port.postMessage = (msg) => posted.push(msg);
+    feed(inst, ramp(512));
+    expect(posted).toHaveLength(0);
+    start(inst);
+    feed(inst, ramp(512));
+    expect(posted).toHaveLength(1);
   });
 
   it("ignores empty/absent input and keeps the node alive (process returns true)", () => {

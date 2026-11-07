@@ -27,6 +27,7 @@ import { ServiceManager } from "../../src/main/managers/service-manager";
 import { ShortcutManager } from "../../src/main/managers/shortcut-manager";
 import { PostHogClient } from "../../src/services/posthog-client";
 import { TelemetryService } from "../../src/services/telemetry-service";
+import { logger } from "../../src/main/logger";
 
 function spyOnMethod(target: object, method: string) {
   return vi.spyOn(
@@ -110,5 +111,44 @@ describe("ServiceManager boot failure (facade)", () => {
     // Double init: warn-noop — same graph, same instances.
     await serviceManager.initialize();
     expect(serviceManager.services().settingsService).toBe(settings);
+  });
+
+  it("reports every cleanup defect while retaining the first rejection and idempotence", async () => {
+    await serviceManager.initialize();
+    const { shortcutManager, posthogClient } = serviceManager.services();
+    const shortcutError = new Error("shortcut cleanup failed");
+    const posthogError = new Error("posthog cleanup failed");
+    const cleanup = shortcutManager.cleanup.bind(shortcutManager);
+    const shutdown = posthogClient.shutdown.bind(posthogClient);
+    const shortcutCleanup = spyOnMethod(
+      shortcutManager,
+      "cleanup",
+    ).mockImplementation(() => {
+      cleanup();
+      throw shortcutError;
+    });
+    const posthogShutdown = spyOnMethod(
+      posthogClient,
+      "shutdown",
+    ).mockImplementation(async () => {
+      await shutdown();
+      throw posthogError;
+    });
+    const logError = vi.spyOn(logger.main, "error");
+
+    await expect(serviceManager.cleanup()).rejects.toBe(shortcutError);
+    const report = logError.mock.calls.find(
+      ([message]) =>
+        typeof message === "string" &&
+        message.startsWith("Service graph cleanup failed:"),
+    )?.[0];
+    expect(report).toContain(shortcutError.message);
+    expect(report).toContain(posthogError.message);
+    expect(shortcutCleanup).toHaveBeenCalledOnce();
+    expect(posthogShutdown).toHaveBeenCalledOnce();
+
+    await expect(serviceManager.cleanup()).resolves.toBeUndefined();
+    expect(shortcutCleanup).toHaveBeenCalledOnce();
+    expect(posthogShutdown).toHaveBeenCalledOnce();
   });
 });

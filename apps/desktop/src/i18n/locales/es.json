@@ -3,7 +3,14 @@
     "loading": "Cargando Amical..."
   },
   "errors": {
-    "generic": "Algo salió mal. Por favor, inténtalo de nuevo."
+    "generic": "Algo salió mal. Por favor, inténtalo de nuevo.",
+    "renderer": {
+      "title": "Algo salió mal",
+      "description": "Amical encontró un error inesperado.",
+      "tryAgain": "Intentar de nuevo",
+      "reload": "Recargar ventana",
+      "supportNote": "Si esto sigue ocurriendo, contacta a soporte."
+    }
   },
   "menu": {
     "file": "Archivo",
@@ -27,6 +34,17 @@
   "updater": {
     "updateAvailable": "Actualización disponible",
     "requiredUpdate": "Actualización requerida",
+    "appBlocked": "Esta versión de Amical ya no cuenta con soporte. Actualiza ahora para continuar.",
+    "finishingRecording": "Termina tu grabación actual. Amical la guardará antes de que actualices.",
+    "requiredUpdateFailed": "No se pudo completar la actualización. Inténtalo de nuevo.",
+    "checking": "Buscando actualizaciones…",
+    "downloading": "Descargando…",
+    "restarting": "Reiniciando…",
+    "tryAgain": "Intentar de nuevo",
+    "updateNow": "Actualizar ahora",
+    "manualDownload": "Descargar manualmente",
+    "manualDownloadFailed": "No se pudo abrir la página de descarga. Inténtalo de nuevo.",
+    "quit": "Salir de Amical",
     "versionAvailable": "La versión {{version}} está disponible.",
     "versionRequired": "Se requiere la versión {{version}}.",
     "restartAndUpdate": "Reiniciar y actualizar",
@@ -50,13 +68,6 @@
       "completeFailed": "No se pudo completar la configuración inicial. Por favor, inténtalo de nuevo.",
       "resetSuccess": "Configuración inicial restablecida correctamente",
       "resetFailed": "No se pudo restablecer la configuración inicial"
-    },
-    "errorBoundary": {
-      "title": "Algo salió mal",
-      "description": "Ocurrió un error durante el proceso de configuración inicial. Por favor, inténtalo de nuevo.",
-      "tryAgain": "Intentar de nuevo",
-      "restart": "Reiniciar configuración inicial",
-      "supportNote": "Si esto sigue ocurriendo, contacta a soporte."
     },
     "welcome": {
       "title": "¿Cómo usarás Amical?",
@@ -89,7 +100,8 @@
       },
       "microphone": {
         "title": "Micrófono",
-        "description": "Para que Amical pueda oír tu dictado"
+        "description": "Para que Amical pueda oír tu dictado",
+        "windowsBlocked": "Windows impide que Amical use el micrófono. Abre la configuración y permite que Amical acceda al micrófono. Si Amical aparece más de una vez, activa cada entrada."
       },
       "accessibility": {
         "title": "Accesibilidad",
@@ -165,6 +177,12 @@
       "error": {
         "loginStartFailed": "No se pudo abrir el inicio de sesión. Por favor, inténtalo de nuevo."
       }
+    },
+    "telemetry": {
+      "title": "Ayuda a mejorar Amical",
+      "subtitle": "Los datos de uso y los informes de errores nos ayudan a encontrar problemas y mejorar Amical.",
+      "share": "Compartir datos de uso anónimos",
+      "decline": "No compartir"
     },
     "download": {
       "title": "Preparando tu modelo",
@@ -321,7 +339,9 @@
         "settings": "Configuración",
         "aiModels": "Modelos de IA",
         "configureMicrophone": "Configurar micrófono",
-        "upgradePlan": "Mejorar plan"
+        "upgradePlan": "Mejorar plan",
+        "undo": "Deshacer",
+        "view": "Ver"
       },
       "type": {
         "noAudio": {
@@ -339,6 +359,9 @@
         "recordingAutoStopped": {
           "title": "Dictado detenido automáticamente",
           "description": "Se alcanzó la duración máxima de dictado. Inicia un nuevo dictado si es necesario."
+        },
+        "vocabularyLearned": {
+          "title": "Se agregó {{terms}} a tu vocabulario"
         }
       },
       "errorCode": {
@@ -352,7 +375,7 @@
         },
         "quotaExceeded": {
           "title": "Límite del plan alcanzado",
-          "description": "Has usado todos los minutos de transcripción de tu plan actual. Mejora tu plan para seguir dictando."
+          "description": "Has usado todas las palabras de transcripción de tu plan actual. Mejora tu plan para seguir dictando."
         },
         "internalServerError": {
           "title": "Error del servidor",
@@ -373,6 +396,10 @@
         "modelMissing": {
           "title": "No hay modelo seleccionado",
           "description": "Selecciona un modelo de transcripción."
+        },
+        "retryInProgress": {
+          "title": "Reintento en curso",
+          "description": "Espera a que termine el reintento antes de iniciar una nueva grabación."
         },
         "workerInitializationFailed": {
           "title": "Error de inicialización",
@@ -450,7 +477,58 @@
       "discordAlt": "Discord",
       "logoAlt": "Logo de Amical",
       "brand": "Amical",
-      "backToApp": "Volver a la app"
+      "backToApp": "Volver a la app",
+      "account": "Cuenta",
+      "signOut": "Cerrar sesión",
+      "signIn": "Iniciar sesión",
+      "accountLoading": "Cargando...",
+      "signInToast": {
+        "opening": "Abriendo el navegador para iniciar sesión...",
+        "failed": "No se pudo iniciar el proceso de inicio de sesión",
+        "success": "Sesión iniciada correctamente"
+      },
+      "signOutFailed": "No se pudo cerrar sesión",
+      "sessionExpired": {
+        "title": "Tu sesión ha caducado",
+        "description": "Vuelve a iniciar sesión con <strong>{{account}}</strong> para continuar.",
+        "existingAccount": "tu cuenta actual",
+        "signInFailed": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+        "signOut": "Cerrar sesión",
+        "signingOut": "Cerrando sesión…",
+        "signIn": "Volver a iniciar sesión",
+        "openingBrowser": "Abriendo el navegador…"
+      },
+      "logoutDialog": {
+        "loggingOutTitle": "Cerrando sesión…",
+        "loggingOutDescription": "Amical se reiniciará en breve.",
+        "unsyncedTitle": "Tienes cambios sin sincronizar",
+        "unsyncedDescription": "Si cierras sesión sin sincronizar, estos cambios se descartarán de forma permanente. No se restaurarán cuando vuelvas a iniciar sesión.",
+        "syncingTitle": "Sincronizando los cambios sin guardar…",
+        "syncingDescription": "Esto puede tardar hasta 15 segundos. Amical cerrará sesión y se reiniciará cuando termine la sincronización.",
+        "cancel": "Cancelar",
+        "discardAndLogOut": "Descartar cambios y cerrar sesión"
+      },
+      "mobileApp": {
+        "label": "Obtener la app móvil",
+        "title": "Consigue Amical en tu teléfono",
+        "description": "Escanea el código con la cámara de tu teléfono para descargar Amical en iPhone o Android.",
+        "qrAlt": "Código QR para descargar la app móvil de Amical"
+      },
+      "usage": {
+        "label": "Dictado en la nube",
+        "wordsLeft_one": "Queda {{words}} palabra",
+        "wordsLeft_other": "Quedan {{words}} palabras",
+        "noWordsLeft": "No quedan palabras",
+        "detail": "{{used}} de {{limit}} palabras usadas - se restablece el {{date}}",
+        "detailRelative": "{{used}} de {{limit}} palabras usadas - se restablece {{when}}",
+        "upgradeUnlimited": "Mejorar a ilimitado",
+        "openFailed": "No se pudo abrir en el navegador"
+      },
+      "starNudge": {
+        "title": "Has dictado {{words}} palabras con Amical",
+        "body": "Amical es de código abierto. Si usas GitHub, una estrella ayuda a otras personas a encontrarlo.",
+        "cta": "Dar una estrella"
+      }
     },
     "search": {
       "buttonLabel": "Buscar",
@@ -501,6 +579,7 @@
           "de": "Deutsch",
           "es": "Español",
           "ja": "日本語",
+          "ko": "한국어",
           "zh-TW": "繁體中文"
         },
         "restartDialog": {
@@ -649,7 +728,7 @@
           "description": "Ver notas de versión y actualizaciones"
         },
         "github": {
-          "title": "Repositorio de GitHub",
+          "title": "Dar una estrella a Amical en GitHub",
           "description": "Código fuente y seguimiento de problemas",
           "alt": "GitHub"
         },
@@ -681,6 +760,8 @@
         "downloadAudio": "Descargar audio",
         "delete": "Eliminar",
         "retry": "Reintentar transcripción",
+        "retryDisabledRecording": "Finaliza la grabación actual antes de volver a intentar la transcripción.",
+        "retryDisabledInProgress": "Espera a que termine el reintento actual.",
         "report": "Reportar problema",
         "reportDisabledTelemetry": "Activa la telemetría en Configuración avanzada para reportar problemas"
       },
@@ -745,7 +826,8 @@
         },
         "languagesLabel": "Idiomas",
         "languagesPlaceholder": "Seleccionar idiomas...",
-        "noResults": "No se encontraron idiomas."
+        "noResults": "No se encontraron idiomas.",
+        "cloudOnlyHint": "Solo en la nube. Los modelos locales usan el idioma base."
       },
       "microphone": {
         "label": "Micrófono",
@@ -841,18 +923,24 @@
         "noKeysDetected": "No se detectaron teclas",
         "tooManyKeys": "Demasiadas teclas: usa {{max}} o menos",
         "invalidKeyCombination": "Combinación de teclas no válida",
-        "alreadyAssigned": "El atajo ya está asignado a otra acción",
+        "alreadyAssigned": "El atajo ya está asignado",
         "conflictsWithSystem": "{{shortcut}} entra en conflicto con un atajo del sistema",
-        "addModifier": "Agrega una tecla modificadora como Cmd, Ctrl o Fn",
+        "addModifier": "Agrega una tecla modificadora como {{mod1}}, {{mod2}} o {{mod3}}",
         "duplicateModifierPairs": "No se pueden usar las teclas {{modifier}} izquierda y derecha juntas",
         "overlapsWithPushToTalk": "Esto se superpone con tu atajo de Pulsar para hablar y puede causar problemas"
       },
       "input": {
-        "pressKeys": "Presiona las teclas..."
+        "pressKeys": "Presiona las teclas...",
+        "unassigned": "Sin asignar",
+        "edit": "Editar atajo",
+        "clear": "Quitar atajo",
+        "cancel": "Cancelar edición",
+        "add": "Añadir atajo"
       }
     },
     "notes": {
       "create": "Crear nota",
+      "loading": "Cargando nota...",
       "defaultTitleWithDate": "Nota - {{date}}",
       "untitledTitle": "Nota sin título",
       "empty": {
@@ -898,12 +986,35 @@
           "description": "Conecta tu calendario para comenzar",
           "button": "Conectar calendario"
         }
+      },
+      "recovery": {
+        "loadFailed": "No se pudo cargar la nota. Ciérrala y vuelve a abrirla para intentarlo de nuevo.",
+        "blocked": "No se pudo convertir esta nota. Sus datos originales se conservan para recuperarla.",
+        "details": "Detalles de recuperación",
+        "deletedNote": "Esta nota se eliminó o no está disponible en esta cuenta.",
+        "recovered": "Esta nota se eliminó en otro dispositivo. Tus cambios se guardaron como una copia en conflicto en tus notas.",
+        "format": "Este formato no se puede guardar como Markdown. Usa negrita, cursiva, tachado o código. Si pegaste texto con un formato no compatible, deshaz esa acción para poder guardar.",
+        "error": "No se pudieron guardar los cambios. Mantén esta ventana abierta e intenta editar de nuevo."
+      },
+      "cloud": {
+        "error": "Guardado en este dispositivo. Hay un problema con la sincronización en la nube: {{reason}}"
       }
     },
     "vocabulary": {
       "title": "Vocabulario",
       "description": "Administra tu vocabulario personalizado y los reemplazos de palabras para el dictado.",
       "addButton": "Agregar palabra",
+      "scope": {
+        "label": "Ámbito del vocabulario",
+        "all": "Todo",
+        "user": "Personal",
+        "org": "Organización",
+        "personalBadge": "Personal",
+        "organizationBadge": "Organización",
+        "addOrganization": "Agregar palabra de la organización",
+        "readOnly": "El vocabulario de la organización es de solo lectura para tu rol actual.",
+        "unavailable": "No hay vocabulario de organización disponible."
+      },
       "loading": "Cargando vocabulario...",
       "empty": "No se encontraron palabras en el vocabulario. Agrega tu primera palabra para comenzar.",
       "toast": {
@@ -932,12 +1043,27 @@
         "cancel": "Cancelar",
         "deleting": "Eliminando...",
         "confirm": "Eliminar"
+      },
+      "learned": {
+        "badge": "Aprendida",
+        "tooltip": "Agregada a partir de tu corrección. Se escuchó como «{{heard}}»."
       }
     },
     "snippets": {
       "title": "Fragmentos",
       "description": "Crea disparadores cortos que se expanden en texto más largo mientras dictas.",
       "addButton": "Agregar",
+      "scope": {
+        "label": "Ámbito del fragmento",
+        "all": "Todo",
+        "user": "Personal",
+        "org": "Organización",
+        "personalBadge": "Personal",
+        "organizationBadge": "Organización",
+        "addOrganization": "Agregar fragmento de la organización",
+        "readOnly": "Los fragmentos de la organización son de solo lectura para tu rol actual.",
+        "unavailable": "No hay fragmentos de organización disponibles."
+      },
       "loading": "Cargando fragmentos...",
       "empty": "Todavía no hay fragmentos. Agrega tu primer fragmento para comenzar.",
       "noResults": "Ningún fragmento coincide con \"{{query}}\".",

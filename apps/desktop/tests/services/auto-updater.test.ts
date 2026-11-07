@@ -1,11 +1,22 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { EventEmitter } from "node:events";
 import { app, autoUpdater, net } from "electron";
+import { EventEmitter } from "node:events";
 import {
   AutoUpdaterService,
   classifyUpdaterError,
 } from "../../src/main/services/auto-updater";
 import type { RecordingState } from "../../src/types/recording";
+
+type LifecycleSnapshotFake = {
+  sessionId: string | null;
+  projection: {
+    publicState: RecordingState;
+    stopKind: "none";
+    stopOrigin: "none";
+    terminal: null;
+  };
+  metadata: null;
+};
 
 describe("classifyUpdaterError", () => {
   it("classifies macOS read-only volume updater failures as known noise", () => {
@@ -40,20 +51,45 @@ describe("classifyUpdaterError", () => {
 // far in the future and are cleared by cleanup() in afterEach.
 describe("AutoUpdaterService", () => {
   let service: AutoUpdaterService;
+  let settingsService: EventEmitter & {
+    getUpdateChannel: ReturnType<typeof vi.fn>;
+  };
   let telemetry: {
     captureException: ReturnType<typeof vi.fn>;
+    captureContractFailure: ReturnType<typeof vi.fn>;
     getMachineId: ReturnType<typeof vi.fn>;
   };
-  let remoteConfig: { getConfig: ReturnType<typeof vi.fn> };
+  let remoteConfig: {
+    getConfig: ReturnType<typeof vi.fn>;
+    getUpdateRequirement: ReturnType<typeof vi.fn>;
+  };
   let recordingState: RecordingState;
-  let recordingManager: EventEmitter & {
-    getState: ReturnType<typeof vi.fn>;
+  let snapshotListeners: Set<(snapshot: LifecycleSnapshotFake) => void>;
+  let recordingLifecycle: {
+    getSnapshot: () => LifecycleSnapshotFake;
+    onSnapshot: (
+      listener: (snapshot: LifecycleSnapshotFake) => void,
+    ) => () => void;
   };
   let emitUpdateChannelChanged: ((channel: "stable" | "beta") => void) | null;
 
+  const lifecycleSnapshot = (): LifecycleSnapshotFake => ({
+    sessionId: null,
+    projection: {
+      publicState: recordingState,
+      stopKind: "none",
+      stopOrigin: "none",
+      terminal: null,
+    },
+    metadata: null,
+  });
+
   const setRecordingState = (state: RecordingState): void => {
     recordingState = state;
-    recordingManager.emit("state-changed", state);
+    const snapshot = lifecycleSnapshot();
+    for (const listener of snapshotListeners) {
+      listener(snapshot);
+    }
   };
 
   beforeEach(async () => {
@@ -65,9 +101,11 @@ describe("AutoUpdaterService", () => {
     emitUpdateChannelChanged = null;
     telemetry = {
       captureException: vi.fn(),
+      captureContractFailure: vi.fn(),
       getMachineId: vi.fn().mockReturnValue("machine-xyz"),
     };
     remoteConfig = {
+      getUpdateRequirement: vi.fn().mockReturnValue(null),
       getConfig: vi.fn().mockReturnValue({
         version: 1,
         surfaces: [],
@@ -75,23 +113,26 @@ describe("AutoUpdaterService", () => {
       }),
     };
     recordingState = "idle";
-    recordingManager = Object.assign(new EventEmitter(), {
-      getState: vi.fn(() => recordingState),
-    });
+    snapshotListeners = new Set();
+    recordingLifecycle = {
+      getSnapshot: () => lifecycleSnapshot(),
+      onSnapshot: (listener) => {
+        snapshotListeners.add(listener);
+        return () => snapshotListeners.delete(listener);
+      },
+    };
     service = AutoUpdaterService.createForTests();
+    settingsService = Object.assign(new EventEmitter(), {
+      getUpdateChannel: vi.fn().mockResolvedValue("stable"),
+    });
+    emitUpdateChannelChanged = (channel) => {
+      settingsService.emit("update-channel-changed", channel);
+    };
     await service.initialize(
-      {
-        getUpdateChannel: vi.fn().mockResolvedValue("stable"),
-        on: vi.fn((event, handler) => {
-          if (event === "update-channel-changed") {
-            emitUpdateChannelChanged = handler;
-          }
-        }),
-        removeAllListeners: vi.fn(),
-      } as any,
+      settingsService as any,
       telemetry as any,
       remoteConfig as any,
-      recordingManager as any,
+      recordingLifecycle as any,
     );
   });
 
@@ -99,6 +140,19 @@ describe("AutoUpdaterService", () => {
     service.cleanup();
     vi.useRealTimers();
     (app as unknown as { isPackaged: boolean }).isPackaged = false;
+  });
+
+  it("cleans up its channel listener without removing other services' listeners", () => {
+    const onRemoteConfigChannelChanged = vi.fn();
+    settingsService.on("update-channel-changed", onRemoteConfigChannelChanged);
+
+    service.cleanup();
+
+    expect(settingsService.listeners("update-channel-changed")).toEqual([
+      onRemoteConfigChannelChanged,
+    ]);
+    emitUpdateChannelChanged?.("beta");
+    expect(onRemoteConfigChannelChanged).toHaveBeenCalledWith("beta");
   });
 
   describe("state transitions", () => {
@@ -237,6 +291,35 @@ describe("AutoUpdaterService", () => {
   });
 
   describe("checkForUpdates", () => {
+    it.each([
+      {
+        name: "invalid JSON",
+        json: () => Promise.reject(new SyntaxError("Unexpected token <")),
+        kind: "invalid_json",
+        properties: { status: 200 },
+      },
+      {
+        name: "an invalid action",
+        json: async () => ({ action: "unknown" }),
+        kind: "schema_mismatch",
+        properties: { reason: "invalid_action" },
+      },
+    ])("reports $name from the metadata endpoint", async (scenario) => {
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: scenario.json,
+      } as unknown as Response);
+
+      await service.checkForUpdates(true);
+
+      expect(telemetry.captureContractFailure).toHaveBeenCalledExactlyOnceWith(
+        "update_metadata_response_invalid",
+        scenario.kind,
+        scenario.properties,
+      );
+    });
+
     it("skips the native check when metadata reports action 'none'", async () => {
       vi.mocked(net.fetch).mockResolvedValue({
         ok: true,
@@ -656,6 +739,17 @@ describe("AutoUpdaterService", () => {
         version: "2.0.0",
       });
     });
+  });
+
+  it("honors an explicit install request for a required update during recording", () => {
+    remoteConfig.getUpdateRequirement.mockReturnValue({
+      required: true,
+      evaluatedVersion: app.getVersion(),
+    });
+    setRecordingState("recording");
+    autoUpdater.emit("update-downloaded", {}, "", "2.0.0");
+    service.quitAndInstall();
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledOnce();
   });
 
   describe("background update installation", () => {

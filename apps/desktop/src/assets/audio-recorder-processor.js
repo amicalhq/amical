@@ -4,10 +4,19 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
     this.frameSize = 512; // 32ms at 16kHz
     this.sampleRate = 16000;
     this.buffer = [];
+    this.stereoDownmixEnabled = false;
+    this.inputChannelCount = 0;
+    this.recording = false;
 
     // Listen for control messages
     this.port.onmessage = (event) => {
-      if (event.data.type === "flush") {
+      if (event.data.type === "start") {
+        this.buffer = [];
+        this.inputChannelCount = 0;
+        this.stereoDownmixEnabled = event.data.stereoDownmixEnabled === true;
+        this.recording = true;
+      } else if (event.data.type === "flush") {
+        this.recording = false;
         this.flushBuffer();
       }
     };
@@ -22,18 +31,24 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
       type: "audioFrame",
       frame: finalFrame,
       isFinal: true,
+      inputChannelCount: this.inputChannelCount,
     });
   }
 
   process(inputs, outputs, parameters) {
+    if (!this.recording) return true;
     const input = inputs[0];
     if (!input || !input[0]) return true;
 
     const channelData = input[0];
+    this.inputChannelCount = input.length;
+    const mixStereo = this.stereoDownmixEnabled && input.length === 2;
 
     // Add samples to buffer
     for (let i = 0; i < channelData.length; i++) {
-      this.buffer.push(channelData[i]);
+      this.buffer.push(
+        mixStereo ? (channelData[i] + input[1][i]) / 2 : channelData[i],
+      );
     }
 
     // When we have enough samples, send a frame
@@ -46,6 +61,7 @@ class AudioRecorderProcessor extends AudioWorkletProcessor {
         type: "audioFrame",
         frame: new Float32Array(frame),
         isFinal: false,
+        inputChannelCount: this.inputChannelCount,
       });
     }
 

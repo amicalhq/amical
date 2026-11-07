@@ -80,7 +80,7 @@ function AppLayoutContent() {
     >
       <div className="flex h-screen w-screen">
         <SettingsSidebar variant="inset" />
-        <SidebarInset className="!mt-0">
+        <SidebarInset>
           <SiteHeader
             currentView={`${getPageTitle(location.pathname)}`}
             showTitle={isScrolled}

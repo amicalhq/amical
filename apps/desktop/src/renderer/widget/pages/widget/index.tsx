@@ -33,8 +33,9 @@ export function WidgetPage() {
         text={draft.review.text}
         onInsert={draft.insert}
         onDismiss={draft.dismiss}
+        onCopy={draft.copy}
         recordingStatus={recording.recordingStatus}
-        audioLevels={recording.audioLevels}
+        audioLevelRef={recording.audioLevelRef}
       />
     );
   }
@@ -42,7 +43,7 @@ export function WidgetPage() {
   return (
     <FloatingButton
       recordingStatus={recording.recordingStatus}
-      audioLevels={recording.audioLevels}
+      audioLevelRef={recording.audioLevelRef}
       startRecording={recording.startRecording}
       stopRecording={recording.stopRecording}
       dismissRecording={recording.dismissRecording}

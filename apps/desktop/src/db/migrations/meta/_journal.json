@@ -57,6 +57,83 @@
       "when": 1784879862020,
       "tag": "0007_odd_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786467605745,
+      "tag": "0008_cold_morbius",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788050905918,
+      "tag": "0009_known_robbie_robertson",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788126291783,
+      "tag": "0010_foamy_dreadnoughts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1788643418674,
+      "tag": "0011_notes_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788643418675,
+      "tag": "0012_settings_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1788757069089,
+      "tag": "0013_notes_markdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1788757069090,
+      "tag": "0014_notes_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1789197667388,
+      "tag": "0015_activity_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1789369680705,
+      "tag": "0016_dictation_stats_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1789709766914,
+      "tag": "0017_notes_auto_adoption",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1792643663064,
+      "tag": "0018_vocabulary_source",
+      "breakpoints": true
     }
   ]
 }

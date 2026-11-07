@@ -25,7 +25,7 @@ const requiredNames = new Set([
   "amical.exe",
   "node.exe",
   "windowshelper.exe",
-  "better_sqlite3.node",
+  `win32-${arch}.node`,
   "whisper.node",
   "onnxruntime_binding.node",
   "directml.dll",

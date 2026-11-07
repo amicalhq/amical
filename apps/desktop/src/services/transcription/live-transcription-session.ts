@@ -1,0 +1,327 @@
+import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect";
+import { runFork, runPromise } from "../../main/runtime/telemetry-runtime";
+import type {
+  MaterializedTranscriptionSession,
+  StreamingSessionUpdate,
+} from "./types";
+
+type LiveSessionPhase = "open" | "finishing" | "aborted" | "retired";
+
+const isEmptyUpdate = (update: StreamingSessionUpdate): boolean =>
+  update.accessibilityContext === undefined && update.isInstruct === undefined;
+
+const applyUpdate = (
+  session: MaterializedTranscriptionSession,
+  update: StreamingSessionUpdate,
+): void => {
+  if (update.accessibilityContext !== undefined) {
+    session.context.accessibilityContext = update.accessibilityContext;
+  }
+  if (update.isInstruct !== undefined) {
+    session.context.isInstruct = update.isInstruct;
+  }
+};
+
+/**
+ * Owns admission, draining, abort, and retirement for one live recording.
+ *
+ * v2: admitted chunk work runs as fibers in a per-session ledger on the
+ * shared telemetry runtime. Abort and retirement interrupt the ledger —
+ * fired, never awaited, so the synchronous cancel path stays zero-tick. The
+ * public surface is unchanged and stays synchronous; the promise returned by
+ * processChunk settles exactly as before: rejection with the failure value for a
+ * terminal failure, preserving its identity, or empty string for cancelled work.
+ */
+export class LiveTranscriptionSession {
+  private readonly abortController = new AbortController();
+  private phase: LiveSessionPhase = "open";
+  private readonly ledger = new Set<Fiber.Fiber<string, unknown>>();
+  private readonly abortGate = Deferred.makeUnsafe<void>();
+  private pendingUpdate: StreamingSessionUpdate = {};
+  private materialized: MaterializedTranscriptionSession | null = null;
+  private providerCancelled = false;
+  private terminalError: Error | null = null;
+
+  constructor(
+    readonly id: string,
+    private readonly onTerminalFailure?: (error: Error) => void,
+    private readonly onDefect?: (defects: ReadonlyArray<unknown>) => void,
+  ) {}
+
+  /**
+   * Defect capture bookkeeping: a defect is reported exactly once. Values
+   * land here when classification reports them, when the resolve triage
+   * reports them, or when they latch via an out-of-band delivery (whose
+   * channel owns the capture — the observed-stream policy). Effect preserves
+   * defect identity through spans, so the same value identifies each report.
+   */
+  private readonly reportedDefects = new Set<unknown>();
+
+  wasDefectReported(value: unknown): boolean {
+    return this.reportedDefects.has(value);
+  }
+
+  markDefectsReported(defects: ReadonlyArray<unknown>): void {
+    for (const defect of defects) {
+      this.reportedDefects.add(defect);
+    }
+  }
+
+  private reportDefectsOnce(defects: ReadonlyArray<unknown>): void {
+    const fresh = defects.filter((d) => !this.wasDefectReported(d));
+    if (fresh.length === 0) {
+      return;
+    }
+    this.markDefectsReported(fresh);
+    this.onDefect?.(fresh);
+  }
+
+  get signal(): AbortSignal {
+    return this.abortController.signal;
+  }
+
+  get materializedSession(): MaterializedTranscriptionSession | null {
+    return this.materialized;
+  }
+
+  /** Test support: fibers currently tracked in the ledger. */
+  openWorkCount(): number {
+    return this.ledger.size;
+  }
+
+  private acceptsChunks(): boolean {
+    return this.phase === "open" && !this.terminalError;
+  }
+
+  canCompleteAdmittedWork(): boolean {
+    return (
+      !this.terminalError &&
+      (this.phase === "open" || this.phase === "finishing")
+    );
+  }
+
+  processChunk(work: () => Promise<string>): Promise<string> {
+    return this.processChunkEffect(
+      Effect.tryPromise({ try: work, catch: (error) => error }),
+    );
+  }
+
+  /**
+   * Admit one chunk of work as a ledger fiber.
+   *
+   * Failure classification runs INSIDE the chunk effect, with the re-fail in
+   * the same uninterruptible region: when the failing chunk's callback
+   * retires this session, the retirement interrupts this very fiber, and an
+   * interruptible tail would lose the original error (the cause would end
+   * interruption-only).
+   */
+  processChunkEffect(work: Effect.Effect<string, unknown>): Promise<string> {
+    if (!this.acceptsChunks()) {
+      return Promise.resolve("");
+    }
+
+    const classified = work.pipe(
+      Effect.catchCause((cause) =>
+        Effect.uninterruptible(
+          Effect.suspend(() => {
+            // Report defects BEFORE any suppression: an interrupted chunk
+            // whose finalizer dies carries Interrupt + Die, and the phase
+            // guard below would silently swallow the defect.
+            const defects = cause.reasons
+              .filter(Cause.isDieReason)
+              .map((reason) => reason.defect);
+            if (defects.length > 0) {
+              this.reportDefectsOnce(defects);
+            }
+            if (this.phase === "aborted" || this.phase === "retired") {
+              // Phase is read at failure time, exactly like the old catch:
+              // failures after abort/retire are swallowed, never terminal.
+              return Effect.succeed("");
+            }
+            const failure = Cause.findErrorOption(cause);
+            // Branch on PRESENCE, not value: a rejection whose value is
+            // literally null must still latch; a null sentinel would misroute
+            // Fail(null) into the interruption arm.
+            if (Option.isSome(failure)) {
+              this.reportTerminalFailure(failure.value);
+            } else if (defects.length > 0) {
+              this.reportTerminalFailure(defects[0]);
+            }
+            // Pure interruption falls through without latching.
+            return Effect.failCause(cause);
+          }),
+        ),
+      ),
+    );
+
+    // Registration discipline: fork, insert
+    // into the ledger, attach the observer, then re-check the phase — the
+    // fork can complete, or this session can retire, before runFork returns.
+    const fiber = runFork(classified);
+    this.ledger.add(fiber);
+    const exitPromise = new Promise<Exit.Exit<string, unknown>>((resolve) => {
+      fiber.addObserver((exit) => {
+        this.ledger.delete(fiber);
+        resolve(exit);
+      });
+    });
+    if (this.phase === "aborted" || this.phase === "retired") {
+      fiber.interruptUnsafe();
+    }
+
+    return exitPromise.then((exit) => {
+      if (Exit.isSuccess(exit)) {
+        return exit.value;
+      }
+      // Interruption skips the classification arm entirely, so an
+      // interrupted chunk whose finalizer died surfaces its defect only
+      // here — report it (deduped) before settling.
+      const exitDefects = exit.cause.reasons
+        .filter(Cause.isDieReason)
+        .map((reason) => reason.defect);
+      if (exitDefects.length > 0) {
+        this.reportDefectsOnce(exitDefects);
+      }
+      const failure = Cause.findErrorOption(exit.cause);
+      if (Option.isSome(failure)) {
+        throw failure.value;
+      }
+      if (exitDefects.length > 0) {
+        throw exitDefects[0];
+      }
+      // Interrupted chunk work settles as the empty string the pinned
+      // cancellation behavior requires.
+      return "";
+    });
+  }
+
+  closeChunkAdmission(): void {
+    if (this.phase === "open") {
+      this.phase = "finishing";
+    }
+  }
+
+  async drainAdmittedChunks(): Promise<void> {
+    if (this.signal.aborted) {
+      return;
+    }
+
+    // Snapshot semantics: await only the fibers admitted before this call.
+    const admitted = [...this.ledger];
+    if (admitted.length === 0) {
+      return;
+    }
+    await runPromise(
+      Effect.race(
+        Fiber.awaitAll(admitted).pipe(Effect.asVoid),
+        Deferred.await(this.abortGate),
+      ),
+    );
+  }
+
+  updateSnapshot(
+    update: StreamingSessionUpdate,
+  ): MaterializedTranscriptionSession | null {
+    if (!this.acceptsChunks() || isEmptyUpdate(update)) {
+      return null;
+    }
+
+    if (!this.materialized) {
+      this.pendingUpdate = { ...this.pendingUpdate, ...update };
+      return null;
+    }
+
+    applyUpdate(this.materialized, update);
+    return this.materialized;
+  }
+
+  attach(session: MaterializedTranscriptionSession): boolean {
+    if (!this.canCompleteAdmittedWork()) {
+      session.providerSession.cancel();
+      return false;
+    }
+
+    applyUpdate(session, this.pendingUpdate);
+    this.pendingUpdate = {};
+    this.materialized = session;
+    return true;
+  }
+
+  canPushContextTo(session: MaterializedTranscriptionSession): boolean {
+    return this.acceptsChunks() && this.materialized === session;
+  }
+
+  /** Latch the first unrecoverable failure for this recording. */
+  latchTerminalFailure(error: unknown): Error | null {
+    if (
+      this.terminalError ||
+      this.phase === "aborted" ||
+      this.phase === "retired"
+    ) {
+      return null;
+    }
+
+    const terminalError =
+      error instanceof Error ? error : new Error(String(error));
+    this.terminalError = terminalError;
+    return terminalError;
+  }
+
+  reportTerminalFailure(error: unknown): void {
+    const terminalError = this.latchTerminalFailure(error);
+    if (!terminalError) {
+      return;
+    }
+
+    this.onTerminalFailure?.(terminalError);
+  }
+
+  throwIfTerminalFailure(): void {
+    if (this.terminalError) {
+      throw this.terminalError;
+    }
+  }
+
+  requestAbort(): void {
+    if (this.phase === "retired") {
+      return;
+    }
+
+    this.phase = "aborted";
+    if (!this.signal.aborted) {
+      this.abortController.abort();
+    }
+    this.cancelProviderOnce();
+    this.interruptLedger();
+    Deferred.doneUnsafe(this.abortGate, Exit.void);
+  }
+
+  retire(): void {
+    if (this.phase === "retired") {
+      return;
+    }
+
+    this.phase = "retired";
+    this.cancelProviderOnce();
+    this.materialized = null;
+    this.pendingUpdate = {};
+    this.interruptLedger();
+  }
+
+  private interruptLedger(): void {
+    // Fired, never awaited: an awaited interrupt would block the
+    // synchronous cancel path behind uninterruptible provider work.
+    for (const fiber of this.ledger) {
+      fiber.interruptUnsafe();
+    }
+  }
+
+  private cancelProviderOnce(): void {
+    if (this.providerCancelled || !this.materialized) {
+      return;
+    }
+
+    this.providerCancelled = true;
+    this.materialized.providerSession.cancel();
+  }
+}

@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/trpc/react";
 import { useOnboardingState } from "./hooks/useOnboardingState";
 import { PhaseProgress } from "./components/shared/PhaseProgress";
-import { OnboardingErrorBoundary } from "./components/ErrorBoundary";
 import { useTranslation } from "react-i18next";
+import { usePostHog } from "@/renderer/lib/posthog";
 
 // Screens
 import { WelcomeScreen } from "./components/screens/WelcomeScreen";
@@ -11,6 +11,7 @@ import { PermissionsScreen } from "./components/screens/PermissionsScreen";
 import { DiscoverySourceScreen } from "./components/screens/DiscoverySourceScreen";
 import { ModelSelectionScreen } from "./components/screens/ModelSelectionScreen";
 import { SignInScreen } from "./components/screens/SignInScreen";
+import { TelemetryScreen } from "./components/screens/TelemetryScreen";
 import { DownloadScreen } from "./components/screens/DownloadScreen";
 import { MicTestScreen } from "./components/screens/MicTestScreen";
 import { ShortcutScreen } from "./components/screens/ShortcutScreen";
@@ -48,6 +49,7 @@ interface PermissionStatus {
  * Implements T026, T027, T028, T029 - Navigation & State Machine
  */
 export function App() {
+  usePostHog("onboarding");
   const { t } = useTranslation();
   // State management
   const [currentScreen, setCurrentScreen] = useState<OnboardingScreen>(
@@ -76,6 +78,13 @@ export function App() {
   // tRPC queries
   const featureFlagsQuery = api.onboarding.getFeatureFlags.useQuery();
   const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
+
+  // A signed-in user who picks Local skips the telemetry step.
+  const [signedIn, setSignedIn] = useState(false);
+  api.auth.onAuthStateChange.useSubscription(undefined, {
+    onData: (authState) => setSignedIn(authState.isAuthenticated),
+    onError: (error) => console.error("Auth state subscription error:", error),
+  });
   const utils = api.useUtils();
 
   // Effective model type: the in-progress selection, falling back to persisted
@@ -95,8 +104,9 @@ export function App() {
         modelType,
         flags: featureFlagsQuery.data,
         skipped: (skippedScreensQuery.data as OnboardingScreen[]) || [],
+        signedIn,
       }),
-    [featureFlagsQuery.data, skippedScreensQuery.data],
+    [featureFlagsQuery.data, skippedScreensQuery.data, signedIn],
   );
 
   // Get active screens. The cloud-only dictation steps are inserted only when
@@ -374,6 +384,9 @@ export function App() {
       case OnboardingScreen.SignIn:
         return <SignInScreen onNext={navigateNext} onBack={navigateBack} />;
 
+      case OnboardingScreen.Telemetry:
+        return <TelemetryScreen onNext={navigateNext} onBack={navigateBack} />;
+
       case OnboardingScreen.Download:
         return <DownloadScreen onNext={navigateNext} onBack={navigateBack} />;
 
@@ -478,17 +491,15 @@ export function App() {
       : (screensInPhase.indexOf(currentScreen) + 1) / screensInPhase.length;
 
   return (
-    <OnboardingErrorBoundary>
-      <div className="flex h-screen flex-col overflow-hidden bg-background text-sm text-foreground antialiased [background-image:radial-gradient(1200px_700px_at_50%_-10%,var(--color-brand-glow)_0%,transparent_60%)]">
-        {/* native titlebar drag region (traffic lights drawn by titleBarOverlay) */}
-        <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
-        <PhaseProgress
-          phases={phases}
-          currentPhase={currentPhase}
-          fill={phaseFill}
-        />
-        <div className="relative flex-1 overflow-hidden">{renderScreen()}</div>
-      </div>
-    </OnboardingErrorBoundary>
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-sm text-foreground antialiased [background-image:radial-gradient(1200px_700px_at_50%_-10%,var(--color-brand-glow)_0%,transparent_60%)]">
+      {/* native titlebar drag region (traffic lights drawn by titleBarOverlay) */}
+      <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
+      <PhaseProgress
+        phases={phases}
+        currentPhase={currentPhase}
+        fill={phaseFill}
+      />
+      <div className="relative flex-1 overflow-hidden">{renderScreen()}</div>
+    </div>
   );
 }

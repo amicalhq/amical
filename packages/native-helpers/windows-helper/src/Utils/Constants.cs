@@ -24,6 +24,12 @@ namespace WindowsHelper.Utils
         /// </summary>
         public const int WINDOW_PADDING = 25_000;
 
+        /// <summary>
+        /// Longest value an edit watch read returns (UTF-16 code units).
+        /// Mirrors EDIT_WATCH_LIMITS.maxTextLength in @amical/types.
+        /// </summary>
+        public const int EDIT_WATCH_MAX_TEXT_LENGTH = 8_000;
+
         // =============================================================================
         // Tree Traversal Limits
         // =============================================================================

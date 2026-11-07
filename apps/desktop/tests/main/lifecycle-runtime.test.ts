@@ -1,0 +1,1039 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  wedgeBudgetMs,
+  type LifecycleTuning,
+} from "../../src/main/lifecycle/tuning";
+import { FakeTimers } from "../helpers/lifecycle-fakes";
+import { ErrorCodes } from "../../src/types/error";
+import { NetworkFailure } from "../../src/types/errors";
+
+const db = vi.hoisted(() => ({
+  createProvisionalTranscription: vi.fn(async () => ({ id: 1 })),
+  enrichTranscriptionBySession: vi.fn(async () => undefined),
+  stampTranscriptionDisposition: vi.fn(async () => ({ id: 1 })),
+  deleteProvisionalTranscription: vi.fn(async () => null),
+  getUncommittedTranscriptions: vi.fn(async () => []),
+  getLatestTranscription: vi.fn(async () => null),
+}));
+
+vi.mock("../../src/db/transcriptions", () => db);
+import {
+  createRecordingLifecycle,
+  type LifecycleNotification,
+  type RecordingLifecycle,
+} from "../../src/main/lifecycle/runtime";
+import {
+  createSessionWork,
+  type SessionWork,
+} from "../../src/main/lifecycle/effect/session-work";
+import type { ResolvedStreamingSession } from "../../src/services/transcription-service";
+import {
+  _resetDictationTraceForTests,
+  installDictationTrace,
+  recordCapturePhases,
+  settleObligation,
+} from "../../src/main/telemetry/dictation-trace";
+
+const TUNING: LifecycleTuning = {
+  stageBoundsMs: {
+    starting: 11,
+    recording: 22,
+    resolving: 33,
+    committing: 44,
+    staging: 55,
+  },
+  deadMicMs: 5,
+  drainMs: 7,
+  pressWindowMs: 3,
+  quickWindowMs: 4,
+  longRecordingReminderMs: 99,
+  commitRepairDelayMs: 66,
+  emptyNoticeMinRecordingMs: 8,
+};
+
+const settle = async (rounds = 4) => {
+  for (let i = 0; i < rounds; i++) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+};
+
+function makeHarness(options?: {
+  hasSpeechModelSelected?: () => Promise<boolean>;
+  isUpdateRequired?: () => boolean;
+  onUpdateRequired?: () => void;
+  resolveText?: string;
+  hasModel?: boolean;
+  retryInProgress?: boolean;
+  draftChord?: () => boolean;
+  sessionWork?: SessionWork;
+  /** Helper verdict for pasteText; refusals resolve { success: false }. */
+  pasteConfirms?: boolean;
+}) {
+  const timers = new FakeTimers();
+  const pastes: string[] = [];
+  const notifications: LifecycleNotification[] = [];
+  const terminalCallbacks = new Map<string, (error: Error) => void>();
+  const ambianceEnds: unknown[] = [];
+  let mint = 0;
+
+  const service = {
+    beginStreamingSession: vi.fn(
+      (sessionId: string, onTerminalFailure?: (error: Error) => void) => {
+        if (onTerminalFailure)
+          terminalCallbacks.set(sessionId, onTerminalFailure);
+        return true;
+      },
+    ),
+    processStreamingChunk: vi.fn(async () => ""),
+    resolveStreamingSession: vi.fn(
+      async (): Promise<ResolvedStreamingSession | null> => ({
+        text: options?.resolveText ?? "hello world",
+        language: "en",
+        speechModel: "whisper-tiny",
+        meta: { vocabularySize: 0 },
+      }),
+    ),
+    cancelStreamingSession: vi.fn(async () => undefined),
+    resetVadForNewSession: vi.fn(async () => undefined),
+    warmupActiveProvider: vi.fn(async () => undefined),
+    isHistoryRetryInProgress: vi.fn(() => options?.retryInProgress ?? false),
+  };
+
+  const lifecycle: RecordingLifecycle = createRecordingLifecycle({
+    transcriptionService: service,
+    isUpdateRequired: options?.isUpdateRequired,
+    onUpdateRequired: options?.onUpdateRequired,
+    ambiance: {
+      begin: () => ({
+        beepGate: Promise.resolve(),
+        done: Promise.resolve({ systemAudioMuted: false, soundsMuted: true }),
+      }),
+      end: (_session, context) => ambianceEnds.push(context),
+    },
+    bridge: {
+      pasteText: async ({ transcript }) => {
+        pastes.push(transcript);
+        return { success: options?.pasteConfirms ?? true };
+      },
+      setDraftEnterCapture: async () => undefined,
+    },
+    getPreserveClipboard: async () => false,
+    hasSpeechModelSelected:
+      options?.hasSpeechModelSelected ??
+      (async () => options?.hasModel ?? true),
+    isDraftChordActive: options?.draftChord ?? (() => false),
+    setDraftInputActive: () => undefined,
+    audioFilePathFor: (session) => `/audio/${session}.wav`,
+    tuning: TUNING,
+    timers,
+    mintSession: () => `s${++mint}`,
+    createWavWriter: () => ({
+      appendAudio: async () => undefined,
+      finalize: async () => undefined,
+      abort: async () => undefined,
+    }),
+    sessionWork: options?.sessionWork,
+  });
+  lifecycle.onNotification((event) => notifications.push(event));
+
+  const frames = (value: number) => new Float32Array(1600).fill(value);
+
+  return {
+    lifecycle,
+    timers,
+    pastes,
+    notifications,
+    service,
+    terminalCallbacks,
+    ambianceEnds,
+    frames,
+    async startToRecording(mic = "Built-in Mic") {
+      lifecycle.setPttLevel(true);
+      await settle();
+      const session = lifecycle.getSnapshot().sessionId!;
+      lifecycle.captureStarted(session, { name: mic });
+      await settle();
+      return session;
+    },
+  };
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  // Harnesses mint the same session ids; a trace left open by one test
+  // would otherwise absorb the next test's session.
+  _resetDictationTraceForTests();
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("recording lifecycle runtime", () => {
+  it("PTT hold-release delivers: record → resolve → commit → paste → idle", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("recording");
+    expect(h.service.beginStreamingSession).toHaveBeenCalledWith(
+      session,
+      expect.any(Function),
+    );
+
+    h.timers.fire(TUNING.pressWindowMs); // held past the press window
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    await settle();
+    expect(db.createProvisionalTranscription).toHaveBeenCalledWith({
+      sessionId: session,
+      audioFile: `/audio/${session}.wav`,
+    });
+
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    expect(h.lifecycle.getSnapshot().projection).toMatchObject({
+      publicState: "stopping",
+      stopKind: "finalize",
+      stopOrigin: "user",
+    });
+
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+
+    expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
+      disposition: "success",
+      text: "hello world",
+      stats: { wordCount: 2, transcriptionCount: 1 },
+      audioDurationMs: 200,
+    });
+    expect(h.pastes).toEqual(["hello world"]);
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      sessionId: null,
+      projection: { publicState: "idle" },
+    });
+    expect(h.ambianceEnds).toHaveLength(1);
+    expect(h.timers.armedDurations()).toEqual([]);
+    expect(h.notifications).toEqual([]);
+  });
+
+  it("one delivered session flushes one dictation trace with its phases", async () => {
+    const flushedTraces: Array<Record<string, unknown>> = [];
+    installDictationTrace({
+      trackDictationTrace: (properties) => {
+        flushedTraces.push(properties);
+      },
+    });
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false, {
+      inputChannelCount: 2,
+      trackChannelCount: 2,
+      stereoDownmixEnabled: true,
+    });
+    await settle();
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+    expect(h.pastes).toEqual(["hello world"]);
+
+    settleObligation(session, "capture.timings");
+    expect(flushedTraces).toHaveLength(1);
+    const trace = flushedTraces[0];
+    expect(trace.session_id).toBe(session);
+    expect(typeof trace.disposition).toBe("string");
+    expect(trace.flush_reason).toBe("settled");
+    expect(trace.recording_live_offset_ms).toBeTypeOf("number");
+    expect(trace.recorder_spinup_duration_ms).toBeTypeOf("number");
+    expect(trace.recorder_close_duration_ms).toBeTypeOf("number");
+    expect(trace.paste_duration_ms).toBeTypeOf("number");
+    expect(trace.pasted_offset_ms).toBeTypeOf("number");
+    expect(trace.storage_duration_ms).toBeTypeOf("number");
+    expect(trace.session_duration_ms).toBeTypeOf("number");
+    expect(trace.audio_input_channel_count).toBe(2);
+    expect(trace.audio_track_channel_count).toBe(2);
+    expect(trace.audio_stereo_downmix_enabled).toBe(true);
+  });
+
+  it("a refused paste settles the trace without paste keys and without grace", async () => {
+    const flushedTraces: Array<Record<string, unknown>> = [];
+    installDictationTrace({
+      trackDictationTrace: (properties) => {
+        flushedTraces.push(properties);
+      },
+    });
+    const h = makeHarness({ pasteConfirms: false });
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    await settle();
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+    // The helper answered { success: false }: the paste was dispatched but
+    // never landed — both paste keys must be omitted, never faked, and the
+    // settle must not leave the trace waiting out the grace window.
+    settleObligation(session, "capture.timings");
+    expect(flushedTraces).toHaveLength(1);
+    expect(flushedTraces[0].session_id).toBe(session);
+    expect(flushedTraces[0].flush_reason).toBe("settled");
+    expect(flushedTraces[0].paste_duration_ms).toBeUndefined();
+    expect(flushedTraces[0].pasted_offset_ms).toBeUndefined();
+  });
+
+  it("keeps canceled startup timings until renderer cleanup reports", async () => {
+    const flushed: Record<string, unknown>[] = [];
+    installDictationTrace({
+      trackDictationTrace: (payload) => {
+        flushed.push(payload);
+      },
+    });
+    const h = makeHarness();
+    h.lifecycle.setPttLevel(true);
+    await settle();
+    const session = h.lifecycle.getSnapshot().sessionId!;
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("starting");
+    await h.lifecycle.dismiss();
+    await settle();
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(flushed).toHaveLength(0);
+    recordCapturePhases(session, [
+      {
+        name: "capture.get-user-media",
+        startedAtMs: Date.now(),
+        durationMs: 120,
+      },
+    ]);
+    settleObligation(session, "capture.timings");
+    expect(flushed).toHaveLength(1);
+    expect(flushed[0]).toMatchObject({
+      capture_get_user_media_duration_ms: 120,
+      flush_reason: "settled",
+    });
+  });
+
+  it("a quick tap cancels: discard, no transcription result, no paste", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    h.lifecycle.setPttLevel(false); // inside the press window: quick release
+    await settle();
+    h.timers.fire(TUNING.quickWindowMs); // no re-press: tap becomes a discard
+    await settle();
+    h.timers.fire(TUNING.drainMs); // no final chunk: custody closes at the bound
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(db.stampTranscriptionDisposition).not.toHaveBeenCalled();
+    expect(db.deleteProvisionalTranscription).toHaveBeenCalledWith(session);
+    expect(h.service.cancelStreamingSession).toHaveBeenCalledWith(session);
+    expect(h.pastes).toEqual([]);
+    expect(h.notifications).toEqual([]);
+  });
+
+  it("tap-to-latch upgrades the session to hands-free and keeps recording", async () => {
+    const h = makeHarness();
+    await h.startToRecording();
+    h.lifecycle.setPttLevel(false);
+    h.lifecycle.setPttLevel(true); // re-press inside the quick window
+    await settle();
+
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      projection: { publicState: "recording" },
+      metadata: { mode: "hands-free" },
+    });
+
+    h.lifecycle.setPttLevel(false); // releasing the latch press: still recording
+    await settle();
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("recording");
+
+    h.timers.fire(TUNING.pressWindowMs); // the start window expires
+    h.lifecycle.setPttLevel(true); // next press stops
+    await settle();
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("stopping");
+  });
+
+  it("a latch upgrade during a slow admission gate still lands", async () => {
+    let releaseGate!: (value: boolean) => void;
+    const h = makeHarness({
+      hasSpeechModelSelected: () =>
+        new Promise<boolean>((resolve) => {
+          releaseGate = resolve;
+        }),
+    });
+
+    // Tap and re-press while the model lookup is still pending: the
+    // upgrade queues behind the admission instead of hitting IDLE.
+    h.lifecycle.setPttLevel(true);
+    h.lifecycle.setPttLevel(false);
+    h.lifecycle.setPttLevel(true);
+    await settle();
+    expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
+
+    releaseGate(true);
+    await settle();
+
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      projection: { publicState: "starting" },
+      metadata: { mode: "hands-free" },
+    });
+  });
+
+  it("a hung admission gate refuses the start instead of blocking input", async () => {
+    const h = makeHarness({
+      hasSpeechModelSelected: () => new Promise<boolean>(() => undefined),
+    });
+
+    h.lifecycle.setPttLevel(true);
+    await settle();
+    h.timers.fire(3_000); // admission gate bound
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
+    expect(h.notifications).toEqual([
+      expect.objectContaining({
+        type: "transcription_failed",
+        errorCode: ErrorCodes.UNKNOWN,
+      }),
+    ]);
+  });
+
+  it("a dead mic seals discard(no_audio) and notifies with the microphone", async () => {
+    const h = makeHarness();
+    await h.startToRecording("Rode NT");
+    h.timers.fire(TUNING.deadMicMs);
+    await settle();
+    h.timers.fire(TUNING.drainMs); // no final chunk: custody closes at the bound
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(h.notifications).toEqual([
+      { type: "no_audio", params: { microphone: "Rode NT" } },
+    ]);
+    expect(db.deleteProvisionalTranscription).toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "sends instruct audio when the Draft chord is active at start=%s",
+    async (activeAtStart) => {
+      let draftChord = activeAtStart;
+      const h = makeHarness({ draftChord: () => draftChord });
+      const session = await h.startToRecording();
+      draftChord = true;
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+      await settle();
+
+      expect(h.lifecycle.getSnapshot().metadata?.isDraft).toBe(true);
+      expect(h.service.processStreamingChunk).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: session, isInstruct: true }),
+      );
+
+      draftChord = false;
+      h.timers.fire(TUNING.pressWindowMs);
+      h.lifecycle.setPttLevel(false);
+      await settle();
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+      await settle();
+      expect(h.service.processStreamingChunk).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: session, isInstruct: true }),
+      );
+    },
+  );
+
+  it("keeps instruct audio for re-dictation over a pending Draft and clears it after dismissal", async () => {
+    let draftChord = true;
+    const h = makeHarness({ draftChord: () => draftChord });
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+    expect(h.lifecycle.getPendingDraft()).not.toBeNull();
+
+    draftChord = false;
+    const replacement = await h.startToRecording();
+    await h.lifecycle.handleAudioChunk(replacement, h.frames(0.5), false);
+    await settle();
+    expect(h.service.processStreamingChunk).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: replacement, isInstruct: true }),
+    );
+
+    h.timers.fire(TUNING.pressWindowMs);
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(replacement, h.frames(0.5), true);
+    await settle();
+    h.lifecycle.dismissDraft();
+
+    const dictation = await h.startToRecording();
+    await h.lifecycle.handleAudioChunk(dictation, h.frames(0.5), false);
+    await settle();
+    expect(h.service.processStreamingChunk).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: dictation, isInstruct: false }),
+    );
+  });
+
+  it.each([false, true])(
+    "draft review and Enter paste work with update required=%s",
+    async (required) => {
+      let updateRequired = false;
+      const h2 = makeHarness({
+        draftChord: () => true,
+        isUpdateRequired: () => updateRequired,
+      });
+      const s2 = await h2.startToRecording();
+      updateRequired = required;
+      h2.timers.fire(TUNING.pressWindowMs);
+      await h2.lifecycle.handleAudioChunk(s2, h2.frames(0.5), false);
+      h2.lifecycle.setPttLevel(false);
+      await settle();
+      await h2.lifecycle.handleAudioChunk(s2, h2.frames(0.5), true);
+      await settle();
+
+      expect(h2.pastes).toEqual([]);
+      expect(h2.lifecycle.getPendingDraft()).toEqual({
+        sessionId: s2,
+        text: "hello world",
+      });
+      expect(h2.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+
+      await h2.lifecycle.confirmDraftFromInput();
+      await settle();
+      expect(h2.pastes).toEqual(["hello world"]);
+      expect(h2.lifecycle.getPendingDraft()).toBeNull();
+    },
+  );
+
+  it("admission gates: missing model and active history retry refuse with a toast", async () => {
+    const noModel = makeHarness({ hasModel: false });
+    await noModel.lifecycle.startDictation();
+    await settle();
+    expect(noModel.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(noModel.notifications).toEqual([
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.MODEL_MISSING,
+        noRecording: true,
+      },
+    ]);
+    expect(noModel.service.beginStreamingSession).not.toHaveBeenCalled();
+
+    const retrying = makeHarness({ retryInProgress: true });
+    await retrying.lifecycle.startDictation();
+    await settle();
+    expect(retrying.notifications).toEqual([
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.RETRY_IN_PROGRESS,
+        noRecording: true,
+      },
+    ]);
+  });
+
+  it("a refused start resets the grammar: the next press starts", async () => {
+    let hasModel = false;
+    const h = makeHarness({
+      hasSpeechModelSelected: async () => hasModel,
+    });
+
+    h.lifecycle.toggleKey();
+    await settle();
+    expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
+    expect(h.notifications).toEqual([
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.MODEL_MISSING,
+        noRecording: true,
+      },
+    ]);
+
+    // The refusal must not strand the grammar latched — the very next
+    // toggle starts instead of being swallowed as a no-op stop.
+    hasModel = true;
+    h.lifecycle.toggleKey();
+    await settle();
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      projection: { publicState: "starting" },
+      metadata: { mode: "hands-free" },
+    });
+  });
+
+  it("a surface start is grammar-driven: a PTT tap stops it, never discards", async () => {
+    const h = makeHarness();
+    await h.lifecycle.startDictation();
+    await settle();
+    h.lifecycle.captureStarted(h.lifecycle.getSnapshot().sessionId!, {});
+    await settle();
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      projection: { publicState: "recording" },
+      metadata: { mode: "hands-free" },
+    });
+    h.timers.fire(TUNING.pressWindowMs); // the start window expires
+
+    // The regression: a stray PTT tap used to run its own idle→window path
+    // and quick-discard the live session. Grammar-driven starts make the
+    // press a normal stop.
+    h.lifecycle.setPttLevel(true);
+    await settle();
+    expect(h.lifecycle.getSnapshot().projection).toMatchObject({
+      publicState: "stopping",
+      stopKind: "finalize",
+    });
+  });
+
+  it("PTT upgrades to hands-free on the toggle chord", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    expect(h.lifecycle.getSnapshot().metadata?.mode).toBe("ptt");
+
+    h.lifecycle.toggleKey();
+    await settle();
+    expect(h.lifecycle.getSnapshot().metadata?.mode).toBe("hands-free");
+
+    // Releasing the PTT chord no longer stops: the session is latched.
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      sessionId: session,
+      projection: { publicState: "recording" },
+    });
+  });
+
+  it("a quick second toggle discards; a later one stops", async () => {
+    const quick = makeHarness();
+    quick.lifecycle.toggleKey();
+    await settle();
+    quick.lifecycle.toggleKey(); // inside the quick window: accident
+    await settle();
+    // Discarded, never stamped — the accidental session leaves no trace.
+    expect(quick.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(db.stampTranscriptionDisposition).not.toHaveBeenCalled();
+    expect(quick.notifications).toEqual([]);
+
+    const slow = makeHarness();
+    slow.lifecycle.toggleKey();
+    await settle();
+    slow.lifecycle.captureStarted(slow.lifecycle.getSnapshot().sessionId!, {});
+    await settle();
+    slow.timers.fire(TUNING.pressWindowMs); // the start window expires
+    slow.lifecycle.toggleKey();
+    await settle();
+    expect(slow.lifecycle.getSnapshot().projection.stopKind).toBe("finalize");
+  });
+
+  it("toggle inputs are dropped while a draft is pending or live", async () => {
+    const h = makeHarness({ draftChord: () => true });
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    await settle();
+    expect(h.lifecycle.getSnapshot().metadata?.isDraft).toBe(true);
+
+    // Draft is push-to-talk only: no hands-free upgrade of a live draft.
+    h.lifecycle.toggleKey();
+    await settle();
+    expect(h.lifecycle.getSnapshot().metadata?.mode).toBe("ptt");
+  });
+
+  it("a release racing the admission still stops the session (verb order)", async () => {
+    const h = makeHarness();
+    h.lifecycle.setPttLevel(true);
+    h.timers.fire(TUNING.pressWindowMs);
+    h.lifecycle.setPttLevel(false); // stop queued behind the async admission
+    await settle();
+
+    // The session was admitted, then immediately stopped from STARTING:
+    // sealed as discard(interrupted_start), settled back to idle.
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(db.deleteProvisionalTranscription).toHaveBeenCalled();
+    expect(h.service.beginStreamingSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("an uncommanded terminal failure mid-recording seals and toasts with detail", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    h.terminalCallbacks.get(session)!(
+      new NetworkFailure({
+        message: "cloud down",
+        meta: { serverUi: { message: "Service unreachable" } },
+      }),
+    );
+    await settle();
+    h.timers.fire(TUNING.drainMs); // no final chunk: custody closes at the bound
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(h.notifications).toEqual([
+      expect.objectContaining({
+        type: "transcription_failed",
+        errorCode: ErrorCodes.NETWORK_ERROR,
+        uiMessage: "Service unreachable",
+        // The recording ran, so the saved-recording sub-line stays truthful.
+        noRecording: false,
+      }),
+    ]);
+    // Failure keeps the record: stamped, not deleted.
+    expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
+      disposition: "failure",
+      stats: { wordCount: 0, transcriptionCount: 1 },
+      metaPatch: { failureReason: ErrorCodes.NETWORK_ERROR },
+    });
+  });
+
+  it("a hung resolve seals failure(timeout) and surfaces it", async () => {
+    const h = makeHarness();
+    h.service.resolveStreamingSession.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+    h.timers.fire(TUNING.stageBoundsMs.resolving);
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    // Never a silent reset (R3): the timeout failure surfaces like any
+    // other failure seal; the surface renders unknown causes generically.
+    expect(h.notifications).toEqual([
+      expect.objectContaining({
+        type: "transcription_failed",
+        errorCode: "timeout",
+      }),
+    ]);
+    expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(session, {
+      disposition: "failure",
+      stats: { wordCount: 0, transcriptionCount: 1 },
+      metaPatch: { failureReason: "timeout" },
+      audioDurationMs: 200,
+    });
+  });
+
+  it("empty transcripts toast only past the duration gate (D24)", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance"] });
+
+    // Short recording: sealed empty, but the notice stays silent.
+    const short = makeHarness({ resolveText: "" });
+    const shortSession = await short.startToRecording("Blue Yeti");
+    short.timers.fire(TUNING.pressWindowMs);
+    await short.lifecycle.handleAudioChunk(
+      shortSession,
+      short.frames(0.5),
+      false,
+    );
+    vi.advanceTimersByTime(TUNING.emptyNoticeMinRecordingMs);
+    vi.setSystemTime(Date.now() + 60_000);
+    short.lifecycle.setPttLevel(false);
+    await settle();
+    await short.lifecycle.handleAudioChunk(
+      shortSession,
+      short.frames(0.5),
+      true,
+    );
+    await settle();
+    expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(
+      shortSession,
+      {
+        disposition: "empty",
+        audioDurationMs: 200,
+        stats: { wordCount: 0, transcriptionCount: 1 },
+      },
+    );
+    expect(short.notifications).toEqual([]);
+
+    // Long recording: the notice fires.
+    const long = makeHarness({ resolveText: "" });
+    const longSession = await long.startToRecording("Blue Yeti");
+    long.timers.fire(TUNING.pressWindowMs);
+    await long.lifecycle.handleAudioChunk(longSession, long.frames(0.5), false);
+    vi.advanceTimersByTime(TUNING.emptyNoticeMinRecordingMs + 1);
+    vi.setSystemTime(Date.now() - 60_000);
+    long.lifecycle.setPttLevel(false);
+    await settle();
+    await long.lifecycle.handleAudioChunk(longSession, long.frames(0.5), true);
+    await settle();
+    expect(long.pastes).toEqual([]);
+    expect(long.notifications).toEqual([
+      { type: "empty_transcript", params: { microphone: "Blue Yeti" } },
+    ]);
+  });
+
+  it("a retry admitted during the gate await refuses with the truthful reason", async () => {
+    let releaseGate!: (value: boolean) => void;
+    const h = makeHarness({
+      hasSpeechModelSelected: () =>
+        new Promise<boolean>((resolve) => {
+          releaseGate = resolve;
+        }),
+    });
+
+    h.lifecycle.toggleKey();
+    await settle();
+    // A history retry wins the engines while the model lookup is pending.
+    h.service.isHistoryRetryInProgress.mockReturnValue(true);
+    releaseGate(true);
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().sessionId).toBeNull();
+    expect(h.service.beginStreamingSession).not.toHaveBeenCalled();
+    expect(h.notifications).toEqual([
+      {
+        type: "transcription_failed",
+        errorCode: ErrorCodes.RETRY_IN_PROGRESS,
+        noRecording: true,
+      },
+    ]);
+
+    // Grammar was reset by the refusal: the next toggle starts normally.
+    h.service.isHistoryRetryInProgress.mockReturnValue(false);
+    h.lifecycle.toggleKey();
+    await settle();
+    releaseGate(true);
+    await settle();
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("starting");
+  });
+
+  it("auto-stop at the cap is visible and notifies", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    h.timers.fire(TUNING.stageBoundsMs.recording);
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().projection).toMatchObject({
+      publicState: "stopping",
+      stopOrigin: "auto",
+    });
+    expect(h.notifications).toEqual([{ type: "recording_auto_stopped" }]);
+  });
+
+  it("the long-recording reminder fires off the recording projection", async () => {
+    const h = makeHarness();
+    await h.startToRecording();
+    h.timers.fire(TUNING.longRecordingReminderMs);
+    expect(h.notifications).toEqual([
+      expect.objectContaining({
+        type: "recording_duration_warning",
+        params: {
+          minutes: expect.any(Number),
+          maxMinutes: expect.any(Number),
+        },
+      }),
+    ]);
+  });
+
+  it("ESC dismisses the pending draft first, then live sessions", async () => {
+    const h = makeHarness({ draftChord: () => true });
+    const session = await h.startToRecording();
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+    expect(h.lifecycle.getPendingDraft()).not.toBeNull();
+
+    await h.lifecycle.dismiss();
+    expect(h.lifecycle.getPendingDraft()).toBeNull();
+
+    // No draft pending: ESC dismisses the live session.
+    const h2 = makeHarness();
+    const s2 = await h2.startToRecording();
+    await h2.lifecycle.dismiss();
+    await settle();
+    h2.timers.fire(TUNING.drainMs); // no final chunk: custody closes at the bound
+    await settle();
+    expect(h2.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(h2.service.cancelStreamingSession).toHaveBeenCalledWith(s2);
+    expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(s2, {
+      disposition: "dismissed",
+    });
+  });
+
+  it("the wedge watchdog force-resets a session that outlives its budget", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    // Simulate a wedged stack: fire only the watchdog (stage bounds never ran).
+    h.timers.fire(wedgeBudgetMs(TUNING));
+    await settle();
+
+    expect(h.lifecycle.getSnapshot()).toMatchObject({
+      sessionId: null,
+      projection: { publicState: "idle" },
+    });
+    // R10 teardown: ports were told to abandon the wedged session. The
+    // recorder drains best-effort; its bound closes custody with no session
+    // left to notify (the late recorderClosed is a fenced no-op).
+    expect(h.service.cancelStreamingSession).toHaveBeenCalledWith(session);
+    expect(h.timers.armedDurations()).toEqual([TUNING.drainMs]);
+    h.timers.fire(TUNING.drainMs);
+    await settle();
+    expect(h.timers.armedDurations()).toEqual([]);
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+  });
+});
+
+describe("runtime edges", () => {
+  it("the reminder dies on the recording-exit edge, not at retirement", async () => {
+    const h = makeHarness();
+    const session = await h.startToRecording();
+    expect(h.timers.armedDurations()).toContain(TUNING.longRecordingReminderMs);
+
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    h.lifecycle.setPttLevel(false); // stopping: recording exited, session live
+    await settle();
+    // A session in stopping must never get a "still recording" reminder.
+    expect(h.timers.armedDurations()).not.toContain(
+      TUNING.longRecordingReminderMs,
+    );
+  });
+});
+
+describe("session-work wiring (S0.5)", () => {
+  function probeWork() {
+    const inner = createSessionWork({ timers: new FakeTimers() });
+    const calls: string[] = [];
+    const sessionWork: SessionWork = {
+      ...inner,
+      open: (s) => {
+        calls.push(`open:${s}`);
+        inner.open(s);
+      },
+      retire: (s) => {
+        calls.push(`retire:${s}`);
+        inner.retire(s);
+      },
+      quarantine: (s) => {
+        calls.push(`quarantine:${s}`);
+        inner.quarantine(s);
+      },
+    };
+    return { calls, sessionWork, inner };
+  }
+
+  it("scopes open on the starting edge and retire on the idle edge", async () => {
+    const { calls, sessionWork, inner } = probeWork();
+    const h = makeHarness({ sessionWork });
+
+    const session = await h.startToRecording();
+    expect(calls).toEqual([`open:${session}`]);
+
+    h.timers.fire(TUNING.pressWindowMs);
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+    h.lifecycle.setPttLevel(false);
+    await settle();
+    await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    expect(calls).toEqual([`open:${session}`, `retire:${session}`]);
+    await inner.settled();
+    expect(inner.openCount()).toBe(0);
+  });
+
+  it("forceReset quarantines the live session before the reset retires it", async () => {
+    const { calls, sessionWork } = probeWork();
+    const h = makeHarness({ sessionWork });
+
+    const session = await h.startToRecording();
+    h.lifecycle.forceReset();
+    await settle();
+
+    expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+    // quarantine appears twice: the runtime's explicit call (E8 keeps the
+    // port calls) plus host.abandon delegating to it — idempotent by design.
+    expect(calls).toEqual([
+      `open:${session}`,
+      `quarantine:${session}`,
+      `quarantine:${session}`,
+      `retire:${session}`,
+    ]);
+  });
+
+  it("a refused admission opens no scope", async () => {
+    const { calls, sessionWork } = probeWork();
+    const h = makeHarness({ sessionWork, hasModel: false });
+    await h.lifecycle.startDictation();
+    await settle();
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("required update admission", () => {
+  it("leaves paste-last available without opening the update window", async () => {
+    const notice = vi.fn();
+    const h = makeHarness({
+      isUpdateRequired: () => true,
+      onUpdateRequired: notice,
+    });
+    db.getLatestTranscription.mockClear();
+    await h.lifecycle.pasteLatestTranscription();
+    expect(db.getLatestTranscription).toHaveBeenCalledOnce();
+    expect(notice).not.toHaveBeenCalled();
+    h.lifecycle.dispose();
+  });
+
+  it.each(["ptt", "toggle", "surface"])(
+    "blocks %s before recording and recovers when lifted",
+    async (input) => {
+      let required = true;
+      const notice = vi.fn();
+      const h = makeHarness({
+        isUpdateRequired: () => required,
+        onUpdateRequired: notice,
+      });
+      const start = async () => {
+        if (input === "ptt") h.lifecycle.setPttLevel(true);
+        else if (input === "toggle") h.lifecycle.toggleKey();
+        else await h.lifecycle.startDictation();
+        await settle();
+      };
+      await start();
+      expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+      expect(notice).toHaveBeenCalledOnce();
+      h.lifecycle.setPttLevel(false);
+      await settle();
+      required = false;
+      await start();
+      expect(h.lifecycle.getSnapshot().projection.publicState).toBe("starting");
+      h.lifecycle.dispose();
+    },
+  );
+});
+
+it("finishes and saves an active recording when an update becomes required", async () => {
+  let required = false;
+  const notice = vi.fn();
+  const h = makeHarness({
+    isUpdateRequired: () => required,
+    onUpdateRequired: notice,
+  });
+  const session = await h.startToRecording();
+  h.timers.fire(TUNING.pressWindowMs);
+  await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+  await settle();
+  required = true;
+  await h.lifecycle.startDictation();
+  expect(notice).not.toHaveBeenCalled();
+  h.lifecycle.setPttLevel(false);
+  await settle();
+  await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+  await settle();
+  expect(db.stampTranscriptionDisposition).toHaveBeenCalledWith(
+    session,
+    expect.objectContaining({ disposition: "success", text: "hello world" }),
+  );
+  expect(h.pastes).toEqual(["hello world"]);
+  expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+  await h.lifecycle.startDictation();
+  await settle();
+  expect(notice).toHaveBeenCalledOnce();
+  expect(h.lifecycle.getSnapshot().projection.publicState).toBe("idle");
+  h.lifecycle.dispose();
+});

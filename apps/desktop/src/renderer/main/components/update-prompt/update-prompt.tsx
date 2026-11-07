@@ -1,3 +1,4 @@
+import { useUpdateRequirement } from "@/hooks/useUpdateRequirement";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/trpc/react";
@@ -23,8 +24,9 @@ export function UpdatePrompt() {
     onData: (data) => setPrompt(data),
   });
 
+  const access = useUpdateRequirement();
   const isForce = prompt?.action === "force";
-  const open = prompt !== null;
+  const open = prompt !== null && access !== null && !access.requirement;
 
   const handleLater = () => {
     dismiss.mutate();
@@ -55,7 +57,9 @@ export function UpdatePrompt() {
           {prompt?.version && (
             <p className="text-muted-foreground text-sm">
               {t(
-                isForce ? "updater.versionRequired" : "updater.versionAvailable",
+                isForce
+                  ? "updater.versionRequired"
+                  : "updater.versionAvailable",
                 { version: prompt.version },
               )}
             </p>

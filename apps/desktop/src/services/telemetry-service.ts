@@ -11,7 +11,9 @@ import {
   AppScopeTag,
 } from "../main/runtime/tags";
 import { step, up } from "../main/runtime/layer-helpers";
+import { getAmicalClientInfo } from "../utils/http-client";
 import type { SettingsService } from "./settings-service";
+import type { EventMessage } from "posthog-node";
 import type { PostHogClient, SystemInfo } from "./posthog-client";
 import type { AuthState } from "./auth-service";
 import type {
@@ -28,7 +30,29 @@ import type {
   TranscriptionReportedEvent,
   WidgetNotificationShownEvent,
   CloudGrpcFallbackEvent,
+  TranscriptionEditWatchCompletedEvent,
+  StarNudgeEvent,
+  VocabularyLearningCompletedEvent,
+  VocabularyAutoUndoneEvent,
 } from "../types/telemetry-events";
+
+export type ContractFailureKind = "invalid_json" | "schema_mismatch";
+
+export type ContractFailureProperties = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
+export interface ContractFailureReport {
+  errorContext: string;
+  failureKind: ContractFailureKind;
+  properties?: ContractFailureProperties;
+}
+
+const CONTRACT_FAILURE_MESSAGES: Record<ContractFailureKind, string> = {
+  invalid_json: "Response was not valid JSON",
+  schema_mismatch: "Response did not match its expected schema",
+};
 
 // Re-export from posthog-client for backwards compatibility
 export type { SystemInfo } from "./posthog-client";
@@ -37,9 +61,7 @@ export interface TranscriptionMetrics {
   session_id?: string;
   model_id: string;
   model_preloaded?: boolean;
-  whisper_native_binding?: string;
   total_duration_ms?: number;
-  recording_duration_ms?: number;
   processing_duration_ms?: number;
   audio_duration_seconds?: number;
   realtime_factor?: number;
@@ -54,6 +76,54 @@ export interface TranscriptionMetrics {
   vocabulary_size?: number;
 }
 
+/** Client-side flood guard: posthog-node rate-limits only AUTOCAPTURED
+ * exceptions, so manual capture()/captureException() — e.g. an error loop —
+ * can flood PostHog unguarded. Token buckets: a full burst up front, then
+ * one token per refill interval, keyed per event name / per exception
+ * fingerprint. */
+const EVENT_RATE_LIMIT = { bucketSize: 10, refillIntervalMs: 10_000 };
+const EXCEPTION_RATE_LIMIT = { bucketSize: 5, refillIntervalMs: 60_000 };
+/** Second layer across ALL exceptions: catches floods whose fingerprint
+ * churns (unique messages without a stack, unique non-Error values), which
+ * the per-fingerprint buckets cannot see. Checked only after the
+ * per-fingerprint bucket allows, so a same-key storm cannot drain it. */
+const EXCEPTION_GLOBAL_RATE_LIMIT = {
+  bucketSize: 20,
+  refillIntervalMs: 10_000,
+};
+const EXCEPTION_GLOBAL_KEY = "exceptions-global";
+const RATE_BUCKET_MAX_KEYS = 500;
+/** Cap on events held while the user has not chosen yet (onboarding emits a
+ * few dozen). Events past the cap are dropped. */
+const MAX_PENDING_EVENTS = 200;
+
+interface RateBucket {
+  tokens: number;
+  size: number;
+  refillIntervalMs: number;
+  lastRefill: number;
+  dropped: number;
+}
+
+/** Keyed by throw site (name + top frame) so a loop rethrowing the same
+ * error stays one key even when the message churns. Must never throw into
+ * the caller's error path: hostile values (throwing toString/getters) fall
+ * back to one shared key. */
+function exceptionFingerprint(error: unknown): string {
+  try {
+    if (error instanceof Error) {
+      const topFrame = error.stack
+        ?.split("\n")
+        .find((line) => line.trimStart().startsWith("at "))
+        ?.trim();
+      return `${error.name}:${topFrame ?? error.message.slice(0, 100)}`;
+    }
+    return String(error).slice(0, 100);
+  } catch {
+    return "unfingerprintable";
+  }
+}
+
 /**
  * Emits "identity-changed" after identifyUser()/resetUser() so downstream
  * identity consumers (feature flags) can react without auth or telemetry
@@ -62,9 +132,13 @@ export interface TranscriptionMetrics {
 export class TelemetryService extends EventEmitter {
   private client: PostHogClient;
   private enabled: boolean = false;
+  /** Non-null while the user has not opted in, opted out, or signed in yet:
+   * events are held here, sent on opt-in or sign-in, dropped on opt-out. */
+  private pendingEvents: EventMessage[] | null = null;
   private initialized: boolean = false;
   private persistedProperties: Record<string, unknown> = {};
   private settingsService: SettingsService;
+  private rateBuckets = new Map<string, RateBucket>();
 
   // Construction goes through Live: the graph is the only thing that may
   // build this service, which also makes single-construction structural.
@@ -78,7 +152,8 @@ export class TelemetryService extends EventEmitter {
    * The service's layer. Registers the early ref (the facade's nullable
    * accessor serves crash telemetry mid-build) and subscribes to the auth
    * events that drive identity: identify on "authenticated" (when the token
-   * carried a subject), reset on "logged-out" (only if identified — the
+   * carried a subject), turn telemetry on at "signed-in" (see handleSignIn),
+   * reset on "logged-out" (only if identified — the
    * reset gate keeps "identity-changed" meaning an ACTUAL change). The
    * subscriptions are removed when the app scope closes, so a torn-down
    * graph's consumers stop reacting to late auth events and repeated builds
@@ -114,17 +189,33 @@ export class TelemetryService extends EventEmitter {
           authState.userInfo.name,
         );
       };
+      const onSignedIn = () => {
+        service.handleSignIn().catch((error) => {
+          logger.main.error("Failed to turn on telemetry after sign-in", error);
+        });
+      };
       const onLoggedOut = () => {
         if (!service.isUserIdentified()) return;
         service.resetUser();
       };
+      const onApiContractFailure = (report: ContractFailureReport) => {
+        service.captureContractFailure(
+          report.errorContext,
+          report.failureKind,
+          report.properties,
+        );
+      };
       authService.on("authenticated", onAuthenticated);
+      authService.on("signed-in", onSignedIn);
       authService.on("logged-out", onLoggedOut);
+      authService.on("api-contract-failure", onApiContractFailure);
       yield* Scope.addFinalizer(
         appScope,
         Effect.sync(() => {
           authService.off("authenticated", onAuthenticated);
+          authService.off("signed-in", onSignedIn);
           authService.off("logged-out", onLoggedOut);
+          authService.off("api-contract-failure", onApiContractFailure);
         }),
       );
       logger.main.info("Telemetry service initialized");
@@ -150,21 +241,27 @@ export class TelemetryService extends EventEmitter {
       return;
     }
 
-    // Sync opt-out state with database settings
+    // Sync opt-out state with database settings. Undefined means the user
+    // has not chosen yet, which counts as off.
     const telemetrySettings = await this.settingsService.getTelemetrySettings();
-    const userTelemetryEnabled = telemetrySettings.enabled !== false;
+    const userTelemetryEnabled = telemetrySettings.enabled === true;
+    this.pendingEvents = telemetrySettings.enabled === undefined ? [] : null;
 
-    if (telemetrySettings.enabled === false) {
-      await this.client.posthog.optOut();
-      logger.main.debug("Opted out of telemetry");
-    } else {
+    if (userTelemetryEnabled) {
       await this.client.posthog.optIn();
       logger.main.debug("Opted into telemetry");
+    } else {
+      await this.client.posthog.optOut();
+      logger.main.debug("Opted out of telemetry");
     }
 
     // ! posthog-node code flow doesn't use register to set super properties
     // ! Track them manually
+    // Same values as the amical-client / amical-platform request headers.
+    const { client, platform } = getAmicalClientInfo();
     this.persistedProperties = {
+      client,
+      platform,
       app_version: app.getVersion(),
       machine_id: this.client.machineId,
       app_is_packaged: app.isPackaged,
@@ -192,6 +289,15 @@ export class TelemetryService extends EventEmitter {
     });
   }
 
+  /** The per-session dictation trace, flushed once per session on every
+   * disposition (phase durations, offsets, failure stage). This IS the
+   * transcription_completed_v2 event for live dictations. */
+  trackDictationTrace(properties: Record<string, unknown>): void {
+    this.captureEvent("transcription_completed_v2", properties);
+  }
+
+  /** History-retry path only — live dictations report through the dictation
+   * trace above. Discriminated by is_retry. */
   trackTranscriptionCompleted(metrics: TranscriptionMetrics): void {
     this.captureEvent("transcription_completed", metrics);
 
@@ -199,7 +305,6 @@ export class TelemetryService extends EventEmitter {
       session_id: metrics.session_id,
       model: metrics.model_id,
       duration: metrics.total_duration_ms,
-      recording_duration: metrics.recording_duration_ms,
       processing_duration: metrics.processing_duration_ms,
     });
   }
@@ -212,12 +317,41 @@ export class TelemetryService extends EventEmitter {
     if (!this.client.posthog || !this.enabled || !distinctId) {
       return;
     }
+    const errorContext =
+      typeof additionalProperties.error_context === "string"
+        ? additionalProperties.error_context
+        : null;
+    const fingerprint = exceptionFingerprint(error);
+    if (
+      !this.allowCapture(
+        `exception:${errorContext ? `${errorContext}:` : ""}${fingerprint}`,
+        EXCEPTION_RATE_LIMIT,
+        true,
+      ) ||
+      !this.allowCapture(EXCEPTION_GLOBAL_KEY, EXCEPTION_GLOBAL_RATE_LIMIT)
+    ) {
+      return;
+    }
 
     this.client.posthog.captureException(
       error,
       distinctId,
       this.buildEventProperties(additionalProperties),
     );
+  }
+
+  captureContractFailure(
+    errorContext: string,
+    failureKind: ContractFailureKind,
+    properties: ContractFailureProperties = {},
+  ): void {
+    const error = new Error(CONTRACT_FAILURE_MESSAGES[failureKind]);
+    error.name = "ClientContractError";
+    this.captureException(error, {
+      ...properties,
+      error_context: errorContext,
+      failure_kind: failureKind,
+    });
   }
 
   async captureExceptionImmediateAndShutdown(
@@ -231,6 +365,9 @@ export class TelemetryService extends EventEmitter {
 
     // posthog-node's captureExceptionImmediate schedules async work but doesn't await network flush.
     // For fatal flows where we call this method, ensure events are sent before continuing by shutting down.
+    // Deliberately exempt from the rate limiter: the shutdown below makes
+    // this path self-limiting, and a fatal report must not be dropped
+    // because earlier noise drained the buckets.
     this.client.posthog.captureExceptionImmediate(
       error,
       distinctId,
@@ -248,23 +385,32 @@ export class TelemetryService extends EventEmitter {
     return this.client.machineId;
   }
 
+  getCommonProperties(): Record<string, unknown> {
+    return { ...this.persistedProperties };
+  }
+
   async optIn(): Promise<void> {
     await this.settingsService.setTelemetrySettings({ enabled: true });
     if (!this.client.posthog) {
       this.enabled = true;
+      this.emit("enabled-changed", true);
       return;
     }
 
     await this.client.posthog.optIn();
     this.enabled = true;
+    this.emit("enabled-changed", true);
     this.sendIdentifyForCurrentUser();
+    this.flushPendingEvents();
 
     logger.main.info("Telemetry opt-in successful");
   }
 
   async optOut(): Promise<void> {
+    this.pendingEvents = null;
     await this.settingsService.setTelemetrySettings({ enabled: false });
     this.enabled = false;
+    this.emit("enabled-changed", false);
     if (!this.client.posthog) {
       return;
     }
@@ -279,6 +425,26 @@ export class TelemetryService extends EventEmitter {
       await this.optIn();
     } else {
       await this.optOut();
+    }
+  }
+
+  /**
+   * A sign-in turns telemetry on: signed-in users have no opt-out. This runs
+   * on a completed sign-in only (AuthService "signed-in"), not when a session
+   * is restored, so a signed-in user who opted out earlier keeps that choice
+   * until they opt in.
+   */
+  async handleSignIn(): Promise<void> {
+    if (!this.enabled) {
+      await this.optIn();
+    }
+  }
+
+  private flushPendingEvents(): void {
+    const pending = this.pendingEvents ?? [];
+    this.pendingEvents = null;
+    for (const message of pending) {
+      this.client.posthog?.capture(message);
     }
   }
 
@@ -312,10 +478,11 @@ export class TelemetryService extends EventEmitter {
     const user = this.client.identifiedUser;
     if (!this.client.posthog || !this.enabled || !user) return;
 
+    // Person properties carry only per-person facts. Device and app context
+    // stays on events, because one person can use several devices.
     this.client.posthog.identify({
       distinctId: user.userId,
       properties: {
-        ...this.persistedProperties,
         ...(user.email && { email: user.email }),
         ...(user.name && { name: user.name }),
         ...(this.client.machineId && {
@@ -336,15 +503,91 @@ export class TelemetryService extends EventEmitter {
     };
   }
 
+  /** Returns false when the key is over its rate limit and the capture must
+   * be dropped. Logs once when a key starts dropping and reports the count
+   * when it recovers. Capped keys (exception fingerprints, open-ended) fail
+   * closed while the bucket map is full, so a unique-key flood can grow
+   * neither the map nor the sweep work; fixed keys (event names, the global
+   * bucket) always get a bucket. */
+  private allowCapture(
+    key: string,
+    limit: { bucketSize: number; refillIntervalMs: number },
+    capped = false,
+  ): boolean {
+    const now = Date.now();
+    let bucket = this.rateBuckets.get(key);
+    if (!bucket) {
+      if (capped && this.rateBuckets.size >= RATE_BUCKET_MAX_KEYS) {
+        // Evict idle buckets before adding a key. Stored token counts are
+        // stale (refill happens on access), so credit the elapsed refill
+        // when judging idleness. A map still full after eviction fails
+        // closed — mid-flood the global bucket would gate the send anyway.
+        for (const [staleKey, stale] of this.rateBuckets) {
+          const idleTokens =
+            stale.tokens +
+            Math.floor((now - stale.lastRefill) / stale.refillIntervalMs);
+          if (idleTokens >= stale.size) this.rateBuckets.delete(staleKey);
+        }
+        if (this.rateBuckets.size >= RATE_BUCKET_MAX_KEYS) return false;
+      }
+      bucket = {
+        tokens: limit.bucketSize,
+        size: limit.bucketSize,
+        refillIntervalMs: limit.refillIntervalMs,
+        lastRefill: now,
+        dropped: 0,
+      };
+      this.rateBuckets.set(key, bucket);
+    } else {
+      const intervals = Math.floor(
+        (now - bucket.lastRefill) / bucket.refillIntervalMs,
+      );
+      if (intervals > 0) {
+        bucket.tokens = Math.min(bucket.tokens + intervals, bucket.size);
+        bucket.lastRefill += intervals * bucket.refillIntervalMs;
+      }
+    }
+
+    if (bucket.tokens === 0) {
+      bucket.dropped += 1;
+      if (bucket.dropped === 1) {
+        logger.main.warn("Telemetry rate limit engaged; dropping", { key });
+      }
+      return false;
+    }
+    bucket.tokens -= 1;
+    if (bucket.dropped > 0) {
+      logger.main.info("Telemetry rate limit recovered", {
+        key,
+        dropped: bucket.dropped,
+      });
+      bucket.dropped = 0;
+    }
+    return true;
+  }
+
   private captureEvent(event: string, properties: object = {}): void {
     const distinctId = this.client.distinctId;
-    if (!this.client.posthog || !this.enabled || !distinctId) return;
+    if (!this.client.posthog || !distinctId) return;
+    if (
+      !this.enabled &&
+      (!this.pendingEvents || this.pendingEvents.length >= MAX_PENDING_EVENTS)
+    ) {
+      return;
+    }
+    if (!this.allowCapture(`event:${event}`, EVENT_RATE_LIMIT)) return;
 
-    this.client.posthog.capture({
+    const message = {
       distinctId,
       event,
       properties: this.buildEventProperties(properties),
-    });
+    };
+    if (this.enabled) {
+      this.client.posthog.capture(message);
+    } else {
+      // Keep the real event time: the event is sent later, if at all.
+      this.pendingEvents?.push({ ...message, timestamp: new Date() });
+    }
   }
 
   trackAppLaunch(): void {
@@ -453,6 +696,36 @@ export class TelemetryService extends EventEmitter {
     this.captureEvent("widget_notification_shown", props);
 
     logger.main.debug("Tracked widget notification shown", props);
+  }
+
+  // ============================================================================
+  // Star Nudge Events
+  // ============================================================================
+
+  trackStarNudge(props: StarNudgeEvent): void {
+    this.captureEvent("star_nudge", props);
+
+    logger.main.debug("Tracked star nudge", props);
+  }
+
+  // ============================================================================
+  // Edit Watch and Vocabulary Learning Events
+  // ============================================================================
+
+  trackTranscriptionEditWatchCompleted(
+    props: TranscriptionEditWatchCompletedEvent,
+  ): void {
+    this.captureEvent("transcription_edit_watch_completed", props);
+  }
+
+  trackVocabularyLearningCompleted(
+    props: VocabularyLearningCompletedEvent,
+  ): void {
+    this.captureEvent("vocabulary_learning_completed", props);
+  }
+
+  trackVocabularyAutoUndone(props: VocabularyAutoUndoneEvent): void {
+    this.captureEvent("vocabulary_auto_undone", props);
   }
 
   /**

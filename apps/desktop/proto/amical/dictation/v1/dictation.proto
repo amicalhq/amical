@@ -135,6 +135,14 @@ enum Language {
   LANGUAGE_CY = 97;
   LANGUAGE_YI = 98;
   LANGUAGE_YO = 99;
+  // Regional variants. The server sends only the base code to ASR and converts
+  // the final text to the variant's spelling / script.
+  LANGUAGE_EN_GB = 100;
+  LANGUAGE_DE_CH = 101;
+  LANGUAGE_ZH_HANS = 102;
+  LANGUAGE_EN_CA = 103;
+  // Cantonese: a base language with its own Whisper large-v3 token, not a variant.
+  LANGUAGE_YUE = 104;
 }
 
 message LanguageList {
@@ -155,12 +163,13 @@ message StreamOpen {
   StreamLanguageConfig language = 3;
   repeated string vocabulary = 4;
 
-  // Fallback formatting hint for clients that do not send StreamSkillsUpdate.
-  // The server only consults this field if no StreamSkillsUpdate was ever sent
-  // for the session. In that case `true` synthesizes a single preset skill
-  // derived from the latest StreamContextUpdate.context.app_type, and
-  // `false`/unset means no formatting. Once StreamSkillsUpdate has been
-  // received, this field is ignored for the remainder of the session.
+  // Primary formatting toggle for the session. `false`/unset → the server
+  // returns the raw transcript with no formatting pass. `true` → the server
+  // formats the final transcript, consulting the latest StreamSkillsUpdate to
+  // decide *how* (or, when no skills were sent, a single preset synthesized
+  // from the latest StreamContextUpdate.context.app_type). Skills are only
+  // applied while this toggle is on — matching the HTTP /transcribe path,
+  // which reads skills only when formatting.enabled is true.
   optional bool formatting = 5;
 }
 
@@ -175,17 +184,16 @@ message StreamContextUpdate {
 // mid-dictation, or after the user toggles a rule in settings during an
 // open stream.
 //
-// Skills are applied in declared order. Empty array → server returns
-// the raw transcript with no formatting pass. Last write wins; the
-// server uses the skill set current at finalize time when formatting
-// the transcript.
+// Skills are applied in declared order, and are only consulted while the
+// StreamOpen.formatting toggle is on — that toggle, not this update, decides
+// whether formatting runs at all. Last write wins; the server uses the skill
+// set current at finalize time when formatting the transcript.
 //
-// If StreamSkillsUpdate is never sent for a session, the server falls
-// back to the `formatting` bool on StreamOpen (`true` → synthesize a
-// single preset skill from the latest StreamContextUpdate.context.app_type;
-// `false`/unset → no formatting). Once a StreamSkillsUpdate has been received,
-// that bool is ignored for the remainder of the session; an explicitly empty
-// array means "no formatting" and overrides any fallback hint.
+// When formatting is on but no StreamSkillsUpdate was sent for the session
+// (or the latest snapshot is empty), the server falls back to a single preset
+// synthesized from the latest StreamContextUpdate.context.app_type. To turn
+// formatting off, set StreamOpen.formatting=false rather than sending an empty
+// skill set.
 message StreamSkillsUpdate {
   repeated Skill resolved_skills = 1;
 }
@@ -272,6 +280,10 @@ message FinalTranscript {
   string raw_transcript = 1;
   string formatted_transcript = 2;
   uint64 through_seq = 3;
+  // The session's language lock: the first selected language (any language in
+  // auto mode) that a batch with text reported, as a base code (e.g. "en"),
+  // never a variant such as "en-GB". Unset when nothing locked.
+  optional string language = 4;
 }
 
 message StreamTranscribeEvent {

@@ -72,3 +72,6 @@ Thumbs.db
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Generated files
+src/Models/Generated/

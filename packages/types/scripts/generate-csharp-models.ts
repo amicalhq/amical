@@ -47,6 +47,12 @@ try {
     "generated/json-schemas/methods/recheck-pressed-keys-result.schema.json " +
     "generated/json-schemas/methods/get-selected-text-via-copy-params.schema.json " +
     "generated/json-schemas/methods/get-selected-text-via-copy-result.schema.json " +
+    "generated/json-schemas/methods/start-edit-watch-params.schema.json " +
+    "generated/json-schemas/methods/start-edit-watch-result.schema.json " +
+    "generated/json-schemas/methods/read-edit-watch-params.schema.json " +
+    "generated/json-schemas/methods/read-edit-watch-result.schema.json " +
+    "generated/json-schemas/methods/stop-edit-watch-params.schema.json " +
+    "generated/json-schemas/methods/stop-edit-watch-result.schema.json " +
     "generated/json-schemas/events/key-down-event.schema.json " +
     "generated/json-schemas/events/key-up-event.schema.json " +
     "generated/json-schemas/events/flags-changed-event.schema.json " +
@@ -69,6 +75,18 @@ try {
   content = content.replace(
     /public partial class RpcResponse\b/g,
     "public partial class RpcResponse",
+  );
+
+  // Protocol timestamps must not depend on the user's regional calendar.
+  const currentCultureFallback = "_culture ?? CultureInfo.CurrentCulture";
+  if (!content.includes(currentCultureFallback)) {
+    throw new Error(
+      "Could not find quicktype's DateTimeOffset culture fallback",
+    );
+  }
+  content = content.replace(
+    currentCultureFallback,
+    "_culture ?? CultureInfo.InvariantCulture",
   );
 
   // Add a header comment

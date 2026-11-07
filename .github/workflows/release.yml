@@ -33,14 +33,14 @@ jobs:
             runner: macos-15-intel
           - os: windows
             arch: x64
-            runner: windows-2022
+            runner: windows-2025-vs2026
           - os: windows
             arch: arm64
-            runner: windows-11-arm
+            runner: windows-11-vs2026-arm
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
           fetch-depth: 0
@@ -68,10 +68,14 @@ jobs:
             echo "✓ Architecture verified: Running as native arm64"
           fi
 
+      - name: Record checked-out commit
+        shell: bash
+        run: echo "POSTHOG_RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.15.0
+          version: 10.34.5
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -83,10 +87,14 @@ jobs:
 
       - name: Install Vulkan SDK
         if: matrix.os == 'windows' && matrix.arch == 'x64'
-        uses: humbletim/install-vulkan-sdk@v1.2
-        with:
-          version: 1.3.290.0
-          cache: true
+        shell: pwsh
+        env:
+          VULKAN_VERSION: 1.4.363.0
+        run: |
+          curl.exe -fL -o "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_VERSION.exe"
+          & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --root "C:\VulkanSDK\$env:VULKAN_VERSION" --accept-licenses --default-answer --confirm-command install
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\$env:VULKAN_VERSION\Bin"
 
       - name: Log Node.js architecture and platform
         run: |
@@ -99,6 +107,9 @@ jobs:
         env:
           GGML_NATIVE: OFF # ensure postinstall builds avoid i8mm on CI runners
         run: pnpm install --frozen-lockfile
+
+      - name: Install Electron binary
+        run: pnpm --filter @amical/desktop exec install-electron
 
       - name: Smoke test Windows native dependencies
         if: matrix.os == 'windows'
@@ -151,6 +162,9 @@ jobs:
           POSTHOG_HOST: https://app.posthog.com
           TELEMETRY_ENABLED: true
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          POSTHOG_SOURCE_MAP_UPLOAD: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'true' || 'false' }}
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+          POSTHOG_PROJECT_ID: ${{ secrets.POSTHOG_PROJECT_ID }}
           FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
           AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
           AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
@@ -190,6 +204,9 @@ jobs:
           POSTHOG_HOST: https://app.posthog.com
           TELEMETRY_ENABLED: true
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          POSTHOG_SOURCE_MAP_UPLOAD: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'true' || 'false' }}
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+          POSTHOG_PROJECT_ID: ${{ secrets.POSTHOG_PROJECT_ID }}
           FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
           AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
           AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
@@ -553,7 +570,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
           fetch-depth: 0

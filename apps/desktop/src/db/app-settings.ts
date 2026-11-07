@@ -25,7 +25,10 @@ import {
   type NewAppSettings,
   type AppSettingsData,
 } from "./schema";
-import { dictationLanguageForLocale } from "../constants/languages";
+import {
+  dictationLanguageForLocale,
+  oneCodePerLanguage,
+} from "../constants/languages";
 import { isMacOS } from "../utils/platform";
 import { MAC_KEYCODES, WINDOWS_KEYCODES } from "../utils/keycodes";
 import {
@@ -41,40 +44,34 @@ const SETTINGS_ID = 1;
 const getDefaultShortcuts = () => {
   if (isMacOS()) {
     return {
-      pushToTalk: [MAC_KEYCODES.FN],
-      toggleRecording: [MAC_KEYCODES.FN, MAC_KEYCODES.SPACE],
+      pushToTalk: [[MAC_KEYCODES.FN]],
+      toggleRecording: [[MAC_KEYCODES.FN, MAC_KEYCODES.SPACE]],
       pasteLastTranscript: [
-        MAC_KEYCODES.CMD,
-        MAC_KEYCODES.CTRL,
-        MAC_KEYCODES.V,
+        [MAC_KEYCODES.CMD, MAC_KEYCODES.CTRL, MAC_KEYCODES.V],
       ],
-      newNote: [MAC_KEYCODES.CMD, MAC_KEYCODES.CTRL, MAC_KEYCODES.N],
-      draftMode: [MAC_KEYCODES.FN, MAC_KEYCODES.CTRL],
+      newNote: [[MAC_KEYCODES.CMD, MAC_KEYCODES.CTRL, MAC_KEYCODES.N]],
+      draftMode: [[MAC_KEYCODES.FN, MAC_KEYCODES.CTRL]],
     };
   }
 
   return {
-    pushToTalk: [WINDOWS_KEYCODES.CTRL, WINDOWS_KEYCODES.WIN],
+    pushToTalk: [[WINDOWS_KEYCODES.CTRL, WINDOWS_KEYCODES.WIN]],
     toggleRecording: [
-      WINDOWS_KEYCODES.CTRL,
-      WINDOWS_KEYCODES.WIN,
-      WINDOWS_KEYCODES.SPACE,
+      [WINDOWS_KEYCODES.CTRL, WINDOWS_KEYCODES.WIN, WINDOWS_KEYCODES.SPACE],
     ],
     pasteLastTranscript: [
-      WINDOWS_KEYCODES.ALT,
-      WINDOWS_KEYCODES.SHIFT,
-      WINDOWS_KEYCODES.Z,
+      [WINDOWS_KEYCODES.ALT, WINDOWS_KEYCODES.SHIFT, WINDOWS_KEYCODES.Z],
     ],
-    newNote: [WINDOWS_KEYCODES.ALT, WINDOWS_KEYCODES.SHIFT, WINDOWS_KEYCODES.N],
+    newNote: [
+      [WINDOWS_KEYCODES.ALT, WINDOWS_KEYCODES.SHIFT, WINDOWS_KEYCODES.N],
+    ],
     // Draft is push-to-talk style, so the chord must be modifier-only — a
     // non-modifier key would be swallowed by the subset consume rule (e.g.
     // Shift+letter). Ctrl+Win+Alt is pushToTalk (Ctrl+Win) plus Alt, mirroring
     // the macOS draft = pushToTalk + modifier pattern and reusing PTT-superset
     // suppression.
     draftMode: [
-      WINDOWS_KEYCODES.CTRL,
-      WINDOWS_KEYCODES.WIN,
-      WINDOWS_KEYCODES.ALT,
+      [WINDOWS_KEYCODES.CTRL, WINDOWS_KEYCODES.WIN, WINDOWS_KEYCODES.ALT],
     ],
   };
 };
@@ -82,14 +79,17 @@ const getDefaultShortcuts = () => {
 // New installs get concrete dictation languages rather than auto-detect —
 // accuracy is better with a language constraint, and the onboarding language
 // step lets users adjust. English plus the OS language, when whisper supports
-// it and it isn't English.
+// it and it isn't English; an English variant (e.g. en-GB) replaces English.
 const defaultDictationSettings = (): AppSettingsData["dictation"] => {
   try {
     const locale =
       app.getPreferredSystemLanguages()[0] ?? app.getSystemLocale();
     const system = locale ? dictationLanguageForLocale(locale) : undefined;
-    if (system && system !== "en") {
-      return { autoDetectEnabled: false, languages: ["en", system] };
+    if (system) {
+      return {
+        autoDetectEnabled: false,
+        languages: oneCodePerLanguage(["en", system]),
+      };
     }
   } catch {
     // Locale APIs unavailable (e.g. before app ready); English-only is fine.
@@ -286,6 +286,27 @@ export async function updateSettingsSection<K extends keyof AppSettingsData>(
   return await updateAppSettings({
     [section]: newData,
   } as Partial<AppSettingsData>);
+}
+
+// Auth fencing and logout cleanup must execute after queued settings writes,
+// in the same transaction as the credential change.
+export async function updateAuthSettings(
+  auth: AppSettingsData["auth"],
+  isCurrent: () => boolean,
+  clearLocalData?: () => void,
+): Promise<boolean> {
+  return serialized(async () => {
+    const settings = await readOrInitSettingsLocked();
+    if (!isCurrent()) return false;
+    db.transaction((tx) => {
+      clearLocalData?.();
+      tx.update(appSettings)
+        .set({ data: { ...settings, auth }, updatedAt: new Date() })
+        .where(eq(appSettings.id, SETTINGS_ID))
+        .run();
+    });
+    return true;
+  });
 }
 
 // Reset settings to defaults

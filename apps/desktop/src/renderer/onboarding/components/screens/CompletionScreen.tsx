@@ -50,7 +50,7 @@ export function CompletionScreen({
       sentence={t("onboarding.completion.summary.shortcutValue", {
         key: KEYS_SENTINEL,
       })}
-      codes={shortcuts?.pushToTalk ?? []}
+      codes={shortcuts?.pushToTalk[0] ?? []}
       kbdClassName="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs"
     />
   );

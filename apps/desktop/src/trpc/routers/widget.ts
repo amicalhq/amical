@@ -1,3 +1,4 @@
+import { SyncIdSchema } from "@amical/api-contracts/apps/v1";
 import { createRouter, procedure } from "../trpc";
 import { z } from "zod";
 import { logger } from "@/main/logger";
@@ -35,7 +36,7 @@ export const widgetRouter = createRouter({
     .input(
       z
         .object({
-          noteId: z.number().int().positive().optional(),
+          noteId: SyncIdSchema.optional(),
         })
         .optional(),
     )

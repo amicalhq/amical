@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Context, Exit, Scope } from "effect";
+import { Cause, Context, Effect, Exit, Scope } from "effect";
 import { createTestDatabase, type TestDatabase } from "../helpers/test-db";
 import { setTestDatabase } from "../setup";
 
@@ -11,7 +11,7 @@ vi.mock("../../src/utils/platform", async (importOriginal) => {
 
 // Spawn-less NativeBridge: the real constructor spawns the native helper
 // process (native-bridge-service.ts:262). The fake keeps the EventEmitter
-// surface plus the methods ShortcutManager/RecordingManager call.
+// surface plus the methods ShortcutManager/RecordingLifecycle call.
 vi.mock("../../src/services/platform/native-bridge-service", async () => {
   // Imported inside the factory: vi.mock factories are hoisted above the
   // file's imports, so a top-level EventEmitter binding would be in TDZ here.
@@ -37,6 +37,7 @@ import {
   HistoryCleanupServiceTag,
   AuthServiceTag,
   SettingsSyncServiceTag,
+  ActivityReportingServiceTag,
   PostHogClientTag,
   TelemetryServiceTag,
   FeatureFlagServiceTag,
@@ -46,7 +47,7 @@ import {
   NativeBridgeTag,
   VadServiceTag,
   TranscriptionServiceTag,
-  RecordingManagerTag,
+  RecordingLifecycleTag,
   ShortcutManagerTag,
   AutoUpdaterServiceTag,
   TrpcHandlerTag,
@@ -60,6 +61,9 @@ import { TelemetryService } from "../../src/services/telemetry-service";
 import { FeatureFlagService } from "../../src/services/feature-flag-service";
 import { RemoteConfigService } from "../../src/services/remote-config-service";
 import { TranscriptionService } from "../../src/services/transcription-service";
+import { ModelService } from "../../src/services/model-service";
+import { ActivityReportingService } from "../../src/services/activity-reporting-service";
+import { SettingsSyncService } from "../../src/services/settings-sync-service";
 import { ShortcutManager } from "../../src/main/managers/shortcut-manager";
 
 // vi.spyOn's Classes<Required<T>> key filter resolves to never for these
@@ -75,7 +79,7 @@ function spyOnMethod(target: object, method: string) {
 describe("app layer graph (pre-cutover)", () => {
   let testDb: TestDatabase;
   let builtCtx: Context.Context<AppServices> | null = null;
-  let openScope: Scope.CloseableScope | null = null;
+  let openScope: Scope.Closeable | null = null;
   let earlyRefs: EarlyServiceRefs;
   let earlyRefWrites: [string, unknown][];
 
@@ -127,6 +131,7 @@ describe("app layer graph (pre-cutover)", () => {
     expect(Context.get(ctx, HistoryCleanupServiceTag)).toBeTruthy();
     expect(Context.get(ctx, AuthServiceTag)).toBeTruthy();
     expect(Context.get(ctx, SettingsSyncServiceTag)).toBeTruthy();
+    expect(Context.get(ctx, ActivityReportingServiceTag)).toBeTruthy();
     expect(Context.get(ctx, PostHogClientTag)).toBeTruthy();
     expect(Context.get(ctx, TelemetryServiceTag)).toBeTruthy();
     expect(Context.get(ctx, FeatureFlagServiceTag)).toBeTruthy();
@@ -138,7 +143,7 @@ describe("app layer graph (pre-cutover)", () => {
     expect(Context.get(ctx, VadServiceTag)).toBeTruthy();
     // …and transcription init succeeds under the global mocks (non-null).
     expect(Context.get(ctx, TranscriptionServiceTag)).toBeTruthy();
-    expect(Context.get(ctx, RecordingManagerTag)).toBeTruthy();
+    expect(Context.get(ctx, RecordingLifecycleTag)).toBeTruthy();
     expect(Context.get(ctx, ShortcutManagerTag)).toBeTruthy();
     expect(Context.get(ctx, AutoUpdaterServiceTag)).toBeTruthy();
     // Knot 1: the tRPC handler and WindowManager are graph services.
@@ -162,7 +167,7 @@ describe("app layer graph (pre-cutover)", () => {
       ["vadService", VadServiceTag],
       ["nativeBridge", NativeBridgeTag],
       ["autoUpdaterService", AutoUpdaterServiceTag],
-      ["recordingManager", RecordingManagerTag],
+      ["recordingLifecycle", RecordingLifecycleTag],
       ["shortcutManager", ShortcutManagerTag],
       ["windowManager", WindowManagerTag],
       ["onboardingService", OnboardingServiceTag],
@@ -226,9 +231,9 @@ describe("app layer graph (pre-cutover)", () => {
         Context.get(ctx, ShortcutManagerTag),
         "cleanup",
       ),
-      recordingCleanup: spyOnMethod(
-        Context.get(ctx, RecordingManagerTag),
-        "cleanup",
+      recordingDispose: spyOnMethod(
+        Context.get(ctx, RecordingLifecycleTag),
+        "dispose",
       ),
       stopHelper: spyOnMethod(Context.get(ctx, NativeBridgeTag)!, "stopHelper"),
       transcriptionDispose: spyOnMethod(
@@ -275,23 +280,23 @@ describe("app layer graph (pre-cutover)", () => {
     // hand-ordered cleanup():
     // shortcuts stop firing before the recording drain…
     expect(order(spies.shortcutCleanup)).toBeLessThan(
-      order(spies.recordingCleanup),
+      order(spies.recordingDispose),
     );
     // …the drain completes before the native helper is killed…
-    expect(order(spies.recordingCleanup)).toBeLessThan(order(spies.stopHelper));
+    expect(order(spies.recordingDispose)).toBeLessThan(order(spies.stopHelper));
     // …the transcription dispose (step 5) sits between the drain and the
     // helper kill…
-    expect(order(spies.recordingCleanup)).toBeLessThan(
+    expect(order(spies.recordingDispose)).toBeLessThan(
       order(spies.transcriptionDispose),
     );
     expect(order(spies.transcriptionDispose)).toBeLessThan(
       order(spies.stopHelper),
     );
     // …the drain also precedes the model/VAD teardown it may still use…
-    expect(order(spies.recordingCleanup)).toBeLessThan(
+    expect(order(spies.recordingDispose)).toBeLessThan(
       order(spies.modelCleanup),
     );
-    expect(order(spies.recordingCleanup)).toBeLessThan(order(spies.vadDispose));
+    expect(order(spies.recordingDispose)).toBeLessThan(order(spies.vadDispose));
     // …and PostHog flushes last among the capturing services.
     expect(order(spies.featureFlagShutdown)).toBeLessThan(
       order(spies.posthogShutdown),
@@ -348,6 +353,117 @@ describe("app layer graph (pre-cutover)", () => {
     expect(posthogShutdown).toHaveBeenCalledTimes(1);
   });
 
+  it("waits for an in-flight initializer when a sibling fails and retains both releases", async () => {
+    let finishModel!: () => void;
+    let modelStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      modelStarted = resolve;
+    });
+    spyOnMethod(ModelService.prototype, "initialize").mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishModel = resolve;
+          modelStarted();
+        }),
+    );
+    const failFeatureFlag = spyOnMethod(
+      FeatureFlagService.prototype,
+      "initialize",
+    ).mockImplementation(async () => {
+      await started;
+      throw new Error("sibling init failed");
+    });
+    const modelCleanup = spyOnMethod(ModelService.prototype, "cleanup");
+    const featureFlagShutdown = spyOnMethod(
+      FeatureFlagService.prototype,
+      "shutdown",
+    );
+    const posthogShutdown = spyOnMethod(PostHogClient.prototype, "shutdown");
+    let settled = false;
+    const building = build().then((exit) => {
+      settled = true;
+      return exit;
+    });
+    await started;
+    await vi.waitFor(() => expect(failFeatureFlag).toHaveBeenCalledOnce());
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+    expect(modelCleanup).not.toHaveBeenCalled();
+    expect(posthogShutdown).not.toHaveBeenCalled();
+
+    finishModel();
+    expect(Exit.isFailure(await building)).toBe(true);
+    expect(featureFlagShutdown).not.toHaveBeenCalled();
+    expect(modelCleanup).not.toHaveBeenCalled();
+    expect(posthogShutdown).not.toHaveBeenCalled();
+
+    await closeAppScope(openScope!);
+    openScope = null;
+    expect(featureFlagShutdown).toHaveBeenCalledOnce();
+    expect(modelCleanup).toHaveBeenCalledOnce();
+    expect(posthogShutdown).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { name: "ActivityReportingService", Service: ActivityReportingService },
+    { name: "SettingsSyncService", Service: SettingsSyncService },
+  ])(
+    "preserves mixed initializer defects and annotations through $name.Live",
+    async ({ Service }) => {
+      const typed = new Error("initializer expected failure");
+      const defect = new Error("initializer finalizer defect");
+      const origin = Context.Service<string>("test/initializer-origin");
+      spyOnMethod(Service.prototype, "initialize").mockReturnValue(
+        Effect.failCause(
+          Cause.annotate(
+            Cause.fail(typed),
+            Context.make(origin, "initializer"),
+          ),
+        ).pipe(Effect.ensuring(Effect.die(defect))),
+      );
+      const exit = await build();
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const reasons = exit.cause.reasons.filter(Cause.isDieReason);
+        expect(reasons.map((reason) => reason.defect)).toEqual(
+          expect.arrayContaining([typed, defect]),
+        );
+        const typedReason = reasons.find((reason) => reason.defect === typed)!;
+        expect(
+          Context.getUnsafe(Cause.reasonAnnotations(typedReason), origin),
+        ).toBe("initializer");
+      }
+    },
+  );
+
+  it("preserves a settings shutdown failure together with its cleanup defect", async () => {
+    const typed = new Error("shutdown expected failure");
+    const defect = new Error("shutdown finalizer defect");
+    const shutdown = SettingsSyncService.prototype.shutdown;
+    spyOnMethod(SettingsSyncService.prototype, "shutdown").mockImplementation(
+      function (this: SettingsSyncService) {
+        return shutdown
+          .call(this)
+          .pipe(
+            Effect.andThen(Effect.fail(typed)),
+            Effect.ensuring(Effect.die(defect)),
+          );
+      },
+    );
+    expect(Exit.isSuccess(await build())).toBe(true);
+    const scope = openScope!;
+    openScope = null;
+    const exit = await Effect.runPromiseExit(Scope.close(scope, Exit.void));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(
+        exit.cause.reasons
+          .filter(Cause.isDieReason)
+          .map((reason) => reason.defect),
+      ).toEqual(expect.arrayContaining([typed, defect]));
+    }
+  });
+
   it("continues boot with a null transcription tag when its init fails (non-fatal)", async () => {
     spyOnMethod(
       TranscriptionService.prototype,
@@ -368,7 +484,7 @@ describe("app layer graph (pre-cutover)", () => {
       source: "service_manager",
       stage: "initialize_ai_services",
     });
-    expect(Context.get(builtCtx!, RecordingManagerTag)).toBeTruthy();
+    expect(Context.get(builtCtx!, RecordingLifecycleTag)).toBeTruthy();
     expect(Context.get(builtCtx!, ShortcutManagerTag)).toBeTruthy();
   });
 });

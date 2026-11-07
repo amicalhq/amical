@@ -1,3 +1,5 @@
+import type { ParseKeys } from "i18next";
+import { BILLING_RETURN_PATH } from "../constants/web-app";
 import { ErrorCodes, type ErrorCode } from "./error";
 
 export type WidgetNotificationType =
@@ -5,27 +7,37 @@ export type WidgetNotificationType =
   | "empty_transcript"
   | "transcription_failed"
   | "recording_duration_warning"
-  | "recording_auto_stopped";
+  | "recording_auto_stopped"
+  | "vocabulary_learned";
+
+export type WidgetNotificationTone = "error" | "success";
 
 export type WidgetNotificationActionIcon = "discord";
 
 export type I18nText = {
-  key: string;
+  key: ParseKeys;
   params?: Record<string, string | number>;
 };
 
 export type LocalizedText = string | I18nText;
+
+/** A main-process command an action runs (through tRPC) instead of navigating. */
+export type WidgetNotificationCommand =
+  | { kind: "undoLearnedVocabulary"; entries: { id: string; word: string }[] }
+  // Opens the web app at `returnPath`, already signed in.
+  | { kind: "openWebSession"; returnPath: string };
 
 export interface WidgetNotificationAction {
   label: LocalizedText;
   icon?: WidgetNotificationActionIcon;
   navigateTo?: string; // Route to navigate to in main window
   externalUrl?: string; // External URL to open
+  command?: WidgetNotificationCommand;
 }
 
 export interface WidgetNotificationConfig {
   title: LocalizedText;
-  description: LocalizedText;
+  description?: LocalizedText;
   subDescription?: LocalizedText;
   primaryAction?: WidgetNotificationAction;
   secondaryAction?: WidgetNotificationAction;
@@ -34,6 +46,7 @@ export interface WidgetNotificationConfig {
 export interface WidgetNotification {
   id: string;
   type: WidgetNotificationType;
+  tone?: WidgetNotificationTone; // Defaults to "error"
   title: LocalizedText;
   description?: LocalizedText; // Pre-filled description, or generated via template on frontend
   subDescription?: LocalizedText;
@@ -48,7 +61,7 @@ export interface WidgetNotification {
 export const getNotificationDescription = (
   type: WidgetNotificationType,
   microphoneName: string,
-): I18nText => {
+): I18nText | undefined => {
   switch (type) {
     case "no_audio":
       return {
@@ -70,6 +83,8 @@ export const getNotificationDescription = (
       return {
         key: "widget.notifications.description.recordingAutoStopped",
       };
+    case "vocabulary_learned":
+      return undefined;
   }
 };
 
@@ -84,35 +99,47 @@ export const buildNotificationDescription = (
     uiMessage?: string;
     params?: Record<string, string | number>;
   },
-): LocalizedText => {
+): LocalizedText | undefined => {
   if (data.uiMessage != null) return data.uiMessage;
 
   const microphoneName =
     typeof data.params?.microphone === "string"
       ? data.params.microphone
       : undefined;
-  if (
-    microphoneName &&
-    (type === "no_audio" || type === "empty_transcript")
-  ) {
+  if (microphoneName && (type === "no_audio" || type === "empty_transcript")) {
     return getNotificationDescription(type, microphoneName);
   }
 
   const fallback = config.description;
-  if (!data.params || typeof fallback === "string") return fallback;
+  if (!fallback || !data.params || typeof fallback === "string") {
+    return fallback;
+  }
   return { ...fallback, params: { ...fallback.params, ...data.params } };
 };
 
 // Discord support server URL (same as sidebar Community link)
 export const DISCORD_SUPPORT_URL = "https://amical.ai/community";
-export const APP_PLAN_URL = "https://app.amical.ai/plan";
+// Billing, opened from the cap toast; `from` tells the page where the click came from.
+export const QUOTA_BILLING_PATH = `${BILLING_RETURN_PATH}?from=quota`;
 
-// Config keyed by error code. USER_DISMISSED is intentionally excluded — it's a
-// control signal (the user dismissed the dictation), never a user-facing notification.
-export const ERROR_CODE_CONFIG: Record<
-  Exclude<ErrorCode, typeof ErrorCodes.USER_DISMISSED>,
-  WidgetNotificationConfig
-> = {
+const MICROPHONE_NOTIFICATION_CONFIG: WidgetNotificationConfig = {
+  title: { key: "widget.notifications.type.noAudio.title" },
+  // Fallback description; no_audio replaces it with the microphone template,
+  // while capture failures can replace it with the browser's exact message.
+  description: { key: "widget.notifications.type.noAudio.description" },
+  primaryAction: {
+    label: { key: "widget.notifications.action.configureMicrophone" },
+    navigateTo: "/settings/dictation",
+  },
+  secondaryAction: {
+    label: { key: "widget.notifications.action.support" },
+    icon: "discord",
+    externalUrl: DISCORD_SUPPORT_URL,
+  },
+};
+
+// Config keyed by error code.
+export const ERROR_CODE_CONFIG: Record<ErrorCode, WidgetNotificationConfig> = {
   [ErrorCodes.AUTH_REQUIRED]: {
     title: { key: "widget.notifications.errorCode.authRequired.title" },
     description: {
@@ -153,7 +180,7 @@ export const ERROR_CODE_CONFIG: Record<
     subDescription: { key: "widget.notifications.recordingSaved" },
     primaryAction: {
       label: { key: "widget.notifications.action.upgradePlan" },
-      externalUrl: APP_PLAN_URL,
+      command: { kind: "openWebSession", returnPath: QUOTA_BILLING_PATH },
     },
     secondaryAction: {
       label: { key: "widget.notifications.action.support" },
@@ -238,6 +265,12 @@ export const ERROR_CODE_CONFIG: Record<
       externalUrl: DISCORD_SUPPORT_URL,
     },
   },
+  [ErrorCodes.RETRY_IN_PROGRESS]: {
+    title: { key: "widget.notifications.errorCode.retryInProgress.title" },
+    description: {
+      key: "widget.notifications.errorCode.retryInProgress.description",
+    },
+  },
   [ErrorCodes.WORKER_INITIALIZATION_FAILED]: {
     title: {
       key: "widget.notifications.errorCode.workerInitializationFailed.title",
@@ -300,25 +333,14 @@ export const ERROR_CODE_CONFIG: Record<
       externalUrl: DISCORD_SUPPORT_URL,
     },
   },
+  [ErrorCodes.MICROPHONE_CAPTURE_FAILED]: MICROPHONE_NOTIFICATION_CONFIG,
 };
 
 export const WIDGET_NOTIFICATION_CONFIG: Record<
   WidgetNotificationType,
   WidgetNotificationConfig
 > = {
-  no_audio: {
-    title: { key: "widget.notifications.type.noAudio.title" },
-    description: { key: "widget.notifications.type.noAudio.description" }, // Fallback, replaced by template
-    primaryAction: {
-      label: { key: "widget.notifications.action.configureMicrophone" },
-      navigateTo: "/settings/dictation",
-    },
-    secondaryAction: {
-      label: { key: "widget.notifications.action.support" },
-      icon: "discord",
-      externalUrl: DISCORD_SUPPORT_URL,
-    },
-  },
+  no_audio: MICROPHONE_NOTIFICATION_CONFIG,
   empty_transcript: {
     title: { key: "widget.notifications.type.emptyTranscript.title" },
     description: {
@@ -350,6 +372,10 @@ export const WIDGET_NOTIFICATION_CONFIG: Record<
     description: {
       key: "widget.notifications.type.recordingAutoStopped.description",
     },
+  },
+  // Title and actions are built by the vocabulary learning service per toast.
+  vocabulary_learned: {
+    title: { key: "widget.notifications.type.vocabularyLearned.title" },
   },
   // Placeholder for type checking - actual config comes from ERROR_CODE_CONFIG
   transcription_failed: ERROR_CODE_CONFIG[ErrorCodes.UNKNOWN],

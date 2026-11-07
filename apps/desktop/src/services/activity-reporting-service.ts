@@ -1,0 +1,783 @@
+import {
+  Cause,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Context,
+  Scope,
+  Semaphore,
+} from "effect";
+
+import {
+  captureActivityRows,
+  materializeCompletedDictationActivities,
+  removeActivityRows,
+} from "../db/activity-outbox";
+import { applyAccountSummary, getStatsRevision } from "../db/dictation-stats";
+import { transcriptionEvents } from "../db/transcription-events";
+import { logger } from "../main/logger";
+import { down, orDiePreservingCause, up } from "../main/runtime/layer-helpers";
+import {
+  ActivityReportingServiceTag,
+  AppScopeTag,
+  AuthServiceTag,
+} from "../main/runtime/tags";
+import {
+  ACTIVITY_MAX_BATCH_SIZE,
+  ACTIVITY_MAX_REQUEST_BYTES,
+  activityRequestBytes,
+  type DictationActivity,
+} from "../types/activity";
+import {
+  AccessForbidden,
+  AuthenticationRequired,
+} from "../types/errors/cloud-request";
+import type { AuthService, AuthState } from "./auth-service";
+import { retryOnceAfterAuthenticationRequired } from "./auth-retry";
+import { ActivityReportingClient } from "./activity-reporting-client";
+import { getAccountSummary } from "./account-summary";
+import {
+  ActivityReportingContractFailure,
+  ActivityReportingDependencyFailure,
+  type ActivityReportingClientError,
+} from "./activity-reporting-errors";
+
+const POLL_INTERVAL_MS = 5 * 60_000;
+
+type ActivityClient = Pick<ActivityReportingClient, "submit">;
+type ActivityRows = Awaited<ReturnType<typeof captureActivityRows>>;
+type ActivityAttemptError = ActivityReportingClientError;
+
+export function buildActivityBatch(
+  activities: readonly DictationActivity[],
+): DictationActivity[] {
+  const batch: DictationActivity[] = [];
+
+  for (const activity of activities) {
+    if (batch.length >= ACTIVITY_MAX_BATCH_SIZE) break;
+    const candidate = [...batch, activity];
+    if (activityRequestBytes(candidate) > ACTIVITY_MAX_REQUEST_BYTES) {
+      if (batch.length === 0) {
+        throw new Error("Valid singleton activity exceeds server body cap");
+      }
+      break;
+    }
+    batch.push(activity);
+  }
+
+  if (batch.length === 0) {
+    throw new Error("Unable to construct an activity batch");
+  }
+  return batch;
+}
+
+export class ActivityReportingService {
+  private initialized = false;
+  private stopped = false;
+  private currentAccountId: string | null = null;
+  private worker: Fiber.Fiber<void, never> | null = null;
+  private currentWorkerId: number | null = null;
+  private nextWorkerId = 1;
+  private boundaryEpoch = 0;
+  private rerunRequested = false;
+  private authorizationBlocked = false;
+  private summaryRefreshRequested = false;
+  private summarySchedule: Fiber.Fiber<never, never> | null = null;
+  private readonly summaryViews = new Set<symbol>();
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private unregisterBeforeLogout: (() => void) | null = null;
+
+  private readonly onTranscriptionSettled = (transcriptionId: number) => {
+    if (!this.initialized || this.stopped) return;
+    this.forkScoped(
+      // Stage independently of HTTP so a slow upload cannot delay the snapshot.
+      this.materializeUntilCaughtUp().pipe(
+        Effect.tap(() => Effect.sync(() => this.wake())),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            logger.main.error(
+              "Failed to materialize settled transcription activity",
+              { transcriptionId, error },
+            );
+          }),
+        ),
+        this.logBackgroundDefect(
+          "Activity settlement materialization failed unexpectedly",
+        ),
+      ),
+    );
+  };
+
+  private readonly onAuthenticated = (authState: AuthState) => {
+    const accountId = authState.userInfo?.sub;
+    if (!accountId || !this.initialized || this.stopped) return;
+    this.activateAccount(accountId);
+  };
+
+  private readonly onTokenRefreshed = (authState: AuthState) => {
+    const accountId = authState.userInfo?.sub;
+    if (
+      !this.authorizationBlocked ||
+      !accountId ||
+      accountId !== this.currentAccountId
+    ) {
+      return;
+    }
+    this.authorizationBlocked = false;
+    this.wake();
+  };
+
+  private constructor(
+    private readonly authService: AuthService,
+    private readonly client: ActivityClient,
+    private readonly context: Context.Context<never>,
+    private serviceScope: Scope.Closeable,
+    private readonly dbSemaphore: Semaphore.Semaphore,
+    private readonly reportingSemaphore: Semaphore.Semaphore,
+    private readonly readSummary: typeof getAccountSummary,
+  ) {}
+
+  private static make(
+    authService: AuthService,
+    client?: ActivityClient,
+    context: Context.Context<never> = Context.empty(),
+    readSummary: typeof getAccountSummary = getAccountSummary,
+  ): Effect.Effect<ActivityReportingService> {
+    return Effect.gen(function* () {
+      const serviceScope = yield* Scope.make();
+      const dbSemaphore = yield* Semaphore.make(1);
+      const reportingSemaphore = yield* Semaphore.make(1);
+      return new ActivityReportingService(
+        authService,
+        client ?? new ActivityReportingClient(authService),
+        context,
+        serviceScope,
+        dbSemaphore,
+        reportingSemaphore,
+        readSummary,
+      );
+    });
+  }
+
+  static readonly Live: Layer.Layer<
+    ActivityReportingServiceTag,
+    never,
+    AuthServiceTag | AppScopeTag
+  > = Layer.effect(
+    ActivityReportingServiceTag,
+    Effect.gen(function* () {
+      const authService = yield* AuthServiceTag;
+      const appScope = yield* AppScopeTag;
+      const context = yield* Effect.context<never>();
+      const service = yield* ActivityReportingService.make(
+        authService,
+        undefined,
+        context,
+      );
+      yield* Scope.addFinalizer(
+        appScope,
+        Effect.sync(() =>
+          logger.main.info("Shutting down activity reporting service..."),
+        ).pipe(
+          Effect.andThen(service.shutdown()),
+          Effect.tap(down("activityReportingService")),
+        ),
+      );
+      yield* Effect.uninterruptible(
+        service.initialize().pipe(orDiePreservingCause),
+      );
+      logger.main.info("Activity reporting service created");
+      up("activityReportingService");
+      return service;
+    }),
+  );
+
+  static createForTests(
+    authService: AuthService,
+    client?: ActivityClient,
+    readSummary?: typeof getAccountSummary,
+  ): ActivityReportingService {
+    return Effect.runSync(
+      ActivityReportingService.make(
+        authService,
+        client,
+        undefined,
+        readSummary,
+      ),
+    );
+  }
+
+  initialize(): Effect.Effect<void, ActivityReportingDependencyFailure> {
+    return Effect.gen({ self: this }, function* () {
+      if (this.initialized) return;
+      if (this.stopped) {
+        this.serviceScope = yield* Scope.make();
+      }
+      this.initialized = true;
+      this.stopped = false;
+
+      this.unregisterBeforeLogout =
+        this.authService.registerBeforeLogoutHandler(() =>
+          this.handleBeforeLogout(),
+        );
+      this.authService.on("authenticated", this.onAuthenticated);
+      this.authService.on("token-refreshed", this.onTokenRefreshed);
+      transcriptionEvents.on(
+        "transcription-settled",
+        this.onTranscriptionSettled,
+      );
+      this.pollTimer = setInterval(() => this.wake(), POLL_INTERVAL_MS);
+      this.pollTimer.unref?.();
+
+      const authState = yield* this.authentication(
+        this.authService.getAuthState(),
+      );
+      if (this.stopped || !this.initialized) return;
+      if (authState?.isAuthenticated && authState.userInfo?.sub) {
+        this.activateAccount(authState.userInfo.sub);
+        return;
+      }
+      this.currentAccountId = null;
+      this.wake();
+      return Effect.void;
+    });
+  }
+
+  wake(): void {
+    if (this.stopped || !this.initialized) return;
+    this.rerunRequested = true;
+    if (this.currentWorkerId !== null) return;
+
+    const workerId = this.nextWorkerId++;
+    this.currentWorkerId = workerId;
+    const work = this.runWorker().pipe(
+      Effect.onExit(() => Effect.sync(() => this.finishWorker(workerId))),
+    );
+    const fiber = this.forkScoped(work);
+    if (this.currentWorkerId === workerId) {
+      this.worker = fiber;
+    }
+  }
+
+  requestSummaryRefresh(): void {
+    if (this.stopped || !this.initialized) return;
+    this.summaryRefreshRequested = true;
+    this.wake();
+  }
+
+  flush(): Effect.Effect<void, ActivityReportingClientError> {
+    return this.reportingSemaphore.withPermits(1)(
+      Effect.gen({ self: this }, function* () {
+        const accountId = this.currentAccountId;
+        const epoch = this.boundaryEpoch;
+        if (!accountId || this.stopped) {
+          return yield* Effect.fail(
+            new AuthenticationRequired({ message: "Sign in required" }),
+          );
+        }
+        yield* this.materializeUntilCaughtUp();
+        const drained = yield* retryOnceAfterAuthenticationRequired(
+          () => this.reportUntilDrained(epoch, accountId),
+          () => this.refreshAuthenticationIfCurrent(epoch, accountId),
+        );
+        if (!drained) {
+          return yield* Effect.fail(
+            new AuthenticationRequired({
+              message: "Account changed while flushing dictation activity",
+            }),
+          );
+        }
+      }),
+    );
+  }
+
+  // Subscription lifetime owns the fast cadence, including renderer disconnects.
+  watchSummary(): () => void {
+    const alreadyVisible = this.summaryViews.size > 0;
+    const view = Symbol();
+    this.summaryViews.add(view);
+    if (!alreadyVisible) {
+      this.restartSummarySchedule();
+    }
+    return () => {
+      if (!this.summaryViews.delete(view)) return;
+      if (this.summaryViews.size === 0) {
+        this.restartSummarySchedule();
+      }
+    };
+  }
+
+  private restartSummarySchedule(): void {
+    this.summarySchedule?.interruptUnsafe();
+    this.summarySchedule = null;
+    if (this.stopped || !this.initialized || !this.currentAccountId) return;
+    const visible = this.summaryViews.size > 0;
+    this.summarySchedule = this.forkScoped(
+      Effect.forever(
+        Effect.suspend(() =>
+          Effect.sleep(
+            visible
+              ? (301 + Math.floor(Math.random() * 60)) * 1000
+              : 60 * 60_000,
+          ).pipe(
+            Effect.andThen(Effect.sync(() => this.requestSummaryRefresh())),
+          ),
+        ),
+        // Sleep already yields; schedule the next interval in this turn.
+        { disableYield: true },
+      ),
+    );
+  }
+
+  shutdown(): Effect.Effect<void> {
+    return Effect.uninterruptible(
+      Effect.suspend(() => {
+        if (!this.initialized) return Effect.void;
+        this.stopped = true;
+        this.initialized = false;
+        this.boundaryEpoch += 1;
+        this.currentAccountId = null;
+        this.authorizationBlocked = false;
+        this.rerunRequested = false;
+        this.summaryRefreshRequested = false;
+        this.summarySchedule = null;
+        this.summaryViews.clear();
+
+        if (this.pollTimer) clearInterval(this.pollTimer);
+        this.pollTimer = null;
+        this.authService.off("authenticated", this.onAuthenticated);
+        this.authService.off("token-refreshed", this.onTokenRefreshed);
+        transcriptionEvents.off(
+          "transcription-settled",
+          this.onTranscriptionSettled,
+        );
+        this.unregisterBeforeLogout?.();
+        this.unregisterBeforeLogout = null;
+
+        return Scope.close(this.serviceScope, Exit.void).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              this.worker = null;
+              this.currentWorkerId = null;
+            }),
+          ),
+        );
+      }),
+    );
+  }
+
+  private handleBeforeLogout(): Effect.Effect<void> {
+    const worker = this.worker;
+    this.boundaryEpoch += 1;
+    this.currentAccountId = null;
+    this.authorizationBlocked = false;
+    this.rerunRequested = false;
+    this.summaryRefreshRequested = false;
+    this.restartSummarySchedule();
+    return (worker ? Fiber.interrupt(worker) : Effect.void).pipe(
+      Effect.andThen(this.withDb(Effect.void)),
+    );
+  }
+
+  private activateAccount(accountId: string): void {
+    this.boundaryEpoch += 1;
+    this.currentAccountId = accountId;
+    this.authorizationBlocked = false;
+    this.rerunRequested = false;
+    this.restartSummarySchedule();
+    this.worker?.interruptUnsafe();
+    this.wake();
+  }
+
+  private runWorker(): Effect.Effect<void, never> {
+    const iteration = (): Effect.Effect<void, never> =>
+      Effect.suspend(() => {
+        const iterationEpoch = this.boundaryEpoch;
+        let uploadAccountId: string | null = null;
+        const refreshRequested =
+          this.summaryRefreshRequested && this.currentAccountId !== null;
+        if (refreshRequested) this.summaryRefreshRequested = false;
+        this.rerunRequested = false;
+        return Effect.gen({ self: this }, function* () {
+          const revision = refreshRequested
+            ? yield* this.db(async () => getStatsRevision())
+            : null;
+          const drainedAccount = yield* this.reportingSemaphore.withPermits(1)(
+            Effect.gen({ self: this }, function* () {
+              yield* this.materializeUntilCaughtUp();
+              const accountId = this.currentAccountId;
+              const epoch = this.boundaryEpoch;
+              if (!accountId || this.authorizationBlocked) return null;
+              uploadAccountId = accountId;
+              const drained = yield* retryOnceAfterAuthenticationRequired(
+                () => this.reportUntilDrained(epoch, accountId),
+                () => this.refreshAuthenticationIfCurrent(epoch, accountId),
+              );
+              return drained ? { epoch, accountId } : null;
+            }),
+          );
+          if (drainedAccount && revision !== null) {
+            yield* this.refreshSummary(
+              drainedAccount.epoch,
+              drainedAccount.accountId,
+              revision,
+            );
+          }
+        }).pipe(
+          Effect.matchCauseEffect({
+            onFailure: (cause) => {
+              const failure = Cause.findErrorOption(cause);
+              if (
+                cause.reasons.every(Cause.isFailReason) &&
+                Option.isSome(failure)
+              ) {
+                return this.handleAttemptFailure(
+                  failure.value,
+                  iterationEpoch,
+                  uploadAccountId,
+                );
+              }
+              return Effect.failCause(cause);
+            },
+            onSuccess: () =>
+              iterationEpoch === this.boundaryEpoch &&
+              this.rerunRequested &&
+              !this.stopped
+                ? iteration()
+                : Effect.void,
+          }),
+          Effect.catchCause((cause) => {
+            if (Cause.hasInterruptsOnly(cause)) {
+              // Rebuild from interrupts to narrow the typed error channel to never.
+              return Effect.failCause(
+                Cause.fromReasons(
+                  cause.reasons.filter(Cause.isInterruptReason),
+                ),
+              );
+            }
+            if (iterationEpoch === this.boundaryEpoch) {
+              this.rerunRequested =
+                this.summaryRefreshRequested && this.currentAccountId !== null;
+            }
+            return Effect.sync(() => {
+              logger.main.error("Activity reporting worker failed", {
+                error: Cause.squash(cause),
+                defects: cause.reasons
+                  .filter(Cause.isDieReason)
+                  .map((reason) => reason.defect),
+              });
+            });
+          }),
+        );
+      });
+
+    return iteration();
+  }
+
+  private handleAttemptFailure(
+    error: ActivityAttemptError,
+    epoch: number,
+    accountId: string | null,
+  ): Effect.Effect<void> {
+    if (epoch !== this.boundaryEpoch || this.stopped) return Effect.void;
+    this.rerunRequested =
+      this.summaryRefreshRequested && this.currentAccountId !== null;
+    if (error instanceof AuthenticationRequired) {
+      if (!accountId || accountId !== this.currentAccountId) {
+        return Effect.void;
+      }
+      this.authorizationBlocked = true;
+      return Effect.sync(() => {
+        logger.main.warn(
+          "Activity reporting authentication failed; waiting for auth change",
+          { error },
+        );
+      });
+    }
+    if (error instanceof AccessForbidden) {
+      if (!accountId || accountId !== this.currentAccountId) {
+        return Effect.void;
+      }
+      this.authorizationBlocked = true;
+      return Effect.sync(() => {
+        logger.main.warn(
+          "Activity reporting authorization failed; waiting for auth change",
+          { error },
+        );
+      });
+    }
+    return Effect.sync(() => {
+      logger.main.warn(
+        "Activity reporting attempt failed; durable work retained",
+        { error },
+      );
+    });
+  }
+
+  private refreshSummary(
+    epoch: number,
+    accountId: string,
+    expectedRevision: number,
+  ): Effect.Effect<void> {
+    return Effect.gen({ self: this }, function* () {
+      const current = yield* this.db(
+        async () =>
+          this.uploadBoundaryIsCurrent(epoch, accountId) &&
+          getStatsRevision() === expectedRevision,
+      );
+      if (!current) return;
+      const summary = yield* Effect.tryPromise({
+        try: (signal) => this.readSummary(this.authService, accountId, signal),
+        catch: (cause) => cause,
+      });
+      yield* this.db(async () => {
+        if (this.uploadBoundaryIsCurrent(epoch, accountId)) {
+          applyAccountSummary(accountId, expectedRevision, summary.totals);
+        }
+      });
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          logger.main.warn(
+            "Account dictation stats refresh failed; cache retained",
+            {
+              error,
+            },
+          );
+        }),
+      ),
+    );
+  }
+
+  private refreshAuthenticationIfCurrent(
+    epoch: number,
+    accountId: string,
+  ): Effect.Effect<void, ActivityReportingDependencyFailure> {
+    const ensureCurrent = Effect.suspend(() =>
+      this.uploadBoundaryIsCurrent(epoch, accountId)
+        ? Effect.void
+        : Effect.interrupt,
+    );
+
+    return ensureCurrent.pipe(
+      Effect.andThen(
+        this.authentication(this.authService.refreshTokenIfNeeded(true)),
+      ),
+      Effect.andThen(ensureCurrent),
+    );
+  }
+
+  private materializeUntilCaughtUp(): Effect.Effect<
+    void,
+    ActivityReportingDependencyFailure
+  > {
+    const epoch = this.boundaryEpoch;
+    const scan = (): Effect.Effect<void, ActivityReportingDependencyFailure> =>
+      this.db(async () =>
+        this.boundaryIsCurrent(epoch)
+          ? materializeCompletedDictationActivities(ACTIVITY_MAX_BATCH_SIZE)
+          : { scanned: 0, enqueued: 0 },
+      ).pipe(
+        Effect.flatMap((result) =>
+          result.scanned === ACTIVITY_MAX_BATCH_SIZE
+            ? Effect.yieldNow.pipe(Effect.andThen(Effect.suspend(scan)))
+            : Effect.void,
+        ),
+      );
+
+    return Effect.suspend(scan);
+  }
+
+  private reportUntilDrained(
+    epoch: number,
+    accountId: string,
+  ): Effect.Effect<boolean, ActivityAttemptError> {
+    const drain = (): Effect.Effect<boolean, ActivityAttemptError> =>
+      this.findNextRows().pipe(
+        Effect.flatMap((rows) => {
+          if (!this.uploadBoundaryIsCurrent(epoch, accountId)) {
+            return Effect.succeed(false);
+          }
+          if (rows.length === 0) {
+            return Effect.succeed(true);
+          }
+          return Effect.try({
+            try: () => buildActivityBatch(rows.map((row) => row.payload)),
+            catch: (cause) =>
+              new ActivityReportingContractFailure({
+                message:
+                  cause instanceof Error
+                    ? cause.message
+                    : "Unable to construct an activity reporting batch",
+                phase: "batch",
+                cause,
+              }),
+          }).pipe(
+            Effect.flatMap((activities) => {
+              const submittedIds = activities.map(
+                (activity) => activity.activityId,
+              );
+              return this.client
+                .submit(activities)
+                .pipe(
+                  Effect.flatMap(() =>
+                    this.removeSubmittedRowsIfCurrent(
+                      submittedIds,
+                      epoch,
+                      accountId,
+                    ).pipe(
+                      Effect.flatMap((removed) =>
+                        removed ? Effect.suspend(drain) : Effect.succeed(false),
+                      ),
+                    ),
+                  ),
+                );
+            }),
+          );
+        }),
+      );
+
+    return Effect.suspend(drain);
+  }
+
+  private findNextRows(): Effect.Effect<
+    ActivityRows,
+    ActivityReportingDependencyFailure
+  > {
+    const find = (): Effect.Effect<
+      ActivityRows,
+      ActivityReportingDependencyFailure
+    > =>
+      this.db(() => captureActivityRows(ACTIVITY_MAX_BATCH_SIZE)).pipe(
+        Effect.flatMap((rows) => {
+          if (rows.length > 0) return Effect.succeed(rows);
+          return this.db(() =>
+            materializeCompletedDictationActivities(ACTIVITY_MAX_BATCH_SIZE),
+          ).pipe(
+            Effect.flatMap((materialized) =>
+              this.db(() => captureActivityRows(ACTIVITY_MAX_BATCH_SIZE)).pipe(
+                Effect.flatMap((nextRows) => {
+                  if (
+                    nextRows.length > 0 ||
+                    materialized.scanned < ACTIVITY_MAX_BATCH_SIZE
+                  ) {
+                    return Effect.succeed(nextRows);
+                  }
+                  return Effect.yieldNow.pipe(
+                    Effect.andThen(Effect.suspend(find)),
+                  );
+                }),
+              ),
+            ),
+          );
+        }),
+      );
+
+    return Effect.suspend(find);
+  }
+
+  private removeSubmittedRowsIfCurrent(
+    activityIds: readonly string[],
+    epoch: number,
+    accountId: string,
+  ): Effect.Effect<boolean, ActivityReportingDependencyFailure> {
+    return this.withDb(
+      Effect.suspend(() => {
+        if (
+          this.stopped ||
+          epoch !== this.boundaryEpoch ||
+          accountId !== this.currentAccountId
+        ) {
+          return Effect.succeed(false);
+        }
+        return this.database(() => removeActivityRows(activityIds)).pipe(
+          Effect.as(true),
+        );
+      }),
+    );
+  }
+
+  private db<T>(
+    callback: () => Promise<T>,
+  ): Effect.Effect<T, ActivityReportingDependencyFailure> {
+    return this.withDb(this.database(callback));
+  }
+
+  private database<T>(
+    callback: () => Promise<T>,
+  ): Effect.Effect<T, ActivityReportingDependencyFailure> {
+    return Effect.tryPromise({
+      try: callback,
+      catch: (cause) =>
+        new ActivityReportingDependencyFailure({
+          message: "Activity reporting database operation failed",
+          dependency: "database",
+          cause,
+        }),
+    });
+  }
+
+  private authentication<T, E>(
+    effect: Effect.Effect<T, E>,
+  ): Effect.Effect<T, ActivityReportingDependencyFailure> {
+    return effect.pipe(
+      Effect.catchCause((cause) =>
+        Effect.failCause(
+          Cause.map(
+            cause,
+            (cause) =>
+              new ActivityReportingDependencyFailure({
+                message: "Activity reporting authentication operation failed",
+                dependency: "authentication",
+                cause,
+              }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  private withDb<T, E>(effect: Effect.Effect<T, E>): Effect.Effect<T, E> {
+    return this.dbSemaphore.withPermits(1)(Effect.uninterruptible(effect));
+  }
+
+  private boundaryIsCurrent(epoch: number): boolean {
+    return !this.stopped && epoch === this.boundaryEpoch;
+  }
+
+  private uploadBoundaryIsCurrent(epoch: number, accountId: string): boolean {
+    return this.boundaryIsCurrent(epoch) && accountId === this.currentAccountId;
+  }
+
+  private finishWorker(workerId: number): void {
+    if (this.currentWorkerId !== workerId) return;
+    this.currentWorkerId = null;
+    this.worker = null;
+    if (this.rerunRequested && this.initialized && !this.stopped) {
+      queueMicrotask(() => this.wake());
+    }
+  }
+
+  private forkScoped<A>(effect: Effect.Effect<A>): Fiber.Fiber<A> {
+    return Effect.runForkWith(this.context)(
+      Effect.withFiber((fiber) => {
+        Fiber.runIn(fiber, this.serviceScope);
+        return effect;
+      }),
+    );
+  }
+
+  private logBackgroundDefect(message: string) {
+    return <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> =>
+      effect.pipe(
+        Effect.catchCause((cause) => {
+          if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
+          return Effect.sync(() => {
+            logger.main.error(message, { error: Cause.squash(cause) });
+          }).pipe(Effect.andThen(Effect.failCause(cause)));
+        }),
+      );
+  }
+}

@@ -186,7 +186,18 @@ enum AXHelpers {
         guard selectionIsZeroOrUnknown else { return false }
 
         let currentValue = getStringAttribute(element, kAXValueAttribute)
+        return isPlaceholderShowing(element, value: currentValue)
+    }
 
+    /// Same check for a caller that already read the element's AXValue and
+    /// knows the selection is empty or unknown; saves the extra value read.
+    /// `childTimeout` bounds each AX call on the descendants the walk visits
+    /// (they do not inherit the element's messaging timeout).
+    static func isPlaceholderShowing(
+        _ element: AXUIElement,
+        value currentValue: String?,
+        childTimeout: Float? = nil
+    ) -> Bool {
         // 1. Native placeholder via AXPlaceholderValue (also covers
         //    aria-placeholder, which Chromium/WebKit map to this attribute).
         if let placeholder = getStringAttribute(element, "AXPlaceholderValue"), !placeholder.isEmpty {
@@ -208,7 +219,7 @@ enum AXHelpers {
 
         // 3. ProseMirror & friends expose the placeholder as a `.placeholder`
         //    descendant whose text matches the leaked value.
-        if matchesDescendantPlaceholder(element, value: value) {
+        if matchesDescendantPlaceholder(element, value: value, childTimeout: childTimeout) {
             return true
         }
 
@@ -225,7 +236,11 @@ enum AXHelpers {
 
     /// Bounded BFS for a `.placeholder` descendant whose text matches `value`.
     /// Kept narrow (exact class token + matching text) to avoid false positives.
-    private static func matchesDescendantPlaceholder(_ element: AXUIElement, value: String) -> Bool {
+    private static func matchesDescendantPlaceholder(
+        _ element: AXUIElement,
+        value: String,
+        childTimeout: Float?
+    ) -> Bool {
         let normalizedValue = normalizeForComparison(value)
         guard !normalizedValue.isEmpty else { return false }
 
@@ -239,9 +254,11 @@ enum AXHelpers {
             for child in getChildren(current) {
                 if visited >= PLACEHOLDER_DESCENDANT_MAX_NODES { break }
                 visited += 1
+                if let childTimeout { _ = AXUIElementSetMessagingTimeout(child, childTimeout) }
 
                 if hasDOMClass(child, "placeholder") &&
-                    elementOrDescendantTextMatches(child, normalizedValue: normalizedValue) {
+                    elementOrDescendantTextMatches(
+                        child, normalizedValue: normalizedValue, childTimeout: childTimeout) {
                     return true
                 }
 
@@ -256,7 +273,11 @@ enum AXHelpers {
 
     /// Bounded BFS checking whether `element` or a near descendant has text equal
     /// (ignoring case and whitespace) to `normalizedValue`.
-    private static func elementOrDescendantTextMatches(_ element: AXUIElement, normalizedValue: String) -> Bool {
+    private static func elementOrDescendantTextMatches(
+        _ element: AXUIElement,
+        normalizedValue: String,
+        childTimeout: Float?
+    ) -> Bool {
         var queue: [(element: AXUIElement, depth: Int)] = [(element, 0)]
         var visited = 0
 
@@ -273,6 +294,7 @@ enum AXHelpers {
 
             for child in getChildren(current) {
                 if visited + queue.count >= PLACEHOLDER_TEXT_MAX_NODES { break }
+                if let childTimeout { _ = AXUIElementSetMessagingTimeout(child, childTimeout) }
                 queue.append((child, depth + 1))
             }
         }

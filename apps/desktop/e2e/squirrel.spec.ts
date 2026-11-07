@@ -114,10 +114,9 @@ test.describe("squirrel update hooks", () => {
     const { app, userDataDir } = launched;
     const windowsBefore = await visibleWindowCount(app);
 
-    const { exited } = await spawnProbe(
-      ["--squirrel-updated", "9.9.9"],
-      userDataDir,
-    );
+    // CI tests an unpacked app without Update.exe. The obsolete hook uses
+    // the same startup gate without creating/removing installer shortcuts.
+    const { exited } = await spawnProbe(["--squirrel-obsolete"], userDataDir);
     expect(exited).toBe(true);
 
     // The lock notification (if the entry gate ever regresses) is sent before

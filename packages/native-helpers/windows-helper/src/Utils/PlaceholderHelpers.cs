@@ -26,7 +26,24 @@ namespace WindowsHelper.Utils
                 if (valuePattern == null) return false;
 
                 var value = StringHelpers.NormalizeNewlines(valuePattern.CurrentValue) ?? "";
+                return IsPlaceholderShowing(element, value);
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
+        /// <summary>
+        /// Same check for a caller that already read the element's text; saves
+        /// the second value read.
+        /// </summary>
+        public static bool IsPlaceholderShowing(IUIAutomationElement element, string value)
+        {
+            if (element == null) return false;
+
+            try
+            {
                 // Common native UIA behavior: empty value with a non-empty Name means
                 // the element is showing only placeholder/label text.
                 if (string.IsNullOrEmpty(value))

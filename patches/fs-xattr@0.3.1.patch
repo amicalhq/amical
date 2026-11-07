@@ -1,0 +1,12 @@
+diff --git a/package.json b/package.json
+index 15b109f8d10c3f0bbce187d6789f5280bd479226..3c0985fc07bc1738eea3d5d4fe426f1b5bcdcbfb 100644
+--- a/package.json
++++ b/package.json
+@@ -10,6 +10,7 @@
+     "src/"
+   ],
+   "scripts": {
++    "install": "node-gyp rebuild",
+     "test": "standard && mocha && ts-readme-generator --check",
+     "lint": "standard"
+   },

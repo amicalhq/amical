@@ -42,6 +42,34 @@ describe("settings sync editor validation", () => {
     dbMocks.updateSnippet.mockImplementation(async (_id, input) => input);
   });
 
+  it.each([
+    "11111111-1111-4111-8111-111111111111",
+    "voc_abcdefghijklmnopqrstuvwx",
+  ])("accepts vocabulary ID %s for edits", async (id) => {
+    const { vocabularyRouter } = await import(
+      "../../src/trpc/routers/vocabulary"
+    );
+    await vocabularyRouter
+      .createCaller({} as never)
+      .updateVocabulary({ id, data: { word: "Edited" } });
+    expect(dbMocks.updateVocabulary).toHaveBeenCalledWith(id, {
+      word: "Edited",
+    });
+  });
+
+  it.each([
+    "11111111-1111-4111-8111-111111111111",
+    "snp_abcdefghijklmnopqrstuvwx",
+  ])("accepts snippet ID %s for edits", async (id) => {
+    const { snippetsRouter } = await import("../../src/trpc/routers/snippets");
+    await snippetsRouter
+      .createCaller({} as never)
+      .updateSnippet({ id, data: { content: "Edited" } });
+    expect(dbMocks.updateSnippet).toHaveBeenCalledWith(id, {
+      content: "Edited",
+    });
+  });
+
   it("trims vocabulary keys and validates create, update, and import", async () => {
     const { vocabularyRouter } = await import(
       "../../src/trpc/routers/vocabulary"

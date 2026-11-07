@@ -123,10 +123,13 @@ vi.mock("@grpc/grpc-js", () => grpcMock.module);
 import {
   buildLanguageConfig,
   CloudDictationGrpcStream,
-  GrpcDictationError,
   type GrpcDictationStreamOptions,
 } from "../../src/pipeline/providers/transcription/grpc-dictation-client";
-import { StreamTranscribeRequest } from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
+import { expectRejectionProjection } from "../helpers/error-projection";
+import {
+  StreamTranscribeEvent,
+  StreamTranscribeRequest,
+} from "../../src/pipeline/providers/transcription/gen/amical/dictation/v1/dictation";
 
 const flushEffects = () => new Promise((resolve) => setImmediate(resolve));
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -174,7 +177,7 @@ const createStream = (overrides: Partial<GrpcDictationStreamOptions> = {}) =>
     clientInfo: {
       client: "desktop",
       version: "0.0.0-test",
-      platform: "darwin",
+      platform: "macos",
       locale: "en",
     },
     sessionId: "session-1",
@@ -193,6 +196,18 @@ describe("buildLanguageConfig", () => {
       languages: { items: number[] };
     };
     expect(result.languages.items).toEqual([1, 3]);
+  });
+
+  it("maps regional variant and Cantonese tags to their enum values", () => {
+    const result = buildLanguageConfig([
+      "en-GB",
+      "de-CH",
+      "zh-Hans",
+      "en-CA",
+      "yue",
+    ]) as { languages: { items: number[] } };
+    // Wire values of LANGUAGE_EN_GB, _DE_CH, _ZH_HANS, _EN_CA and _YUE.
+    expect(result.languages.items).toEqual([100, 101, 102, 103, 104]);
   });
 
   it("drops codes that have no enum mapping", () => {
@@ -238,6 +253,36 @@ describe("CloudDictationGrpcStream", () => {
 
     expect(grpcStream.cancel).not.toHaveBeenCalled();
     expect(grpcClient.close).toHaveBeenCalledTimes(1);
+  });
+
+  // Settles a fresh stream with a final event that went through the wire codec.
+  const finalTranscriptFromWire = (final: Record<string, unknown>) => {
+    const clientStream = createStream();
+    const deserialize = grpcMock.getLastClient()!.makeBidiStreamRequest.mock
+      .calls[0]?.[2] as (data: Buffer) => unknown;
+    const grpcStream = grpcMock.getLastStream()!;
+    const bytes = StreamTranscribeEvent.encode(
+      StreamTranscribeEvent.create({ final }),
+    ).finish();
+
+    grpcStream.emit("data", deserialize(Buffer.from(bytes)));
+    grpcStream.emit("status", {
+      code: grpcMock.status.OK,
+      details: "OK",
+      metadata: grpcMock.metadata(),
+    });
+    return clientStream.finalTranscript;
+  };
+
+  it("decodes the final transcript language from the wire", async () => {
+    await expect(
+      finalTranscriptFromWire({ rawTranscript: "colour", language: "en" }),
+    ).resolves.toMatchObject({ rawTranscript: "colour", language: "en" });
+  });
+
+  it("leaves the final transcript language unset when the wire has none", async () => {
+    const final = await finalTranscriptFromWire({ rawTranscript: "hi" });
+    expect(final.language).toBeUndefined();
   });
 
   it("preserves port 80 for default plaintext endpoints", () => {
@@ -290,7 +335,7 @@ describe("CloudDictationGrpcStream", () => {
       clientInfo: {
         client: "desktop",
         version: "1.2.3",
-        platform: "darwin",
+        platform: "macos",
         locale: "ja-JP",
       },
     });
@@ -302,7 +347,7 @@ describe("CloudDictationGrpcStream", () => {
     expect(metadata.get("authorization")).toEqual(["Bearer token"]);
     expect(metadata.get("amical-client")).toEqual(["desktop"]);
     expect(metadata.get("amical-version")).toEqual(["1.2.3"]);
-    expect(metadata.get("amical-platform")).toEqual(["darwin"]);
+    expect(metadata.get("amical-platform")).toEqual(["macos"]);
     expect(metadata.get("accept-language")).toEqual(["ja-JP"]);
     expect(metadata.get("x-platform")).toEqual([]);
 
@@ -386,8 +431,7 @@ describe("CloudDictationGrpcStream", () => {
       metadata: grpcMock.metadata(),
     });
 
-    await expect(clientStream.finalTranscript).rejects.toMatchObject({
-      name: "GrpcDictationError",
+    await expectRejectionProjection(clientStream.finalTranscript, {
       message: "gRPC stream closed before final transcript",
       grpcStatus: grpcMock.status.OK,
     });
@@ -406,8 +450,7 @@ describe("CloudDictationGrpcStream", () => {
       metadata: grpcMock.metadata(),
     });
 
-    await expect(clientStream.finalTranscript).rejects.toMatchObject({
-      name: "GrpcDictationError",
+    await expectRejectionProjection(clientStream.finalTranscript, {
       httpStatus: 503,
       traceId: "trace-1",
     });
@@ -423,14 +466,10 @@ describe("CloudDictationGrpcStream", () => {
       metadata: grpcMock.metadata(),
     });
 
-    await expect(clientStream.finalTranscript).rejects.toMatchObject({
-      name: "GrpcDictationError",
+    await expectRejectionProjection(clientStream.finalTranscript, {
       grpcStatus: grpcMock.status.UNAVAILABLE,
       httpStatus: 503,
     });
-    await expect(clientStream.finalTranscript).rejects.toBeInstanceOf(
-      GrpcDictationError,
-    );
   });
 
   it("decodes standard application and localized error details", async () => {
@@ -453,11 +492,10 @@ describe("CloudDictationGrpcStream", () => {
       metadata,
     });
 
-    await expect(clientStream.finalTranscript).rejects.toMatchObject({
-      name: "GrpcDictationError",
+    await expectRejectionProjection(clientStream.finalTranscript, {
       grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
-      applicationCode: "QUOTA_EXCEEDED",
-      localizedMessage: "Du hast dein Transkriptionslimit erreicht.",
+      wireCode: "QUOTA_EXCEEDED",
+      uiMessage: "Du hast dein Transkriptionslimit erreicht.",
     });
   });
 
@@ -489,12 +527,11 @@ describe("CloudDictationGrpcStream", () => {
       metadata,
     });
 
-    await expect(clientStream.finalTranscript).rejects.toMatchObject({
-      name: "GrpcDictationError",
+    await expectRejectionProjection(clientStream.finalTranscript, {
       grpcStatus: grpcMock.status.RESOURCE_EXHAUSTED,
       traceId: "trace-error-status",
-      applicationCode: "QUOTA_EXCEEDED",
-      localizedMessage: "Du hast dein Transkriptionslimit erreicht.",
+      wireCode: "QUOTA_EXCEEDED",
+      uiMessage: "Du hast dein Transkriptionslimit erreicht.",
     });
     await flushEffects();
     expect(grpcMock.getLastClient()!.close).toHaveBeenCalledTimes(1);
@@ -516,8 +553,7 @@ describe("CloudDictationGrpcStream", () => {
 
     grpcStream.emit("error", serviceError);
 
-    await expect(clientStream.finalTranscript).rejects.toMatchObject({
-      name: "GrpcDictationError",
+    await expectRejectionProjection(clientStream.finalTranscript, {
       grpcStatus: grpcMock.status.UNAVAILABLE,
       httpStatus: 429,
       traceId: "trace-service-error",
@@ -538,8 +574,7 @@ describe("CloudDictationGrpcStream", () => {
 
     clientStream.cancel();
 
-    await expect(clientStream.finalTranscript).rejects.toMatchObject({
-      name: "GrpcDictationError",
+    await expectRejectionProjection(clientStream.finalTranscript, {
       message: "gRPC stream cancelled",
       grpcStatus: grpcMock.status.CANCELLED,
     });
@@ -589,16 +624,13 @@ describe("CloudDictationGrpcStream", () => {
 
     clientStream.cancel();
 
-    await expect(clientStream.finalTranscript).rejects.toMatchObject({
-      name: "GrpcDictationError",
+    await expectRejectionProjection(clientStream.finalTranscript, {
       message: "gRPC stream cancelled",
     });
-    await expect(
+    await expectRejectionProjection(
       clientStream.sendAudioBatch(1n, [new Uint8Array([1, 2])]),
-    ).rejects.toMatchObject({
-      name: "GrpcDictationError",
-      message: "gRPC stream cancelled",
-    });
+      { message: "gRPC stream cancelled" },
+    );
   });
 
   it("idle timer fires after IDLE_TIMEOUT_MS without sendAudioBatch and rejects with isIdleTimeout", async () => {
@@ -614,10 +646,9 @@ describe("CloudDictationGrpcStream", () => {
       vi.useRealTimers();
       await flushEffects();
 
-      await expect(clientStream.finalTranscript).rejects.toMatchObject({
-        name: "GrpcDictationError",
+      await expectRejectionProjection(clientStream.finalTranscript, {
         grpcStatus: grpcMock.status.CANCELLED,
-        isIdleTimeout: true,
+        tag: "IdleTimeout",
       });
     } finally {
       vi.useRealTimers();

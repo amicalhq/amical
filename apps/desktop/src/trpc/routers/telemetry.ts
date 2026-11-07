@@ -1,11 +1,18 @@
 import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
-import { widgetNotificationShownSchema } from "../../types/telemetry-events";
+import {
+  starNudgeSchema,
+  widgetNotificationShownSchema,
+} from "../../types/telemetry-events";
 
 const telemetryEventSchema = z.discriminatedUnion("event", [
   z.object({
     event: z.literal("widget_notification_shown"),
     payload: widgetNotificationShownSchema,
+  }),
+  z.object({
+    event: z.literal("star_nudge"),
+    payload: starNudgeSchema,
   }),
 ]);
 
@@ -24,8 +31,11 @@ export const telemetryRouter = createRouter({
         case "widget_notification_shown":
           telemetryService.trackWidgetNotificationShown(input.payload);
           break;
+        case "star_nudge":
+          telemetryService.trackStarNudge(input.payload);
+          break;
         default:
-          input.event satisfies never;
+          input satisfies never;
       }
     }),
 });

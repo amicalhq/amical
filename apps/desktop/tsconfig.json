@@ -14,21 +14,23 @@
     "jsx": "react-jsx",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "strict": true,
-    "baseUrl": ".",
     "noEmit": true,
     "paths": {
-      "@/*": ["src/*"],
-      "@db/*": ["src/db/*"],
-      "@main/*": ["src/main/*"],
-      "@services/*": ["src/services/*"],
-      "@utils/*": ["src/utils/*"],
-      "@trpc/*": ["src/trpc/*"]
+      "@/*": ["./src/*"],
+      "@db/*": ["./src/db/*"],
+      "@main/*": ["./src/main/*"],
+      "@services/*": ["./src/services/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@trpc/*": ["./src/trpc/*"]
     }
   },
   "include": [
     "src/**/*",
     "tests/**/*",
     "e2e/**/*",
+    "scripts/lifecycle-contract/contract.ts",
+    "scripts/generate-lifecycle-contract.ts",
+    "scripts/verify-lifecycle-contract-version.ts",
     "forge.config.ts",
     "playwright.config.ts",
     "vite.*.config.mts",

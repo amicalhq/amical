@@ -7,11 +7,11 @@ import { setupApplicationMenu } from "../menu";
 import type { ServiceManager } from "../managers/service-manager";
 import { TrayManager } from "../managers/tray-manager";
 import type { OnboardingService } from "../../services/onboarding-service";
-import type { RecordingManager } from "../managers/recording-manager";
+import type { DesktopRecordingLifecycle } from "../lifecycle/live";
 import type { ShortcutManager } from "../managers/shortcut-manager";
 import type { SettingsService } from "../../services/settings-service";
 import type { NativeBridge } from "../../services/platform/native-bridge-service";
-import type { AuthService } from "../../services/auth-service";
+import { runAuthEffect, type AuthService } from "../../services/auth-service";
 import type { FeatureFlagService } from "../../services/feature-flag-service";
 import type { AutoUpdaterService } from "../services/auto-updater";
 import type { HelperEvent } from "@amical/types";
@@ -19,6 +19,8 @@ import { runDataMigrations } from "../migrations/data-migrations";
 import { getMainFeatureFlagState } from "@/main/utils/feature-flags";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
 import { getApplicationLocale } from "@/i18n/application-locale";
+import { installRendererFailureTelemetry } from "../telemetry/renderer-failure-telemetry";
+import { getRelaunchArgs } from "../launch-options";
 
 export class AppManager {
   // Resolved ONCE in initialize() after the graph builds — AppManager's only
@@ -29,7 +31,7 @@ export class AppManager {
   private windowManager!: WindowManager;
   private settingsService!: SettingsService;
   private shortcutManager!: ShortcutManager;
-  private recordingManager!: RecordingManager;
+  private recordingLifecycle!: DesktopRecordingLifecycle;
   private featureFlagService!: FeatureFlagService;
   private autoUpdaterService!: AutoUpdaterService;
   private authService!: AuthService;
@@ -58,7 +60,9 @@ export class AppManager {
 
         if (code) {
           // Complete the OAuth flow
-          this.authService.handleAuthCallback(code, state);
+          void runAuthEffect(
+            this.authService.handleAuthCallback(code, state),
+          ).catch(() => undefined);
         }
       }
 
@@ -80,7 +84,9 @@ export class AppManager {
     }
   }
 
-  async initialize(): Promise<void> {
+  async initialize({
+    silentStart = false,
+  }: { silentStart?: boolean } = {}): Promise<void> {
     await this.initializeDatabase();
 
     await this.serviceManager.initialize();
@@ -92,7 +98,7 @@ export class AppManager {
     this.windowManager = services.windowManager;
     this.settingsService = services.settingsService;
     this.shortcutManager = services.shortcutManager;
-    this.recordingManager = services.recordingManager;
+    this.recordingLifecycle = services.recordingLifecycle;
     this.featureFlagService = services.featureFlagService;
     this.autoUpdaterService = services.autoUpdaterService;
     this.authService = services.authService;
@@ -100,6 +106,7 @@ export class AppManager {
     const onboardingService = services.onboardingService;
     const nativeBridge = services.nativeBridge;
 
+    installRendererFailureTelemetry(this.windowManager, telemetryService);
     telemetryService.trackAppLaunch();
 
     // Subscribe to onboarding lifecycle, shortcuts, and native bridge events.
@@ -119,13 +126,21 @@ export class AppManager {
     // Subscribe to settings changes for window updates
     this.setupSettingsEventListeners(this.settingsService);
 
+    // Dev launches (often scripted while the user works elsewhere) show their
+    // first window without taking focus (or switching Spaces on macOS; see
+    // main.ts). Later opens from the tray, Dock, a second launch, or a deep
+    // link still focus.
+    const startInactive = !app.isPackaged;
+
     if (onboardingCheck.needed) {
       // Suppress global shortcut commands while onboarding is open; the
       // dictation try-it steps lift this for their lifetime (see the
       // try-it-active-changed listener above).
       this.shortcutManager.setCommandsSuppressed(true);
       await onboardingService.startOnboardingFlow();
-      await this.windowManager.createOrShowOnboardingWindow();
+      await this.windowManager.createOrShowOnboardingWindow({
+        inactive: startInactive,
+      });
 
       // Closing the wizard is the third exit (besides completed/cancelled):
       // treat it as cancel — track abandonment and quit via the cancelled
@@ -138,7 +153,7 @@ export class AppManager {
         }
       });
     } else {
-      await this.setupWindows();
+      await this.setupWindows(silentStart, startInactive);
     }
 
     const locale = await this.setupMenu();
@@ -185,7 +200,7 @@ export class AppManager {
       if (shouldRelaunch) {
         // Production: relaunch app to reinitialize with new settings
         logger.main.info("Relaunching app after onboarding completion");
-        app.relaunch();
+        app.relaunch({ args: getRelaunchArgs() });
         app.quit();
       } else {
         // Development: just show the main app windows
@@ -224,8 +239,8 @@ export class AppManager {
         // result publishes after the step is gone and Enter can insert stale
         // text into whatever is focused on the next screen. Both are no-ops
         // when there's nothing to clean.
-        this.recordingManager.dismissDraft();
-        this.recordingManager.dismissCurrentSession().catch((error) => {
+        this.recordingLifecycle.dismissDraft();
+        this.recordingLifecycle.dismiss().catch((error) => {
           logger.main.error(
             "Failed to dismiss in-flight take on try-it exit",
             error,
@@ -303,10 +318,15 @@ export class AppManager {
     logger.main.info("Settings event listeners set up");
   }
 
-  private async setupWindows(): Promise<void> {
+  private async setupWindows(
+    silentStart = false,
+    inactive = false,
+  ): Promise<void> {
     await this.windowManager.ensureWidgetWindow();
 
-    this.windowManager.createOrShowMainWindow();
+    if (!silentStart) {
+      await this.windowManager.createOrShowMainWindow(undefined, { inactive });
+    }
 
     // Apply dock visibility based on user preference (macOS only)
     const preferences = await this.settingsService.getPreferences();

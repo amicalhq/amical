@@ -17,7 +17,7 @@
  *
  * 1. Releases register on the app-owned scope (AppScopeTag) via
  *    Scope.addFinalizer (layer-helpers.ts addRelease), NOT via
- *    Effect.acquireRelease: Layer.build is transactional in effect 3.21 and
+ *    Effect.acquireRelease: Layer.build is transactional and
  *    closes layer scopes on partial build failure, which would tear down
  *    PostHog before the crash path can flush telemetry (verified
  *    empirically; see app-runtime.ts). Finalizers on the app scope are
@@ -47,7 +47,7 @@
  *      │   Transcription (◄ Model, VAD, Settings, Telemetry, Auth, Bridge, Onboarding)
  *      │         ╎
  *      │         ▼
- *        RecordingManager (◄ Transcription, Bridge, Settings, Model)
+ *        RecordingLifecycle (◄ Transcription, Bridge, Settings, Model)
  *                │                    │
  *                ▼                    ▼
  *          ShortcutManager      AutoUpdater (◄ Settings, Telemetry, RC, Recording)
@@ -80,10 +80,13 @@ import type { BrowserWindow } from "electron";
 
 import { logger } from "../logger";
 import { addRelease, up } from "./layer-helpers";
+import { installDictationTrace } from "../telemetry/dictation-trace";
 import { isMacOS, isWindows } from "../../utils/platform";
 
 import { SettingsService } from "../../services/settings-service";
 import { SettingsSyncService } from "../../services/settings-sync-service";
+import { ActivityReportingService } from "../../services/activity-reporting-service";
+import { UsageService } from "../../services/usage-service";
 import { AuthService } from "../../services/auth-service";
 import { PostHogClient } from "../../services/posthog-client";
 import { TelemetryService } from "../../services/telemetry-service";
@@ -95,7 +98,8 @@ import { OnboardingService } from "../../services/onboarding-service";
 import { NativeBridge } from "../../services/platform/native-bridge-service";
 import { VADService } from "../../services/vad-service";
 import { TranscriptionService } from "../../services/transcription-service";
-import { RecordingManager } from "../managers/recording-manager";
+import { RecordingLifecycleLive } from "../lifecycle/live";
+import { VocabularyLearningService } from "../../services/vocabulary-learning/service";
 import { ShortcutManager } from "../managers/shortcut-manager";
 import { AutoUpdaterService } from "../services/auto-updater";
 import { WindowManager } from "../core/window-manager";
@@ -106,6 +110,8 @@ import { createContext } from "../../trpc/context";
 import {
   SettingsServiceTag,
   SettingsSyncServiceTag,
+  ActivityReportingServiceTag,
+  UsageServiceTag,
   AuthServiceTag,
   PostHogClientTag,
   TelemetryServiceTag,
@@ -116,7 +122,7 @@ import {
   NativeBridgeTag,
   VadServiceTag,
   TranscriptionServiceTag,
-  RecordingManagerTag,
+  RecordingLifecycleTag,
   ShortcutManagerTag,
   AutoUpdaterServiceTag,
   WindowManagerTag,
@@ -166,6 +172,8 @@ export const ServicesBundleLive: Layer.Layer<
   | SettingsServiceTag
   | AuthServiceTag
   | SettingsSyncServiceTag
+  | ActivityReportingServiceTag
+  | UsageServiceTag
   | PostHogClientTag
   | TelemetryServiceTag
   | FeatureFlagServiceTag
@@ -175,16 +183,19 @@ export const ServicesBundleLive: Layer.Layer<
   | NativeBridgeTag
   | VadServiceTag
   | TranscriptionServiceTag
-  | RecordingManagerTag
+  | RecordingLifecycleTag
   | ShortcutManagerTag
   | AutoUpdaterServiceTag
   | WindowManagerTag
 > = Layer.effect(
   ServicesBundleTag,
   Effect.gen(function* () {
+    const telemetryService = yield* TelemetryServiceTag;
+    // Wire the dictation-trace sink once the telemetry service exists.
+    installDictationTrace(telemetryService);
     return Object.freeze({
       posthogClient: yield* PostHogClientTag,
-      telemetryService: yield* TelemetryServiceTag,
+      telemetryService,
       featureFlagService: yield* FeatureFlagServiceTag,
       remoteConfigService: yield* RemoteConfigServiceTag,
       modelService: yield* ModelServiceTag,
@@ -192,10 +203,12 @@ export const ServicesBundleLive: Layer.Layer<
       settingsService: yield* SettingsServiceTag,
       authService: yield* AuthServiceTag,
       settingsSyncService: yield* SettingsSyncServiceTag,
+      activityReportingService: yield* ActivityReportingServiceTag,
+      usageService: yield* UsageServiceTag,
       vadService: yield* VadServiceTag,
       nativeBridge: yield* NativeBridgeTag,
       autoUpdaterService: yield* AutoUpdaterServiceTag,
-      recordingManager: yield* RecordingManagerTag,
+      recordingLifecycle: yield* RecordingLifecycleTag,
       shortcutManager: yield* ShortcutManagerTag,
       windowManager: yield* WindowManagerTag,
       onboardingService: yield* OnboardingServiceTag,
@@ -266,11 +279,14 @@ export const AppLive: Layer.Layer<
   Layer.provideMerge(
     Layer.mergeAll(
       ShortcutManager.Live,
+      VocabularyLearningService.Live,
       AutoUpdaterService.Live,
       SettingsSyncService.Live,
+      ActivityReportingService.Live,
+      UsageService.Live,
     ),
   ),
-  Layer.provideMerge(RecordingManager.Live),
+  Layer.provideMerge(RecordingLifecycleLive),
   Layer.provideMerge(WindowManager.Live),
   Layer.provideMerge(TranscriptionService.Live),
   Layer.provideMerge(OnboardingService.Live),

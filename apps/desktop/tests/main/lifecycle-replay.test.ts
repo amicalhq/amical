@@ -1,0 +1,133 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import {
+  LIFECYCLE_CONTRACT_ARTIFACT_PATH,
+  LIFECYCLE_CONTRACT_VERSION,
+  assertLifecycleVersionAdvance,
+  buildLifecycleContractArtifact,
+  lifecycleContentDigest,
+  parseLifecycleContractArtifact,
+  renderLifecycleContractArtifact,
+} from "../../scripts/lifecycle-contract/contract";
+import {
+  LIFECYCLE_EVENT_ATOMS,
+  LIFECYCLE_STATE_ATOMS,
+  assertLifecycleAtomManifests,
+  encodeLifecycleEventAtom,
+  encodeLifecycleStateAtom,
+} from "../../scripts/lifecycle-contract/atoms";
+import { verifyLifecycleContractVersion } from "../../scripts/verify-lifecycle-contract-version";
+import { transitionLifecycle } from "../../src/main/lifecycle/machine";
+import { projectLifecycle } from "../../src/main/lifecycle/projection";
+
+const readCheckedArtifact = () => {
+  const serialized = readFileSync(LIFECYCLE_CONTRACT_ARTIFACT_PATH, "utf8");
+  return {
+    artifact: parseLifecycleContractArtifact(serialized),
+    serialized,
+  };
+};
+
+describe("lifecycle contract replay", () => {
+  it("declares the complete concrete state and event domains", () => {
+    expect(assertLifecycleAtomManifests).not.toThrow();
+    expect(Object.keys(LIFECYCLE_STATE_ATOMS)).toHaveLength(35);
+    expect(Object.keys(LIFECYCLE_EVENT_ATOMS)).toHaveLength(37);
+  });
+
+  it("matches the checked artifact generated from the reducer", () => {
+    const { artifact, serialized } = readCheckedArtifact();
+    const expected = buildLifecycleContractArtifact();
+
+    expect(artifact).toEqual(expected);
+    expect(serialized).toBe(renderLifecycleContractArtifact(expected));
+    expect(artifact.contractVersion).toBe(LIFECYCLE_CONTRACT_VERSION);
+    expect(artifact.contentDigest).toBe(lifecycleContentDigest(artifact));
+  });
+
+  it("replays every table vector against the reducer", () => {
+    const { artifact } = readCheckedArtifact();
+    for (const vector of artifact.vectors) {
+      const transition = transitionLifecycle(vector.state, vector.event);
+      expect({
+        state: transition.state,
+        commands: transition.commands,
+      }).toEqual(vector.expect);
+    }
+  });
+
+  it("replays every trace step, including projections", () => {
+    const { artifact } = readCheckedArtifact();
+    for (const trace of artifact.traces) {
+      let state = trace.given;
+      for (const step of trace.steps) {
+        const transition = transitionLifecycle(state, step.event);
+        expect({
+          state: transition.state,
+          commands: transition.commands,
+          projection: projectLifecycle(transition.state),
+        }).toEqual(step.expect);
+        state = transition.state;
+      }
+    }
+  });
+
+  it("contains every state and event pair exactly once", () => {
+    const { artifact } = readCheckedArtifact();
+    const stateKeys = Object.keys(LIFECYCLE_STATE_ATOMS).sort();
+    const eventKeys = Object.keys(LIFECYCLE_EVENT_ATOMS).sort();
+    const artifactStateKeys = [
+      ...new Set(
+        artifact.vectors.map(({ state }) => encodeLifecycleStateAtom(state)),
+      ),
+    ].sort();
+    const artifactEventKeys = [
+      ...new Set(
+        artifact.vectors.map(({ event }) => encodeLifecycleEventAtom(event)),
+      ),
+    ].sort();
+    const pairs = new Set(
+      artifact.vectors.map(
+        ({ state, event }) =>
+          `${encodeLifecycleStateAtom(state)}\0${encodeLifecycleEventAtom(event)}`,
+      ),
+    );
+
+    expect(artifactStateKeys).toEqual(stateKeys);
+    expect(artifactEventKeys).toEqual(eventKeys);
+    expect(pairs.size).toBe(35 * 37);
+    expect(artifact.vectors).toHaveLength(35 * 37);
+  });
+
+  it("requires a higher version when contract content changes", () => {
+    const current = buildLifecycleContractArtifact();
+    const changed = structuredClone(current);
+    changed.vectors[0]!.expect.commands = [];
+    changed.contentDigest = lifecycleContentDigest(changed);
+
+    expect(() => assertLifecycleVersionAdvance(current, changed)).toThrow(
+      "changed without increasing contractVersion",
+    );
+    expect(() =>
+      assertLifecycleVersionAdvance(current, {
+        ...changed,
+        contractVersion: current.contractVersion - 1,
+      }),
+    ).toThrow("cannot decrease");
+    expect(() =>
+      assertLifecycleVersionAdvance(current, {
+        ...changed,
+        contractVersion: current.contractVersion + 1,
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts an initial contract artifact at its declared version", () => {
+    const current = buildLifecycleContractArtifact();
+
+    expect(() =>
+      verifyLifecycleContractVersion({ ...current, contractVersion: 1 }, null),
+    ).not.toThrow();
+    expect(() => verifyLifecycleContractVersion(current, null)).not.toThrow();
+  });
+});

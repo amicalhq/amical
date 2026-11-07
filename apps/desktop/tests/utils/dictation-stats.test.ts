@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countWords, toLocalStatsDate } from "@utils/dictation-stats";
+import { countWords } from "@utils/dictation-stats";
 
 describe("dictation stats utils", () => {
   it("counts zero words for empty or whitespace-only strings", () => {
@@ -25,11 +25,5 @@ describe("dictation stats utils", () => {
   it("does not crash on invalid or non-standard locale hints", () => {
     expect(countWords("hello world", "english")).toBe(2);
     expect(countWords("hello world", "definitely-not-a-locale")).toBe(2);
-  });
-
-  it("formats local stats dates as YYYY-MM-DD", () => {
-    expect(toLocalStatsDate(new Date(2026, 2, 29, 9, 15, 0))).toBe(
-      "2026-03-29",
-    );
   });
 });

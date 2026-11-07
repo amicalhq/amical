@@ -37,13 +37,13 @@ export function DictationTestScreen({
   const { t } = useTranslation();
   const { isRecording } = useOnboardingDictation();
   const { data: shortcuts } = api.settings.getShortcuts.useQuery();
-  const configured = shortcuts?.pushToTalk ?? [];
+  const configured = shortcuts?.pushToTalk[0] ?? [];
   const screen = {
     email: OnboardingScreen.DictationEmail,
     notes: OnboardingScreen.DictationNotes,
     simple: OnboardingScreen.DictationLocal,
   }[variant];
-  const ns = `onboarding.dictationTest.${variant}`;
+  const ns = `onboarding.dictationTest.${variant}` as const;
 
   const [text, setText] = useState("");
   const canContinue = text.trim().length > 0;

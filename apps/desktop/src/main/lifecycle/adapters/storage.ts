@@ -1,0 +1,226 @@
+import { runPromise as runTelemetryPromise } from "../../runtime/telemetry-runtime";
+import { expectObligation } from "../../telemetry/dictation-trace";
+import { unlink } from "node:fs/promises";
+import { Effect } from "effect";
+import { logger } from "../../logger";
+import {
+  deleteProvisionalTranscription,
+  insertSettledTranscription,
+  stampTranscriptionDisposition,
+} from "../../../db/transcriptions";
+import { countWords } from "../../../utils/dictation-stats";
+import {
+  createSessionWork,
+  ensuringFact,
+  type SessionWork,
+} from "../effect/session-work";
+import type { LifecycleFactSink, StoragePort } from "../ports";
+import { REAL_TIMER_HOST, type ShellTimerHost } from "../shell";
+import type { SealedOutcome, SessionId } from "../types";
+import type { CustodyOutcome } from "./recorder";
+
+/**
+ * StoragePort — stamps the sealed outcome onto the session's custody row
+ * (record before reveal, R7).
+ *
+ * Custody-ordered (D25): every commit first waits (bounded) for the
+ * session's WAV writer to settle. On timeout or unknown custody, settlement
+ * proceeds: retained rows keep their audio reference, and discard still
+ * attempts deletion. A fallback stamp can therefore expose unfinished audio
+ * and exclude it from startup recovery; discard can race an active writer.
+ * A known writer failure detaches the audio and attempts to unlink it. When the
+ * provisional row itself is missing (insert failed, or custody never
+ * opened), retained outcomes insert a settled row directly — a delivered
+ * transcript can never vanish from history, and every retained outcome
+ * leaves its terminal row (§3.4).
+ *
+ * Fate mapping, carried from v1 persistence semantics:
+ *   success   → settle text, keep audio, count words + transcription
+ *   empty     → settle,      keep audio, count the transcription (zero words)
+ *   failure   → settle + failureReason, keep audio, count the transcription
+ *   dismissed → settle,      keep audio, no stats (deliberate discard)
+ *   discard   → delete the row and its audio; the session never happened
+ *
+ * storageFinished fires on failure too (D15) — the machine's course is
+ * identical, and a known failure must not masquerade as a wedged port;
+ * repair stays the port's business (one background retry, then the
+ * startup sweep as ultimate net).
+ */
+export function createStorageAdapter(
+  sink: LifecycleFactSink,
+  options?: {
+    timers?: ShellTimerHost;
+    repairDelayMs?: number;
+    /** Resolves with what custody holds once the WAV writer closed (D25). */
+    awaitCustodySettled?: (session: SessionId) => Promise<CustodyOutcome>;
+    /** Upper bound on the custody wait; a wedged writer delays the stamp,
+     * never holds it hostage. */
+    custodySettleBoundMs?: number;
+    sessionWork?: SessionWork;
+    completionMetaFor?: (
+      session: SessionId,
+    ) => Record<string, unknown> | undefined;
+    releaseCompletionMeta?: (session: SessionId) => void;
+  },
+): StoragePort {
+  const timers = options?.timers ?? REAL_TIMER_HOST;
+  const repairDelayMs = options?.repairDelayMs ?? 5_000;
+  const custodySettleBoundMs = options?.custodySettleBoundMs ?? 10_000;
+  const sessionWork = options?.sessionWork ?? createSessionWork({ timers });
+
+  /** null = custody state unknown (no waiter, rejected wait, or timeout).
+   * Retained outcomes keep their audio reference; discard still deletes. */
+  async function settleCustody(
+    session: SessionId,
+  ): Promise<CustodyOutcome | null> {
+    const wait = options?.awaitCustodySettled?.(session);
+    if (!wait) return null;
+    // A race, not a hand-rolled latch: the loser is interrupted, and the
+    // sleep's canceller clears its port timer (armed-set parity, E2).
+    const read = Effect.tryPromise({
+      try: () => wait,
+      catch: () => null,
+    }).pipe(Effect.catch(() => Effect.succeed<CustodyOutcome | null>(null)));
+    const bound = sessionWork.sleep(custodySettleBoundMs).pipe(
+      Effect.tap(() =>
+        Effect.sync(() =>
+          logger.audio.error("Custody settle bound hit; stamping anyway", {
+            sessionId: session,
+          }),
+        ),
+      ),
+      Effect.as<CustodyOutcome | null>(null),
+    );
+    return runTelemetryPromise(Effect.race(read, bound));
+  }
+
+  async function settleRetained(
+    session: SessionId,
+    sealed: Exclude<SealedOutcome, { kind: "discard" }>,
+    custody: CustodyOutcome | null,
+  ): Promise<void> {
+    const text = sealed.kind === "success" ? sealed.text : undefined;
+    const completedWordCount =
+      sealed.kind === "success" ? countWords(sealed.text) : 0;
+    const stats =
+      sealed.kind === "dismissed"
+        ? undefined
+        : { wordCount: completedWordCount, transcriptionCount: 1 };
+    const completionMeta =
+      sealed.kind === "success"
+        ? options?.completionMetaFor?.(session)
+        : undefined;
+    const metaPatch =
+      sealed.kind === "failure"
+        ? { failureReason: sealed.cause }
+        : completionMeta;
+    // A broken WAV must never be advertised by a settled row.
+    const stripAudio = custody !== null && !custody.wavOk;
+
+    const row = await stampTranscriptionDisposition(session, {
+      disposition: sealed.kind,
+      text,
+      metaPatch,
+      ...(stats ? { stats } : {}),
+      ...(stripAudio ? { audioFile: null } : {}),
+      ...(custody?.audioDurationMs
+        ? {
+            audioDurationMs: custody.audioDurationMs,
+          }
+        : {}),
+    });
+
+    if (!row) {
+      // No provisional row (insert failed, or custody never opened): every
+      // retained outcome still leaves its terminal row (§3.4) — a pasted
+      // transcript must never vanish from history.
+      await insertSettledTranscription({
+        sessionId: session,
+        disposition: sealed.kind,
+        text,
+        metaPatch,
+        ...(stats ? { stats } : {}),
+        audioFile: custody !== null && custody.wavOk ? custody.audioFile : null,
+        ...(custody?.audioDurationMs
+          ? {
+              audioDurationMs: custody.audioDurationMs,
+            }
+          : {}),
+      });
+    }
+
+    if (stripAudio && custody.audioFile) {
+      await unlink(custody.audioFile).catch(() => {
+        // Best-effort: the broken file may not exist at all.
+      });
+    }
+  }
+
+  async function commitSealed(
+    session: SessionId,
+    sealed: SealedOutcome,
+  ): Promise<void> {
+    const custody = await settleCustody(session);
+
+    if (sealed.kind === "discard") {
+      const row = await deleteProvisionalTranscription(session);
+      const audioFile = row?.audioFile ?? custody?.audioFile ?? null;
+      if (audioFile) {
+        // The bounded wait can expire while the writer still owns the file.
+        await unlink(audioFile).catch(() => {
+          // Missing file is an acceptable end state for a discard.
+        });
+      }
+      options?.releaseCompletionMeta?.(session);
+      return;
+    }
+
+    await settleRetained(session, sealed, custody);
+    options?.releaseCompletionMeta?.(session);
+  }
+
+  return {
+    commit(session, sealed): void {
+      // Settlement and stats share one transaction and obligation fiber.
+      // Its ensuring fact is storageFinished on BOTH paths (D15) — a failure must
+      // not look like a wedged port. The fact belongs to the FIRST attempt
+      // only: the repair retry (raw timer, app-level, quarantine-lite)
+      // never re-emits, and the startup sweep stays the ultimate net.
+      const attempt = Effect.tryPromise({
+        try: () => commitSealed(session, sealed),
+        catch: (error) => error,
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            logger.transcription.error("Lifecycle commit failed", {
+              sessionId: session,
+              sealedKind: sealed.kind,
+              error,
+            });
+            timers.set(repairDelayMs, () => {
+              void commitSealed(session, sealed).catch((repairError) => {
+                options?.releaseCompletionMeta?.(session);
+                logger.transcription.error(
+                  "Lifecycle commit repair failed; startup recovery will settle the row",
+                  { sessionId: session, error: repairError },
+                );
+              });
+            });
+          }),
+        ),
+      );
+      expectObligation(session, "storage.commit");
+      sessionWork.runObligation(
+        session,
+        ensuringFact(
+          attempt.pipe(
+            Effect.withSpan("storage.commit", {
+              attributes: { sessionId: session },
+            }),
+          ),
+          () => sink({ type: "storageFinished", session }),
+        ),
+      );
+    },
+  };
+}

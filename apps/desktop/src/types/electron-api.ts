@@ -1,3 +1,7 @@
+import type { NoteSaveOrigin } from "../notes/types";
+import type { AudioCaptureInfo } from "./audio-capture";
+import type { NoteBody, NoteSaveResult, NoteBodyChange } from "../notes/types";
+
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
@@ -16,7 +20,12 @@ export interface ElectronAPI {
   onForceStopMediaRecorder: (callback: () => void) => (() => void) | void;
 
   // Methods called from renderer to main become async (invoke/handle)
-  sendAudioChunk: (chunk: Float32Array, isFinalChunk: boolean) => Promise<void>;
+  sendAudioChunk: (
+    sessionId: string,
+    chunk: Float32Array,
+    isFinalChunk: boolean,
+    captureInfo?: AudioCaptureInfo,
+  ) => Promise<void>;
 
   // Model Management API (moved to tRPC)
   // Transcription Database API (moved to tRPC)
@@ -41,9 +50,15 @@ export interface ElectronAPI {
   // External link handling
   openExternal: (url: string) => Promise<void>;
 
-  // Notes API - Yjs synchronization only
+  // Local Markdown note persistence
   notes: {
-    saveYjsUpdate: (noteId: number, update: ArrayBuffer) => Promise<void>;
-    loadYjsUpdates: (noteId: number) => Promise<ArrayBuffer[]>;
+    loadBody: (noteId: string) => NoteBody;
+    saveBody: (
+      noteId: string,
+      markdown: string,
+      expectedRemoteVersion?: number | null,
+      origin?: NoteSaveOrigin,
+    ) => NoteSaveResult;
+    onBodyChange: (callback: (change: NoteBodyChange) => void) => () => void;
   };
 }

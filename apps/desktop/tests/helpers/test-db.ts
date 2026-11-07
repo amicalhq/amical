@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { migrateDatabase } from "@/db/migrate";
 import * as schema from "@db/schema";
 import path from "node:path";
 import fs from "fs-extra";
@@ -54,7 +54,7 @@ export async function createTestDatabase(
       );
     } else {
       try {
-        migrate(db, {
+        migrateDatabase(db, {
           migrationsFolder: migrationsPath,
         });
       } catch (error) {
@@ -72,12 +72,16 @@ export async function createTestDatabase(
     },
     clear: async () => {
       // Clear all tables
+      db.delete(schema.activityOutbox).run();
+      db.delete(schema.activityMaterializationState).run();
       db.delete(schema.syncOutbox).run();
       db.delete(schema.syncItemState).run();
       db.delete(schema.syncCollectionState).run();
+      db.delete(schema.syncScopeState).run();
       db.delete(schema.syncClientState).run();
       db.delete(schema.transcriptions).run();
-      db.delete(schema.dailyStats).run();
+      db.delete(schema.dictationStats).run();
+      db.insert(schema.dictationStats).values({ scope: "device" }).run();
       db.delete(schema.vocabulary).run();
       db.delete(schema.snippets).run();
       db.delete(schema.models).run();
