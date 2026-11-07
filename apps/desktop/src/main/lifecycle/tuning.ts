@@ -50,7 +50,7 @@ export function wedgeBudgetMs(tuning: LifecycleTuning): number {
 export const DEFAULT_LIFECYCLE_TUNING: LifecycleTuning = {
   stageBoundsMs: {
     starting: 10_000, // v1 had no start bound; matches the stop-recovery order
-    recording: 6 * 60 * 1000, // v1 RECORDING_MAX_DURATION
+    recording: 15 * 60 * 1000, // v1 RECORDING_MAX_DURATION
     resolving: 2 * 60 * 1000, // full stop-drain and transcription resolution window
     committing: 3_000, // R7 commit grace: local write, then degrade + repair
     staging: 5_000, // paste/draft staging incl. the 2.5s draft capture barrier
@@ -59,7 +59,7 @@ export const DEFAULT_LIFECYCLE_TUNING: LifecycleTuning = {
   drainMs: 3_000, // v1 folded this into the 10s stop recovery wait
   pressWindowMs: 500, // v1 QUICK_PRESS_THRESHOLD
   quickWindowMs: 500,
-  longRecordingReminderMs: 5 * 60 * 1000, // v1 RECORDING_WARNING_TIMEOUT
+  longRecordingReminderMs: 14 * 60 * 1000, // v1 RECORDING_WARNING_TIMEOUT
   emptyNoticeMinRecordingMs: 3_500, // v1 empty-transcript notice gate
   commitRepairDelayMs: 5_000,
 };

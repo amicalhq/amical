@@ -75,9 +75,9 @@ export interface GrpcFinalTranscript {
 
 const TRACE_ID_HEADER = "x-trace-id";
 const AUTHORIZATION_HEADER = "authorization";
-// Desktop recordings auto-stop at 6 minutes; keep the RPC deadline above that
+// Desktop recordings auto-stop at 15 minutes; keep the RPC deadline above that
 // ceiling so the server, not the transport, handles normal session completion.
-const STREAM_DEADLINE_MS = 7 * 60 * 1000;
+const STREAM_DEADLINE_MS = 16 * 60 * 1000;
 const KEEPALIVE_TIME_MS = 5 * 1000;
 const KEEPALIVE_TIMEOUT_MS = 3 * 1000;
 const MAX_GRPC_MESSAGE_BYTES = 4 * 1024 * 1024;
