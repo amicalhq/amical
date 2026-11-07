@@ -420,7 +420,11 @@ export class WhisperProvider implements TranscriptionEngine {
     return this.resourceMutex.runExclusive(async () => {
       this.assertNotDisposed();
       const worker = await this.initializeWhisperResource(modelPath);
+      // One language forces it; multiple drives constrained auto-detection
+      // in the addon; empty/undefined means auto-detect.
+      const languages = localWhisperLanguages(context.languages, modelPath);
       const initialPrompt = this.generateInitialPrompt(
+        languages,
         context.vocabulary,
         context.aggregatedTranscription,
         context.accessibilityContext,
@@ -429,9 +433,7 @@ export class WhisperProvider implements TranscriptionEngine {
       const result = await worker.exec<TranscriptionOutput>("transcribeAudio", [
         aggregatedAudio,
         {
-          // One language forces it; multiple drives constrained auto-detection
-          // in the addon; empty/undefined means auto-detect.
-          languages: localWhisperLanguages(context.languages, modelPath),
+          languages,
           initial_prompt: initialPrompt,
           suppress_blank: true,
           suppress_non_speech_tokens: true,
@@ -474,11 +476,13 @@ export class WhisperProvider implements TranscriptionEngine {
   }
 
   private generateInitialPrompt(
+    languages?: readonly string[],
     vocabulary?: readonly string[],
     aggregatedTranscription?: string,
     accessibilityContext?: TranscribeContext["accessibilityContext"],
   ): string {
     const prompt = buildWhisperPrompt({
+      languages,
       vocabulary,
       previousTranscription: aggregatedTranscription,
       beforeText:

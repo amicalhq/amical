@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { GetAccessibilityContextResult } from "@amical/types";
 
 const workerMocks = vi.hoisted(() => ({
   construct: vi.fn(),
@@ -128,6 +129,47 @@ describe("WhisperProvider sessions", () => {
 
     return modelBySample;
   };
+
+  it.each([
+    { selected: ["ru"], decoded: ["ru"] },
+    { selected: ["zh-Hans", "yue"], decoded: ["zh"] },
+  ])(
+    "omits target-app text for decoder language $decoded",
+    async ({ selected, decoded }) => {
+      const { buildWhisperPrompt } = await vi.importActual<
+        typeof import("../../src/pipeline/providers/transcription/whisper-prompt")
+      >("../../src/pipeline/providers/transcription/whisper-prompt");
+      processingMocks.buildWhisperPrompt.mockImplementationOnce(
+        buildWhisperPrompt,
+      );
+
+      const { provider } = createProvider();
+      const session = provider.openSession({ sessionId: "pinned-language" });
+      const context = {
+        languages: selected,
+        vocabulary: ["Amical"],
+        accessibilityContext: {
+          context: {
+            textSelection: { preSelectionText: "Write a message in English" },
+          },
+        } as unknown as GetAccessibilityContextResult,
+      };
+
+      await session.transcribe({
+        audioData: new Float32Array([1]),
+        context,
+      });
+      await session.flush(context);
+
+      expect(workerMocks.exec).toHaveBeenCalledWith("transcribeAudio", [
+        expect.any(Float32Array),
+        expect.objectContaining({
+          languages: decoded,
+          initial_prompt: "Amical",
+        }),
+      ]);
+    },
+  );
 
   it("isolates buffered audio and cancellation between sessions", async () => {
     const { provider } = createProvider();
@@ -693,6 +735,7 @@ describe("WhisperProvider sessions", () => {
     expect(Array.from(rawAudio as Float32Array)).toEqual([0.5, 0.25]);
     expect(vadProbabilities).toEqual([0.8, 0.6]);
     expect(processingMocks.buildWhisperPrompt).toHaveBeenCalledWith({
+      languages: ["en", "hi"],
       vocabulary: ["Amical"],
       previousTranscription: "prior words",
       beforeText: undefined,
