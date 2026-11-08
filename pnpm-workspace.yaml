@@ -4,3 +4,8 @@ packages:
   - "packages/**"
   - "!packages/**/whisper.cpp/**"
   - "!apps/www"
+
+# pnpm 11 no longer reads these settings from .npmrc. Electron Forge needs a
+# hoisted node_modules layout. Keep the values the same as in .npmrc.
+nodeLinker: hoisted
+shamefullyHoist: true
