@@ -71,6 +71,17 @@ type FetchedModel = Pick<
 
 const PROVIDER_REQUEST_TIMEOUT_MS = 10_000;
 
+// Best-first order for picking a local model automatically: at startup, after
+// logout or deletion, and when transcribing with no model selected.
+const LOCAL_MODEL_PREFERENCE = [
+  "whisper-large-v3-turbo",
+  "whisper-large-v3",
+  "whisper-medium",
+  "whisper-small",
+  "whisper-base",
+  "whisper-tiny",
+];
+
 function getProviderIdentity(provider: RemoteProvider) {
   const providerType = getRemoteProviderType(provider);
 
@@ -298,17 +309,8 @@ class ModelService extends EventEmitter {
             const downloadedModelIds = Object.keys(downloadedModels);
 
             if (downloadedModelIds.length > 0) {
-              const preferredOrder = [
-                "whisper-large-v3-turbo",
-                "whisper-large-v3",
-                "whisper-medium",
-                "whisper-small",
-                "whisper-base",
-                "whisper-tiny",
-              ];
-
               let newModelId = downloadedModelIds[0];
-              for (const candidateId of preferredOrder) {
+              for (const candidateId of LOCAL_MODEL_PREFERENCE) {
                 if (downloadedModels[candidateId]) {
                   newModelId = candidateId;
                   break;
@@ -348,16 +350,7 @@ class ModelService extends EventEmitter {
 
         if (downloadedModelCount > 0) {
           // Auto-select the best available model using the preferred order
-          const preferredOrder = [
-            "whisper-large-v3-turbo",
-            "whisper-large-v3",
-            "whisper-medium",
-            "whisper-small",
-            "whisper-base",
-            "whisper-tiny",
-          ];
-
-          for (const candidateId of preferredOrder) {
+          for (const candidateId of LOCAL_MODEL_PREFERENCE) {
             if (downloadedModels[candidateId]) {
               await this.applySpeechModelSelection(
                 candidateId,
@@ -406,17 +399,8 @@ class ModelService extends EventEmitter {
 
             if (downloadedModelIds.length > 0) {
               // Find the best local model from preferred order
-              const preferredOrder = [
-                "whisper-large-v3-turbo",
-                "whisper-large-v3",
-                "whisper-medium",
-                "whisper-small",
-                "whisper-base",
-                "whisper-tiny",
-              ];
-
               let newModelId = downloadedModelIds[0]; // Fallback to first available
-              for (const candidateId of preferredOrder) {
+              for (const candidateId of LOCAL_MODEL_PREFERENCE) {
                 if (downloadedModels[candidateId]) {
                   newModelId = candidateId;
                   break;
@@ -751,17 +735,9 @@ class ModelService extends EventEmitter {
     if (wasSelected) {
       // Try to auto-select next best model
       const remainingModels = await this.getValidDownloadedModels();
-      const preferredOrder = [
-        "whisper-large-v3-turbo",
-        "whisper-large-v1",
-        "whisper-medium",
-        "whisper-small",
-        "whisper-base",
-        "whisper-tiny",
-      ];
 
       let autoSelected = false;
-      for (const candidateId of preferredOrder) {
+      for (const candidateId of LOCAL_MODEL_PREFERENCE) {
         if (remainingModels[candidateId]) {
           await this.applySpeechModelSelection(
             candidateId,
@@ -962,16 +938,7 @@ class ModelService extends EventEmitter {
     }
 
     // Otherwise, find the best available model (prioritize by quality)
-    const preferredOrder = [
-      "whisper-large-v3-turbo",
-      "whisper-large-v1",
-      "whisper-medium",
-      "whisper-small",
-      "whisper-base",
-      "whisper-tiny",
-    ];
-
-    for (const modelId of preferredOrder) {
+    for (const modelId of LOCAL_MODEL_PREFERENCE) {
       const model = downloadedModels[modelId];
       if (model?.localPath) {
         return model.localPath;
