@@ -1,0 +1,13 @@
+diff --git a/lib/appdmg.js b/lib/appdmg.js
+index xxxxxxx..xxxxxxx 100644
+--- a/lib/appdmg.js
++++ b/lib/appdmg.js
+@@ -227,7 +227,7 @@
+       if (err) return next(err)
+ 
+       pipeline.addCleanupStep('unmount-temporary-image', 'Unmounting temporary image', function (next) {
+-        hdiutil.detach(temporaryMountPath, next)
++        hdiutil.detach(global.temporaryImagePath, next)
+       })
+ 
+       global.temporaryMountPath = temporaryMountPath
