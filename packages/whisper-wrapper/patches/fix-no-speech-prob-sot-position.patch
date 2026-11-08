@@ -1,8 +1,8 @@
 diff --git a/src/whisper.cpp b/src/whisper.cpp
-index 33e556c4..9cafc776 100644
+index 1675f33a..43a9d28b 100644
 --- a/src/whisper.cpp
 +++ b/src/whisper.cpp
-@@ -7139,20 +7139,30 @@ int whisper_full_with_state(
+@@ -7338,20 +7338,30 @@ int whisper_full_with_state(
  
                  whisper_batch_prep_legacy(state->batch, prompt.data(), prompt.size(), 0, 0);
  

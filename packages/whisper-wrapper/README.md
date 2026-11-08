@@ -87,7 +87,7 @@ already-applied patches are skipped.
 
 ### fix-no-speech-prob-sot-position.patch
 
-whisper.cpp (as of v1.8.2 and current master) computes `no_speech_prob` from the
+whisper.cpp (as of v1.9.5 and current master) computes `no_speech_prob` from the
 wrong decoder position. It reads logits at the **last prompt token** (e.g.
 `<|notimestamps|>`), where the model predicts the first word of text. The original
 Python whisper reads from the **SOT position**, where the model decides whether
