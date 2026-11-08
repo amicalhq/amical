@@ -12,7 +12,7 @@ interface WorkerMessage {
 
 interface SerializedFloat32Array {
   __type: "Float32Array";
-  data: number[];
+  base64: string;
 }
 
 type MethodArg = SerializedFloat32Array | unknown;
@@ -165,10 +165,15 @@ process.on("message", async (message: WorkerMessage) => {
         "__type" in arg &&
         arg.__type === "Float32Array"
       ) {
-        const serialized = arg as SerializedFloat32Array;
-        if (Array.isArray(serialized.data)) {
-          return new Float32Array(serialized.data);
-        }
+        // Copy into a fresh buffer: a small Buffer can start at an offset
+        // that is not a multiple of 4, which a Float32Array view rejects.
+        const bytes = Buffer.from(
+          (arg as SerializedFloat32Array).base64,
+          "base64",
+        );
+        const audio = new Float32Array(bytes.byteLength / 4);
+        new Uint8Array(audio.buffer).set(bytes);
+        return audio;
       }
       return arg;
     });

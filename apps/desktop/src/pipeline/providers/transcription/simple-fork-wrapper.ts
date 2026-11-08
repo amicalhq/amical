@@ -140,12 +140,18 @@ export class SimpleForkWrapper {
       const id = this.messageId++;
       this.pendingCalls.set(id, { resolve, reject });
 
-      // Convert Float32Array to regular array for IPC
+      // Send Float32Array as one base64 string, not a JSON number array:
+      // about 6 ms instead of 33 ms per 30 s chunk. Advanced serialization is
+      // no option: Electron's V8 writes a format the bundled Node cannot read.
       const serializedArgs = args.map((arg) => {
         if (arg instanceof Float32Array) {
           return {
             __type: "Float32Array",
-            data: Array.from(arg),
+            base64: Buffer.from(
+              arg.buffer,
+              arg.byteOffset,
+              arg.byteLength,
+            ).toString("base64"),
           };
         }
         return arg;
