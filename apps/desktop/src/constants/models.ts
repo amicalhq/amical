@@ -1,7 +1,9 @@
+export type LocalSpeechEngine = "whisper" | "parakeet";
+
 export interface AvailableWhisperModel {
   id: string;
   name: string;
-  type: "whisper" | "tts" | "other";
+  type: LocalSpeechEngine | "tts" | "other";
   size: number; // Approximate size in bytes (for UI display only)
   sizeFormatted: string; // Human readable size (e.g., "~39 MB")
   description: string;
@@ -341,7 +343,49 @@ export const AVAILABLE_MODELS: AvailableWhisperModel[] = [
     provider: "Local",
     providerIcon: "/icons/models/local.svg",
   },
+  {
+    id: "parakeet-tdt-0.6b-v3",
+    name: "Parakeet v3",
+    type: "parakeet",
+    description:
+      "Very fast and accurate, with punctuation. 25 European languages.",
+    checksum: "0271fffe0d96faa791d97348837857c9a0092b33",
+    filename: "ggml-parakeet-tdt-0.6b-v3-q8_0.bin",
+    downloadUrl:
+      "https://huggingface.co/ggml-org/parakeet-GGUF/resolve/35156454d1a39de06863303dd209fd2bed6ee079/ggml-parakeet-tdt-0.6b-v3-q8_0.bin",
+    size: 668757119,
+    sizeFormatted: "~640 MB",
+    modelSize: "~640 MB",
+    features: [
+      {
+        icon: "zap",
+        tooltip: "Very fast transcription",
+      },
+      {
+        icon: "languages",
+        tooltip:
+          "25 European languages (detected automatically): bg, cs, da, de, el, en, es, et, fi, fr, hr, hu, it, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, uk",
+      },
+      {
+        icon: "case-sensitive",
+        tooltip: "Punctuation and capitalization",
+      },
+    ],
+    speed: 4.8,
+    accuracy: 4.4,
+    setup: "offline",
+    provider: "Local",
+    providerIcon: "/icons/models/local.svg",
+  },
 ];
+
+/** Runtime for a local speech model id. Unknown ids and Whisper → whisper. */
+export function localSpeechEngine(modelId: string): LocalSpeechEngine {
+  return AVAILABLE_MODELS.find((model) => model.id === modelId)?.type ===
+    "parakeet"
+    ? "parakeet"
+    : "whisper";
+}
 
 /** Look up an available model's display name by id (e.g. for download UI). */
 export function getAvailableModelName(modelId: string): string | undefined {
@@ -350,12 +394,14 @@ export function getAvailableModelName(modelId: string): string | undefined {
 
 /**
  * The installed on-device speech model, if any. Single home for the "what
- * counts as a local model" rule (currently the whisper-* family).
+ * counts as a local model" rule (every offline registry entry).
  */
 export function findInstalledLocalModel<T extends { id?: string }>(
   downloaded: Record<string, T> | undefined,
 ): T | undefined {
   return Object.values(downloaded ?? {}).find((model) =>
-    model.id?.startsWith("whisper-"),
+    AVAILABLE_MODELS.some(
+      (available) => available.id === model.id && available.setup === "offline",
+    ),
   );
 }

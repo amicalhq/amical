@@ -97,19 +97,23 @@ describe("WhisperProvider sessions", () => {
   });
 
   const createProvider = () => {
-    let bestAvailableModelPath = "/models/whisper.bin";
+    let bestAvailableModel = { localPath: "/models/whisper.bin" };
     const modelService = {
-      getBestAvailableModelPath: vi.fn(async () => bestAvailableModelPath),
-      getValidDownloadedModels: vi.fn(async () => ({
-        "model-a": { localPath: "/models/a.bin" },
-        "model-b": { localPath: "/models/b.bin" },
-      })),
+      getBestAvailableModel: vi.fn(async () => bestAvailableModel),
+      getValidDownloadedModels: vi.fn(
+        async (): Promise<
+          Record<string, { id?: string; localPath: string }>
+        > => ({
+          "model-a": { localPath: "/models/a.bin" },
+          "model-b": { localPath: "/models/b.bin" },
+        }),
+      ),
     };
     return {
       provider: new WhisperProvider(modelService as unknown as ModelService),
       modelService,
       selectBestAvailableModel(path: string) {
-        bestAvailableModelPath = path;
+        bestAvailableModel = { localPath: path };
       },
     };
   };
@@ -205,9 +209,36 @@ describe("WhisperProvider sessions", () => {
     for (const decodeIndex of decodeIndexes) {
       expect(calls[decodeIndex - 1]).toEqual([
         "initializeModel",
-        ["/models/a.bin"],
+        ["/models/a.bin", "whisper"],
       ]);
     }
+  });
+
+  it("loads Parakeet models with the parakeet engine", async () => {
+    const { provider, modelService } = createProvider();
+    modelService.getValidDownloadedModels.mockResolvedValue({
+      "parakeet-tdt-0.6b-v3": {
+        id: "parakeet-tdt-0.6b-v3",
+        localPath: "/models/parakeet-tdt-0.6b-v3",
+      },
+    });
+    const session = provider.openSession({
+      sessionId: "parakeet",
+      modelId: "parakeet-tdt-0.6b-v3",
+    });
+
+    await session.transcribe({
+      audioData: new Float32Array([1]),
+      context: { sessionId: "parakeet" },
+    });
+    await expect(session.flush({ sessionId: "parakeet" })).resolves.toEqual({
+      text: "1",
+    });
+
+    expect(workerMocks.exec).toHaveBeenCalledWith("initializeModel", [
+      "/models/parakeet-tdt-0.6b-v3",
+      "parakeet",
+    ]);
   });
 
   it("does not initialize the worker after cancellation during model lookup", async () => {
@@ -280,7 +311,7 @@ describe("WhisperProvider sessions", () => {
         audioData: new Float32Array([1]),
         context: { sessionId: "missing-model" },
       }),
-    ).rejects.toThrow("Selected Whisper model is unavailable: missing");
+    ).rejects.toThrow("Selected local model is unavailable: missing");
     expect(workerMocks.construct).not.toHaveBeenCalled();
   });
 
@@ -548,6 +579,7 @@ describe("WhisperProvider sessions", () => {
 
     expect(workerMocks.exec).not.toHaveBeenCalledWith("initializeModel", [
       "/models/b.bin",
+      "whisper",
     ]);
 
     releaseDecode();
@@ -555,6 +587,7 @@ describe("WhisperProvider sessions", () => {
     await expect(preload).resolves.toBeUndefined();
     expect(workerMocks.exec).toHaveBeenCalledWith("initializeModel", [
       "/models/b.bin",
+      "whisper",
     ]);
   });
 

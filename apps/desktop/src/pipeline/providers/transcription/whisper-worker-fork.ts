@@ -1,7 +1,14 @@
-// Worker process entry point for fork
-import { Whisper } from "@amical/whisper-wrapper";
+// Worker process entry point for fork.
+//
+// Packaged builds run this file from app.asar.unpacked on the bundled plain
+// Node binary, which cannot read app.asar. Import nothing at runtime that the
+// main process also imports: Rollup moves shared modules into a chunk that
+// stays inside app.asar, and the worker then fails to start. Type-only imports
+// are fine.
+import { Parakeet, Whisper } from "@amical/whisper-wrapper";
 import { shouldDropSegment } from "../../utils/segment-filter";
 import { resolveWhisperGpuDecision } from "./whisper-gpu-policy";
+import type { LocalSpeechEngine } from "../../../constants/models";
 
 // Type definitions for IPC communication
 interface WorkerMessage {
@@ -50,36 +57,45 @@ const logger = {
   },
 };
 
-let whisperInstance: Whisper | null = null;
-let currentModelPath: string | null = null;
+let loaded: { path: string; model: Whisper | Parakeet } | null = null;
+
+async function freeLoadedModel(): Promise<void> {
+  const current = loaded;
+  loaded = null;
+  await current?.model.free();
+}
 
 // Worker methods
 const methods = {
-  async initializeModel(modelPath: string): Promise<void> {
-    if (whisperInstance && currentModelPath === modelPath) {
+  async initializeModel(
+    modelPath: string,
+    engine: LocalSpeechEngine,
+  ): Promise<void> {
+    if (loaded?.path === modelPath) {
       return; // Already initialized with same model
     }
 
-    // Cleanup existing instance
-    if (whisperInstance) {
-      await whisperInstance.free();
-      whisperInstance = null;
-    }
+    await freeLoadedModel();
 
+    // Parakeet runs on the same ggml GPU backends as Whisper.
     const gpuDecision = await resolveWhisperGpuDecision();
     logger.transcription.info(
-      `Whisper GPU ${gpuDecision.useGpu ? "enabled" : "disabled"}: ${gpuDecision.reason}`,
+      `Local model GPU ${gpuDecision.useGpu ? "enabled" : "disabled"}: ${gpuDecision.reason}`,
     );
 
-    whisperInstance = new Whisper(modelPath, { gpu: gpuDecision.useGpu });
+    let model: Whisper | Parakeet;
     try {
-      await whisperInstance.load();
+      // The constructors load the model file.
+      model =
+        engine === "parakeet"
+          ? new Parakeet(modelPath, { gpu: gpuDecision.useGpu })
+          : new Whisper(modelPath, { gpu: gpuDecision.useGpu });
     } catch (e) {
-      logger.transcription.error("Failed to load Whisper model:", e);
+      logger.transcription.error(`Failed to load ${engine} model:`, e);
       throw e;
     }
-    currentModelPath = modelPath;
-    logger.transcription.info(`Initialized with model: ${modelPath}`);
+    loaded = { path: modelPath, model };
+    logger.transcription.info(`Initialized ${engine} model: ${modelPath}`);
   },
 
   async transcribeAudio(
@@ -93,8 +109,16 @@ const methods = {
       format?: string;
     },
   ): Promise<{ text: string; detectedLanguage?: string }> {
-    if (!whisperInstance) {
-      throw new Error("Whisper instance is not initialized");
+    const model = loaded?.model;
+    if (model instanceof Parakeet) {
+      // No prompt, language or padding input; Parakeet detects the language
+      // but does not report it. One leading space, like a Whisper segment,
+      // because callers join chunks without a separator.
+      const text = model.transcribe(aggregatedAudio).trim();
+      return { text: text ? ` ${text}` : "" };
+    }
+    if (!model) {
+      throw new Error("Local model is not initialized");
     }
 
     // Pad audio with silence to ensure at least 1 second of audio (16k samples)
@@ -107,10 +131,7 @@ const methods = {
       aggregatedAudio = padded;
     }
 
-    const { result } = await whisperInstance.transcribe(
-      aggregatedAudio,
-      options,
-    );
+    const { result } = await model.transcribe(aggregatedAudio, options);
     const transcription = await result;
 
     // Filter out hallucination/no-speech segments
@@ -144,11 +165,7 @@ const methods = {
   },
 
   async dispose(): Promise<void> {
-    if (whisperInstance) {
-      await whisperInstance.free();
-      whisperInstance = null;
-      currentModelPath = null;
-    }
+    await freeLoadedModel();
   },
 };
 

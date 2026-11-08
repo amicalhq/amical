@@ -23,6 +23,10 @@ import { isLocalTranscriptionSupported } from "../../../utils/os-version";
 import { extractSpeechFromVad } from "../../utils/vad-audio-filter";
 import { buildWhisperPrompt } from "./whisper-prompt";
 import { baseLanguageCode } from "../../../constants/languages";
+import {
+  localSpeechEngine,
+  type LocalSpeechEngine,
+} from "../../../constants/models";
 import { Mutex } from "async-mutex";
 
 /**
@@ -51,11 +55,16 @@ const MAX_SILENCE_DURATION_MS = 3000;
 const SAMPLE_RATE = 16000;
 const SPEECH_PROBABILITY_THRESHOLD = 0.2;
 
+type LocalModel = {
+  path: string;
+  engine: LocalSpeechEngine;
+};
+
 type WhisperSessionRuntime = {
   assertAvailable(): void;
-  initialize(modelPath: string): Promise<void>;
+  initialize(model: LocalModel): Promise<void>;
   transcribeAudio(
-    modelPath: string,
+    model: LocalModel,
     audio: Float32Array,
     context: TranscribeContext,
   ): Promise<TranscriptionOutput>;
@@ -67,12 +76,12 @@ class WhisperProviderSession implements TranscriptionProviderSession {
   private frameBuffer: Float32Array[] = [];
   private frameBufferSpeechProbabilities: number[] = [];
   private currentSilenceFrameCount = 0;
-  private initializationPromise: Promise<string> | null = null;
+  private initializationPromise: Promise<LocalModel> | null = null;
   private cancelled = false;
 
   constructor(
     readonly sessionId: string,
-    private readonly modelPath: Promise<string>,
+    private readonly model: Promise<LocalModel>,
     private readonly runtime: WhisperSessionRuntime,
   ) {}
 
@@ -86,8 +95,8 @@ class WhisperProviderSession implements TranscriptionProviderSession {
     }
 
     this.runtime.assertAvailable();
-    const modelPath = await this.readyModelPath();
-    if (!modelPath || this.cancelled) {
+    const model = await this.readyModel();
+    if (!model || this.cancelled) {
       return { text: "" };
     }
     this.runtime.assertAvailable();
@@ -112,7 +121,7 @@ class WhisperProviderSession implements TranscriptionProviderSession {
       return { text: "" };
     }
 
-    return this.doTranscription(context, modelPath);
+    return this.doTranscription(context, model);
   }
 
   /**
@@ -127,15 +136,15 @@ class WhisperProviderSession implements TranscriptionProviderSession {
     }
 
     this.runtime.assertAvailable();
-    const modelPath = await this.readyModelPath();
-    if (!modelPath || this.cancelled || signal?.aborted) {
+    const model = await this.readyModel();
+    if (!model || this.cancelled || signal?.aborted) {
       return { text: "" };
     }
     this.runtime.assertAvailable();
 
     // The native decode cannot be interrupted mid-flight. The caller's
     // post-flush abort gate discards a result if cancellation arrives later.
-    return this.doTranscription(context, modelPath);
+    return this.doTranscription(context, model);
   }
 
   /**
@@ -146,19 +155,19 @@ class WhisperProviderSession implements TranscriptionProviderSession {
     this.resetBuffers();
   }
 
-  private ensureInitialized(): Promise<string> {
+  private ensureInitialized(): Promise<LocalModel> {
     if (!this.initializationPromise) {
-      this.initializationPromise = this.modelPath.then(async (modelPath) => {
+      this.initializationPromise = this.model.then(async (model) => {
         if (!this.cancelled) {
-          await this.runtime.initialize(modelPath);
+          await this.runtime.initialize(model);
         }
-        return modelPath;
+        return model;
       });
     }
     return this.initializationPromise;
   }
 
-  private async readyModelPath(): Promise<string | null> {
+  private async readyModel(): Promise<LocalModel | null> {
     try {
       return await this.ensureInitialized();
     } catch (error) {
@@ -171,7 +180,7 @@ class WhisperProviderSession implements TranscriptionProviderSession {
 
   private async doTranscription(
     context: TranscribeContext,
-    modelPath: string,
+    model: LocalModel,
   ): Promise<TranscriptionOutput> {
     try {
       const vadProbs = [...this.frameBufferSpeechProbabilities];
@@ -200,7 +209,7 @@ class WhisperProviderSession implements TranscriptionProviderSession {
       );
 
       const result = await this.runtime.transcribeAudio(
-        modelPath,
+        model,
         aggregatedAudio,
         context,
       );
@@ -214,7 +223,7 @@ class WhisperProviderSession implements TranscriptionProviderSession {
         throw error;
       }
       throw new LocalTranscriptionFailed({
-        message: `Whisper transcription failed: ${error instanceof Error ? error.message : error}`,
+        message: `Local transcription failed: ${error instanceof Error ? error.message : error}`,
         cause: error,
       });
     }
@@ -277,7 +286,8 @@ class WhisperProviderSession implements TranscriptionProviderSession {
 }
 
 /**
- * Long-lived local transcription engine.
+ * Long-lived local transcription engine for every local model family
+ * (whisper.cpp and Parakeet).
  *
  * The engine owns the reusable worker and loaded model. Each opened session
  * owns its own audio/VAD buffers and cancellation state.
@@ -296,16 +306,16 @@ export class WhisperProvider implements TranscriptionEngine {
     options: OpenTranscriptionSessionOptions,
   ): TranscriptionProviderSession {
     this.assertNotDisposed();
-    const modelPath = this.resolveModelPath(options.modelId);
+    const model = this.resolveModel(options.modelId);
     // Resolution starts when the session opens, which pins null/default
     // selection too. The session still observes the rejection on first use.
-    void modelPath.catch(() => undefined);
+    void model.catch(() => undefined);
 
-    return new WhisperProviderSession(options.sessionId, modelPath, {
+    return new WhisperProviderSession(options.sessionId, model, {
       assertAvailable: () => this.assertNotDisposed(),
-      initialize: (path) => this.initializeModel(path),
-      transcribeAudio: (path, audio, context) =>
-        this.transcribeAudio(path, audio, context),
+      initialize: (localModel) => this.initializeModel(localModel),
+      transcribeAudio: (localModel, audio, context) =>
+        this.transcribeAudio(localModel, audio, context),
     });
   }
 
@@ -325,19 +335,19 @@ export class WhisperProvider implements TranscriptionEngine {
    */
   async initializeWhisper(): Promise<void> {
     this.assertNotDisposed();
-    const modelPath = await this.resolveModelPath();
-    await this.initializeModel(modelPath);
+    const model = await this.resolveModel();
+    await this.initializeModel(model);
   }
 
-  private async initializeModel(modelPath: string): Promise<void> {
+  private async initializeModel(model: LocalModel): Promise<void> {
     await this.resourceMutex.runExclusive(async () => {
       this.assertNotDisposed();
-      await this.initializeWhisperResource(modelPath);
+      await this.initializeWhisperResource(model);
     });
   }
 
   private async initializeWhisperResource(
-    modelPath: string,
+    model: LocalModel,
   ): Promise<SimpleForkWrapper> {
     // On-device transcription requires macOS 15+ (the bundled bindings only
     // load there). Refuse before forking the worker so the native binding is
@@ -386,7 +396,7 @@ export class WhisperProvider implements TranscriptionEngine {
     }
 
     try {
-      await worker.exec("initializeModel", [modelPath]);
+      await worker.exec("initializeModel", [model.path, model.engine]);
     } catch (error) {
       if (this.workerWrapper === worker) {
         this.workerWrapper = null;
@@ -404,7 +414,7 @@ export class WhisperProvider implements TranscriptionEngine {
         throw error;
       }
       throw new WorkerInitFailed({
-        message: `Whisper model initialization failed: ${error instanceof Error ? error.message : error}`,
+        message: `Local model initialization failed: ${error instanceof Error ? error.message : error}`,
         cause: error,
       });
     }
@@ -413,13 +423,13 @@ export class WhisperProvider implements TranscriptionEngine {
   }
 
   private async transcribeAudio(
-    modelPath: string,
+    model: LocalModel,
     aggregatedAudio: Float32Array,
     context: TranscribeContext,
   ): Promise<TranscriptionOutput> {
     return this.resourceMutex.runExclusive(async () => {
       this.assertNotDisposed();
-      const worker = await this.initializeWhisperResource(modelPath);
+      const worker = await this.initializeWhisperResource(model);
       const initialPrompt = this.generateInitialPrompt(
         context.vocabulary,
         context.aggregatedTranscription,
@@ -431,7 +441,7 @@ export class WhisperProvider implements TranscriptionEngine {
         {
           // One language forces it; multiple drives constrained auto-detection
           // in the addon; empty/undefined means auto-detect.
-          languages: localWhisperLanguages(context.languages, modelPath),
+          languages: localWhisperLanguages(context.languages, model.path),
           initial_prompt: initialPrompt,
           suppress_blank: true,
           suppress_non_speech_tokens: true,
@@ -448,21 +458,21 @@ export class WhisperProvider implements TranscriptionEngine {
     });
   }
 
-  private async resolveModelPath(modelId?: string | null): Promise<string> {
-    const modelPath = modelId
-      ? (await this.modelService.getValidDownloadedModels())[modelId]?.localPath
-      : await this.modelService.getBestAvailableModelPath();
+  private async resolveModel(modelId?: string | null): Promise<LocalModel> {
+    const model = modelId
+      ? (await this.modelService.getValidDownloadedModels())[modelId]
+      : await this.modelService.getBestAvailableModel();
 
-    if (!modelPath) {
+    if (!model?.localPath) {
       throw new ModelMissing({
         message: modelId
-          ? `Selected Whisper model is unavailable: ${modelId}`
-          : "No Whisper models available. Please download a model first.",
+          ? `Selected local model is unavailable: ${modelId}`
+          : "No local models available. Please download a model first.",
         modelId: modelId ?? undefined,
       });
     }
 
-    return modelPath;
+    return { path: model.localPath, engine: localSpeechEngine(model.id) };
   }
 
   private assertNotDisposed(): void {

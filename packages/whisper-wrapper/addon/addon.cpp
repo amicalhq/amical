@@ -1,6 +1,7 @@
 #include "napi.h"
 
 #include "whisper.h"
+#include "parakeet.h"
 #include "common.h"
 #include "common-whisper.h"
 
@@ -12,6 +13,19 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#elif defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <bitset>
+#endif
 
 namespace {
 
@@ -490,12 +504,162 @@ Napi::Value full_transcribe(const Napi::CallbackInfo& info) {
   return build_segments(env, handle->ctx, cfg, pcmf32, pcmf32s);
 }
 
+// Parakeet (NVIDIA TDT) models, run by whisper.cpp's parakeet library.
+
+struct ParakeetHandle {
+  std::mutex mutex;
+  parakeet_context* ctx = nullptr;
+  bool freed = false;
+};
+
+// CPU threads for the Parakeet encoder: performance cores only, never more
+// threads than the CPU has. Efficiency cores and oversubscription slow ggml
+// down a lot (M4 Max: 8 threads 377 ms per 30 s, 12 threads 448 ms, 16
+// threads 80 s); on a CPU without efficiency cores every hyperthread helps
+// (i7-10700KF: 16 threads fastest).
+int default_parakeet_threads() {
+#if defined(__APPLE__)
+  int n = 0;
+  size_t len = sizeof(n);
+  if (sysctlbyname("hw.perflevel0.physicalcpu", &n, &len, nullptr, 0) == 0 && n > 0) {
+    return n;
+  }
+#elif defined(_WIN32)
+  // Logical processors of the cores with the highest efficiency class
+  // (higher = faster). On a CPU without efficiency cores that is all of them.
+  DWORD len = 0;
+  GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &len);
+  std::vector<char> buf(len);
+  if (len > 0 && GetLogicalProcessorInformationEx(
+                   RelationProcessorCore,
+                   reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buf.data()),
+                   &len)) {
+    int best_class = -1;
+    int threads = 0;
+    for (DWORD offset = 0; offset < len;) {
+      auto* core = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buf.data() + offset);
+      int logical = 0;
+      for (WORD g = 0; g < core->Processor.GroupCount; ++g) {
+        logical += static_cast<int>(
+          std::bitset<64>(static_cast<unsigned long long>(core->Processor.GroupMask[g].Mask)).count());
+      }
+      const int efficiency_class = core->Processor.EfficiencyClass;
+      if (efficiency_class > best_class) {
+        best_class = efficiency_class;
+        threads = logical;
+      } else if (efficiency_class == best_class) {
+        threads += logical;
+      }
+      offset += core->Size;
+    }
+    if (threads > 0) {
+      return threads;
+    }
+  }
+#endif
+  return std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+}
+
+ParakeetHandle* unwrap_parakeet_handle(const Napi::CallbackInfo& info) {
+  if (info.Length() < 1 || !info[0].IsExternal()) {
+    throw Napi::TypeError::New(info.Env(), "Invalid parakeet context handle");
+  }
+  return info[0].As<Napi::External<ParakeetHandle>>().Data();
+}
+
+void free_parakeet_locked(ParakeetHandle* handle) {
+  if (!handle->freed && handle->ctx) {
+    parakeet_free(handle->ctx);
+    handle->ctx = nullptr;
+    handle->freed = true;
+  }
+}
+
+Napi::Value parakeet_init_model(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsObject()) {
+    throw Napi::TypeError::New(env, "Expected init options object");
+  }
+  auto options = info[0].As<Napi::Object>();
+  if (!options.Has("model") || !options.Get("model").IsString()) {
+    throw Napi::TypeError::New(env, "Missing 'model' path");
+  }
+
+  std::string model = options.Get("model").As<Napi::String>();
+  parakeet_context_params cparams = parakeet_context_default_params();
+  if (options.Has("gpu")) {
+    cparams.use_gpu = options.Get("gpu").As<Napi::Boolean>();
+  }
+
+  parakeet_context* ctx = parakeet_init_from_file_with_params(model.c_str(), cparams);
+  if (ctx == nullptr) {
+    throw Napi::Error::New(env, "Failed to initialize parakeet context");
+  }
+
+  auto* handle = new ParakeetHandle();
+  handle->ctx = ctx;
+  return Napi::External<ParakeetHandle>::New(
+    env,
+    handle,
+    [](Napi::Env /*env*/, ParakeetHandle* ptr) {
+      if (!ptr) return;
+      {
+        std::lock_guard<std::mutex> guard(ptr->mutex);
+        free_parakeet_locked(ptr);
+      }
+      delete ptr;
+    });
+}
+
+Napi::Value parakeet_free_model(const Napi::CallbackInfo& info) {
+  ParakeetHandle* handle = unwrap_parakeet_handle(info);
+  std::lock_guard<std::mutex> guard(handle->mutex);
+  free_parakeet_locked(handle);
+  return info.Env().Undefined();
+}
+
+Napi::Value parakeet_transcribe(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 2 || !info[1].IsObject()) {
+    throw Napi::TypeError::New(env, "Expected arguments (handle, options)");
+  }
+  ParakeetHandle* handle = unwrap_parakeet_handle(info);
+  auto options = info[1].As<Napi::Object>();
+
+  std::vector<float> pcmf32 = extract_audio(env, options);
+  if (pcmf32.empty()) {
+    return Napi::String::New(env, "");
+  }
+
+  parakeet_full_params params = parakeet_full_default_params(PARAKEET_SAMPLING_GREEDY);
+  static const int n_threads = default_parakeet_threads();
+  params.n_threads = n_threads;
+
+  std::lock_guard<std::mutex> guard(handle->mutex);
+  if (handle->freed || handle->ctx == nullptr) {
+    throw Napi::Error::New(env, "Model has been freed");
+  }
+  if (parakeet_full(handle->ctx, params, pcmf32.data(), static_cast<int>(pcmf32.size())) != 0) {
+    throw Napi::Error::New(env, "parakeet_full failed");
+  }
+
+  std::string text;
+  const int n_segments = parakeet_full_n_segments(handle->ctx);
+  for (int i = 0; i < n_segments; ++i) {
+    text += parakeet_full_get_segment_text(handle->ctx, i);
+  }
+  return Napi::String::New(env, text);
+}
+
 } // namespace
 
 Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
   exports.Set("init", Napi::Function::New(env, init_model));
   exports.Set("full", Napi::Function::New(env, full_transcribe));
   exports.Set("free", Napi::Function::New(env, free_model));
+  exports.Set("parakeetInit", Napi::Function::New(env, parakeet_init_model));
+  exports.Set("parakeetFull", Napi::Function::New(env, parakeet_transcribe));
+  exports.Set("parakeetFree", Napi::Function::New(env, parakeet_free_model));
   return exports;
 }
 

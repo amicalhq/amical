@@ -52,3 +52,21 @@ export class Whisper {
     binding.free(this.ctx);
   }
 }
+
+/** NVIDIA Parakeet TDT model (GGUF), run by whisper.cpp's parakeet library. */
+export class Parakeet {
+  private ctx: any;
+
+  constructor(modelPath: string, opts?: WhisperOptions) {
+    this.ctx = binding.parakeetInit({ model: modelPath, ...opts });
+  }
+
+  /** Transcribe 16 kHz mono audio; returns the text of all segments. */
+  transcribe(audio: Float32Array): string {
+    return binding.parakeetFull(this.ctx, { audio });
+  }
+
+  free(): void {
+    binding.parakeetFree(this.ctx);
+  }
+}

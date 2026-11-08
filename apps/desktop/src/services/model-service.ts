@@ -80,6 +80,7 @@ const LOCAL_MODEL_PREFERENCE = [
   "whisper-small",
   "whisper-base",
   "whisper-tiny",
+  "parakeet-tdt-0.6b-v3",
 ];
 
 function getProviderIdentity(provider: RemoteProvider) {
@@ -927,21 +928,21 @@ class ModelService extends EventEmitter {
     await this.applySpeechModelSelection(modelId, "manual", oldModelId);
   }
 
-  // Get best available model path for transcription (used by WhisperProvider)
-  async getBestAvailableModelPath(): Promise<string | null> {
+  // Get best available local model for transcription (used by WhisperProvider)
+  async getBestAvailableModel(): Promise<DBModel | null> {
     const downloadedModels = await this.getValidDownloadedModels();
     const selectedModelId = await this.getSelectedModel();
 
     // If a specific model is selected and available, use it
     if (selectedModelId && downloadedModels[selectedModelId]) {
-      return downloadedModels[selectedModelId].localPath;
+      return downloadedModels[selectedModelId];
     }
 
     // Otherwise, find the best available model (prioritize by quality)
     for (const modelId of LOCAL_MODEL_PREFERENCE) {
       const model = downloadedModels[modelId];
       if (model?.localPath) {
-        return model.localPath;
+        return model;
       }
     }
 

@@ -80,7 +80,7 @@ if (DEFINED TMP_CMAKE_JS_LIB)
   target_link_libraries(whisper_node PRIVATE ${TMP_CMAKE_JS_LIB})
 endif()
 
-target_link_libraries(whisper_node PRIVATE whisper Threads::Threads)
+target_link_libraries(whisper_node PRIVATE whisper parakeet Threads::Threads)
 
 # On macOS we need to allow undefined symbols for node addon
 if (APPLE)
