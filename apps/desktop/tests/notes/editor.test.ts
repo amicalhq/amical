@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +13,7 @@ import {
   $createTextNode,
   $getRoot,
   getNearestEditorFromDOMNode,
+  UNDO_COMMAND,
   type LexicalEditor,
 } from "lexical";
 import { $createLinkNode } from "@lexical/link";
@@ -253,6 +260,36 @@ describe("real NoteEditor Markdown integration", () => {
     expect(view.container.textContent).toContain("unsupported draft");
     view.unmount();
     expect(window.electronAPI.notes.saveBody).not.toHaveBeenCalled();
+  });
+
+  it("keeps a caret after load so a paste into the focused note lands", async () => {
+    // jsdom has no clipboard or drag events; Lexical refers to both by name.
+    vi.stubGlobal("ClipboardEvent", class ClipboardEvent extends Event {});
+    vi.stubGlobal("DragEvent", class DragEvent extends Event {});
+    // A new note that the user has not clicked in, as with auto-dictate.
+    const { editor, element } = await openEditor();
+    const paste = (text: string) =>
+      fireEvent.paste(element, {
+        clipboardData: {
+          types: ["text/plain"],
+          files: [],
+          getData: (type: string) => (type === "text/plain" ? text : ""),
+        },
+      });
+    expect(document.activeElement).toBe(element);
+    paste("dictated");
+    await waitFor(() => expect(body.markdown).toBe("dictated\n"));
+
+    // A body reload from another window must not drop the caret either.
+    body = { ...body, markdown: "from sync\n" };
+    const [[onBodyChange]] = vi.mocked(window.electronAPI.notes.onBodyChange)
+      .mock.calls;
+    act(() => onBodyChange({ noteId: body.noteId }));
+    // The replaced body must not return via Undo.
+    await act(async () => editor.dispatchCommand(UNDO_COMMAND, undefined));
+    expect(element.textContent).toBe("from sync");
+    paste(" again");
+    await waitFor(() => expect(element.textContent).toBe("from sync again"));
   });
 
   it("does not expose an editable empty note after failed load or migration", async () => {

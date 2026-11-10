@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
+  $getRoot,
   CLEAR_HISTORY_COMMAND,
   COMMAND_PRIORITY_CRITICAL,
   FORMAT_TEXT_COMMAND,
+  SKIP_SCROLL_INTO_VIEW_TAG,
   type SerializedEditorState,
 } from "lexical";
 import { LinkNode, AutoLinkNode } from "@lexical/link";
@@ -49,6 +51,15 @@ export function MarkdownSyncPlugin({
           editor.parseEditorState(state as SerializedEditorState),
           { tag: LOAD_TAG },
         );
+        // The loaded state has no selection, so a paste or typing into the
+        // focused editor would be dropped. Check focus after setEditorState:
+        // at mount, AutoFocusPlugin's update commits inside it. No LOAD_TAG:
+        // a commit without node changes keeps its tags for the next update.
+        if (editor.getRootElement()?.contains(document.activeElement))
+          editor.update(() => $getRoot().selectEnd(), {
+            discrete: true,
+            tag: SKIP_SCROLL_INTO_VIEW_TAG,
+          });
         // A replaced snapshot must not return via Undo.
         editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
         if (!editor.isEditable()) editor.setEditable(true);
