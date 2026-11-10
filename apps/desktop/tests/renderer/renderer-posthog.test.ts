@@ -119,6 +119,7 @@ describe("renderer PostHog", () => {
         api_host: "https://posthog.test",
         autocapture: false,
         capture_exceptions: true,
+        disable_surveys_automatic_display: true,
         bootstrap: {
           distinctID: "machine-1",
           isIdentifiedID: false,

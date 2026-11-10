@@ -66,6 +66,9 @@ export function initializePostHog(
     capture_pageview: false,
     capture_pageleave: false,
     disable_session_recording: true,
+    // Popover surveys show only in the main window; the widget, notes and
+    // onboarding windows are too small or too early for them.
+    disable_surveys_automatic_display: surface !== "main",
     persistence: "memory",
     person_profiles: "identified_only",
     bootstrap: {
