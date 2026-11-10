@@ -21,7 +21,7 @@ import {
   cpSync,
   rmSync,
   lstatSync,
-  readlinkSync,
+  realpathSync,
   copyFileSync,
   chmodSync,
 } from "node:fs";
@@ -104,6 +104,10 @@ const config: ForgeConfig = {
         const foundModules = new Set(nodeModuleNames);
         if (includeNestedDeps) {
           for (const external of nodeModuleNames) {
+            // Workspace packages list only build tools (cmake-js etc.) as
+            // dependencies. pnpm 11 also links them into the root
+            // node_modules, so a walk would package those tools.
+            if (external.startsWith("@amical/")) continue;
             type MyPublicClass<T> = {
               [P in keyof T]: T[P];
             };
@@ -197,13 +201,9 @@ const config: ForgeConfig = {
                 `Found symlink for ${dep}, replacing with dereferenced copy...`,
               );
 
-              // Read where the symlink points to
-              const symlinkTarget = readlinkSync(localDepPath);
-              let absoluteTarget = symlinkTarget;
-              if (process.platform !== "win32") {
-                absoluteTarget = join(localDepPath, "..", symlinkTarget);
-              }
-              const sourcePath = normalize(absoluteTarget);
+              // Resolve the real path: on Windows, pnpm 10 links are junctions
+              // with absolute targets, but pnpm 11 links have relative targets.
+              const sourcePath = realpathSync(localDepPath);
 
               console.log(`  Symlink points to: ${sourcePath}`);
 
