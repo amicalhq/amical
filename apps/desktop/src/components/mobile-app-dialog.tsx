@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { SidebarIconButton } from "@/components/sidebar-icon-button";
+import { api } from "@/trpc/react";
 
 /** Shows the QR code for the mobile apps. The QR code encodes amical.ai/mobile. */
 export function MobileAppDialogContent(
@@ -37,9 +38,18 @@ export function MobileAppDialogContent(
 
 export function MobileAppButton() {
   const { t } = useTranslation();
+  const { mutate: trackEvent } = api.telemetry.trackEvent.useMutation();
 
   return (
-    <Dialog>
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) return;
+        trackEvent({
+          event: "mobile_app_qr_opened",
+          payload: { source: "sidebar_footer" },
+        });
+      }}
+    >
       <DialogTrigger asChild>
         <SidebarIconButton label={t("settings.sidebar.mobileApp.label")}>
           <IconDeviceMobile />

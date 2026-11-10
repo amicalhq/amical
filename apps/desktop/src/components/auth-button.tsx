@@ -39,6 +39,7 @@ export function AuthButton() {
   const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [mobileAppOpen, setMobileAppOpen] = useState(false);
+  const { mutate: trackEvent } = api.telemetry.trackEvent.useMutation();
   const logout = useLogout();
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -155,7 +156,15 @@ export function AuthButton() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setMobileAppOpen(true)}>
+            <DropdownMenuItem
+              onClick={() => {
+                setMobileAppOpen(true);
+                trackEvent({
+                  event: "mobile_app_qr_opened",
+                  payload: { source: "account_menu" },
+                });
+              }}
+            >
               <Smartphone className="mr-2 h-4 w-4" />
               {t("settings.sidebar.mobileApp.label")}
             </DropdownMenuItem>

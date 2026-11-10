@@ -188,6 +188,12 @@ export const starNudgeSchema = z.object({
 
 export type StarNudgeEvent = z.infer<typeof starNudgeSchema>;
 
+export const mobileAppQrOpenedSchema = z.object({
+  source: z.enum(["sidebar_footer", "account_menu"]),
+});
+
+export type MobileAppQrOpenedEvent = z.infer<typeof mobileAppQrOpenedSchema>;
+
 // ============================================================================
 // Edit Watch and Vocabulary Learning Events
 // ============================================================================

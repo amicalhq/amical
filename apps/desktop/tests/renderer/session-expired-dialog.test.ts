@@ -98,6 +98,9 @@ vi.mock("@/trpc/react", () => ({
         useMutation: () => ({ mutateAsync: mocks.syncBeforeLogout }),
       },
     },
+    telemetry: {
+      trackEvent: { useMutation: () => ({ mutate: vi.fn() }) },
+    },
   },
 }));
 

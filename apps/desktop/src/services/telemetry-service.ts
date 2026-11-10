@@ -32,6 +32,7 @@ import type {
   CloudGrpcFallbackEvent,
   TranscriptionEditWatchCompletedEvent,
   StarNudgeEvent,
+  MobileAppQrOpenedEvent,
   VocabularyLearningCompletedEvent,
   VocabularyAutoUndoneEvent,
 } from "../types/telemetry-events";
@@ -706,6 +707,12 @@ export class TelemetryService extends EventEmitter {
     this.captureEvent("star_nudge", props);
 
     logger.main.debug("Tracked star nudge", props);
+  }
+
+  trackMobileAppQrOpened(props: MobileAppQrOpenedEvent): void {
+    this.captureEvent("mobile_app_qr_opened", props);
+
+    logger.main.debug("Tracked mobile app QR opened", props);
   }
 
   // ============================================================================

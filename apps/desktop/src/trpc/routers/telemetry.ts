@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createRouter, procedure } from "../trpc";
 import {
+  mobileAppQrOpenedSchema,
   starNudgeSchema,
   widgetNotificationShownSchema,
 } from "../../types/telemetry-events";
@@ -13,6 +14,10 @@ const telemetryEventSchema = z.discriminatedUnion("event", [
   z.object({
     event: z.literal("star_nudge"),
     payload: starNudgeSchema,
+  }),
+  z.object({
+    event: z.literal("mobile_app_qr_opened"),
+    payload: mobileAppQrOpenedSchema,
   }),
 ]);
 
@@ -33,6 +38,9 @@ export const telemetryRouter = createRouter({
           break;
         case "star_nudge":
           telemetryService.trackStarNudge(input.payload);
+          break;
+        case "mobile_app_qr_opened":
+          telemetryService.trackMobileAppQrOpened(input.payload);
           break;
         default:
           input satisfies never;
