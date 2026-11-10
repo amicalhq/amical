@@ -25,6 +25,7 @@ import { NativeBridgeTimeoutError } from "../../../src/services/platform/native-
 import {
   DESKTOP_AUTO_VOCABULARY_FLAG,
   DESKTOP_EDIT_METRICS_FLAG,
+  DESKTOP_AUTO_VOCABULARY_V2_FLAG,
 } from "../../../src/services/remote-config-service";
 import { vocabularyLearningNotifications } from "../../../src/services/vocabulary-learning/notifications";
 import { VocabularyTermCheckContractFailure } from "../../../src/services/vocabulary-learning/term-check-client";
@@ -43,6 +44,8 @@ type Snapshot = LifecycleSnapshot<LifecycleSessionMeta>;
 
 const PASTED = "open cloud code and run it";
 const EDITED = "open Claude Code and run it";
+// A case-only change: the text changed, but no word was replaced.
+const CASE_ONLY = "Open cloud code and run it";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const settle = async () => {
@@ -184,6 +187,7 @@ describe("VocabularyLearningService", () => {
   >;
   let flagOn: boolean;
   let metricsOn: boolean;
+  let editOn: boolean;
   let telemetryOn: boolean;
   let service: VocabularyLearningService;
   let toasts: WidgetNotification[];
@@ -201,6 +205,7 @@ describe("VocabularyLearningService", () => {
     trackLearning = vi.fn();
     flagOn = true;
     metricsOn = true;
+    editOn = true;
     telemetryOn = true;
     toasts = [];
     unsubscribeToasts = vocabularyLearningNotifications.onLearned((toast) =>
@@ -216,6 +221,7 @@ describe("VocabularyLearningService", () => {
             flags: {
               [DESKTOP_AUTO_VOCABULARY_FLAG]: flagOn,
               [DESKTOP_EDIT_METRICS_FLAG]: metricsOn,
+              [DESKTOP_AUTO_VOCABULARY_V2_FLAG]: editOn,
             },
           }) as never,
       },
@@ -238,13 +244,18 @@ describe("VocabularyLearningService", () => {
   });
 
   /** Paste, locate, two equal edited reads, then the next session ends it. */
-  async function runCorrectedWatch(session: string, next: string) {
+  async function runCorrectedWatch(
+    session: string,
+    next: string,
+    edited = EDITED,
+    pasted = PASTED,
+  ) {
     lifecycle.session(session);
-    bridge.fieldText = PASTED;
-    lifecycle.pasteConfirmed(session, PASTED);
+    bridge.fieldText = pasted;
+    lifecycle.pasteConfirmed(session, pasted);
     await settle();
     await clock.advance(250);
-    bridge.fieldText = EDITED;
+    bridge.fieldText = edited;
     await clock.advance(1000);
     await clock.advance(1000);
     lifecycle.publish(next, "starting");
@@ -260,6 +271,8 @@ describe("VocabularyLearningService", () => {
     expect(classify).toHaveBeenCalledWith({
       candidates: [{ term: "Claude Code", heard: "cloud code" }],
       language: "en",
+      edit: { pasted: PASTED, edited: EDITED },
+      sessionId: "s1",
     });
     const rows = testDb.db.select().from(vocabulary).all();
     expect(rows).toEqual([
@@ -385,24 +398,37 @@ describe("VocabularyLearningService", () => {
     expect(trackLearning).not.toHaveBeenCalled();
   });
 
-  it("reports a learning run that finds no candidates", async () => {
+  it("sends only the edit when no candidate is found; the event is unchanged", async () => {
     await committedRow("s1", "amical-cloud");
-    lifecycle.session("s1");
-    lifecycle.pasteConfirmed("s1", PASTED);
-    await settle();
-    await clock.advance(250);
-    // A case-only change: the text changed, but no word was replaced.
-    bridge.fieldText = "Open cloud code and run it";
-    await clock.advance(1000);
-    await clock.advance(1000);
-    lifecycle.publish("s2", "starting");
-    await settle();
+    classify.mockImplementation(() => Effect.succeed({ accepted: [] }));
 
-    expect(classify).not.toHaveBeenCalled();
+    await runCorrectedWatch("s1", "s2", CASE_ONLY);
+
+    expect(classify).toHaveBeenCalledWith({
+      candidates: [],
+      language: "en",
+      edit: { pasted: PASTED, edited: CASE_ONLY },
+      sessionId: "s1",
+    });
     expect(trackLearning).toHaveBeenCalledWith({
       session_id: "s1",
       rewrite: false,
       candidate_count: 0,
+    });
+  });
+
+  it("sends no edit when the v2 flag is off", async () => {
+    await committedRow("s1", "amical-cloud");
+    await committedRow("s3", "amical-cloud");
+    editOn = false;
+
+    await runCorrectedWatch("s1", "s2");
+    await runCorrectedWatch("s3", "s4", CASE_ONLY);
+
+    expect(classify).toHaveBeenCalledExactlyOnceWith({
+      candidates: [{ term: "Claude Code", heard: "cloud code" }],
+      language: "en",
+      sessionId: "s1",
     });
   });
 
@@ -413,6 +439,19 @@ describe("VocabularyLearningService", () => {
     await runCorrectedWatch("s1", "s2");
 
     expect(classify).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs the term check without the edit when the text is too long", async () => {
+    await committedRow("s1", "amical-cloud");
+    const tail = " and then more words".repeat(100);
+
+    await runCorrectedWatch("s1", "s2", EDITED + tail, PASTED + tail);
+
+    expect(classify).toHaveBeenCalledExactlyOnceWith({
+      candidates: [{ term: "Claude Code", heard: "cloud code" }],
+      language: "en",
+      sessionId: "s1",
+    });
   });
 
   it("reports a deleted dictation as discarded with its pasted size only", async () => {
@@ -477,6 +516,26 @@ describe("VocabularyLearningService", () => {
     await clock.advance(DAY_MS + 1);
     await runCorrectedWatch("s5", "s6");
     expect(classify).toHaveBeenCalledTimes(2);
+  });
+
+  it("pauses after a disabled answer to an edit-only request, and reports it", async () => {
+    await committedRow("s1", "amical-cloud");
+    await committedRow("s3", "amical-cloud");
+    classify.mockImplementation(() =>
+      Effect.succeed({ accepted: [], disabled: true }),
+    );
+
+    await runCorrectedWatch("s1", "s2", CASE_ONLY);
+    await runCorrectedWatch("s3", "s4");
+
+    expect(classify).toHaveBeenCalledTimes(1);
+    expect(trackLearning).toHaveBeenCalledTimes(1);
+    expect(trackLearning).toHaveBeenCalledWith({
+      session_id: "s1",
+      rewrite: false,
+      candidate_count: 0,
+      classifier_outcome: "disabled",
+    });
   });
 
   it("reports a refused start without reading the field", async () => {

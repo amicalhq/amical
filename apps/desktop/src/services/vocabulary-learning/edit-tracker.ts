@@ -280,7 +280,7 @@ class EditTrackerImpl implements EditTracker {
   readonly result: Promise<EditTrackerResult>;
 
   private resolveResult!: (result: EditTrackerResult) => void;
-  private readonly pasted: string;
+  readonly pasted: string;
   private readonly platform: TrackerPlatform;
   private readonly deps: EditTrackerDeps;
   private readonly startedAt: number;

@@ -1,4 +1,9 @@
-import { VOCABULARY_CLASSIFY_LIMITS } from "@amical/api-contracts/apps/v1";
+import {
+  VOCABULARY_CLASSIFY_LIMITS,
+  VocabularyClassifyEditSchema,
+  type VocabularyClassifyEdit,
+  type VocabularyClassifyRequest,
+} from "@amical/api-contracts/apps/v1";
 import type { HelperEvent, StartEditWatchResult } from "@amical/types";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { v4 as uuid } from "uuid";
@@ -39,6 +44,7 @@ import {
 import {
   DESKTOP_AUTO_VOCABULARY_FLAG,
   DESKTOP_EDIT_METRICS_FLAG,
+  DESKTOP_AUTO_VOCABULARY_V2_FLAG,
   type RemoteConfigService,
 } from "../remote-config-service";
 import type { TelemetryService } from "../telemetry-service";
@@ -130,7 +136,10 @@ function currentPlatform(): TrackerPlatform | null {
  * through the native helper and track the user's edits (edit tracker). At
  * the end, report edit metrics (counts only) and, for auto vocabulary,
  * extract correction candidates, ask the term check, and store accepted
- * terms as learned vocabulary with a toast that offers Undo.
+ * terms as learned vocabulary with a toast that offers Undo. With the v2
+ * flag on, the term check also gets the pasted text and the tracked region's
+ * final text, so the server can check the extraction (also when no candidate
+ * is kept). That region holds what the user typed into it.
  *
  * App-scope (the paste answer lands after the lifecycle is idle). Logs
  * status, lengths and timings only: no field text, no candidates, no terms.
@@ -457,11 +466,31 @@ export class VocabularyLearningService {
     const event: VocabularyLearningCompletedEvent = {
       session_id: watch.eventBase.session_id,
     };
+    const detected = watch.eventBase.detected_language;
+    const language =
+      detected &&
+      detected.length <= VOCABULARY_CLASSIFY_LIMITS.maxLanguageLength
+        ? detected
+        : undefined;
+    // Evaluation data, with the v2 flag on and when it fits the contract;
+    // else the term check runs without it. Both sides as the tracker
+    // compares them.
+    const edit = this.remoteConfig.getConfig().flags[
+      DESKTOP_AUTO_VOCABULARY_V2_FLAG
+    ]
+      ? VocabularyClassifyEditSchema.safeParse({
+          pasted: watch.tracker.pasted,
+          edited: finalRegion,
+        }).data
+      : undefined;
     try {
       const extraction = extractCandidates(watch.pastedText, finalRegion);
       event.rewrite = extraction.rewrite;
       event.candidate_count = extraction.candidates.length;
-      if (extraction.rewrite || extraction.candidates.length === 0) return;
+      if (extraction.rewrite || extraction.candidates.length === 0) {
+        await this.sendEdit(edit, language, event);
+        return;
+      }
 
       const filtered = filterCandidates(
         extraction.candidates,
@@ -473,32 +502,23 @@ export class VocabularyLearningService {
       event.drop_cjk_count = filtered.dropped.cjk;
       event.drop_duplicate_count = filtered.dropped.duplicate;
       event.drop_cap_count = filtered.dropped.cap;
-      if (filtered.kept.length === 0) return;
+      if (filtered.kept.length === 0) {
+        await this.sendEdit(edit, language, event);
+        return;
+      }
 
       event.sent_count = filtered.kept.length;
-      const detected = watch.eventBase.detected_language;
-      const language =
-        detected &&
-        detected.length <= VOCABULARY_CLASSIFY_LIMITS.maxLanguageLength
-          ? detected
-          : undefined;
       const started = this.timers.now();
-      const exit = await Effect.runPromiseExit(
-        this.client.classify({
-          candidates: filtered.kept,
-          language,
-        }),
+      const exit = await this.termCheck(
+        { candidates: filtered.kept, language, edit },
+        event,
       );
       event.classifier_duration_ms = Math.round(this.timers.now() - started);
       if (Exit.isFailure(exit)) {
         event.classifier_outcome = classifierOutcomeOf(exit.cause);
         return;
       }
-      if (exit.value.disabled) {
-        event.classifier_outcome = "disabled";
-        this.pausedUntil = this.timers.now() + DISABLED_PAUSE_MS;
-        return;
-      }
+      if (exit.value.disabled) return;
       event.classifier_outcome = "ok";
 
       const heardByTerm = new Map(
@@ -531,6 +551,45 @@ export class VocabularyLearningService {
         sentCount: event.sent_count,
         addedCount: event.added_count,
         classifierOutcome: event.classifier_outcome,
+      });
+    }
+  }
+
+  /**
+   * One term check request, with the dictation's session id. A "disabled"
+   * answer pauses learning and goes on the event.
+   */
+  private async termCheck(
+    request: VocabularyClassifyRequest,
+    event: VocabularyLearningCompletedEvent,
+  ) {
+    const exit = await Effect.runPromiseExit(
+      this.client.classify({ ...request, sessionId: event.session_id }),
+    );
+    if (Exit.isSuccess(exit) && exit.value.disabled) {
+      event.classifier_outcome = "disabled";
+      this.pausedUntil = this.timers.now() + DISABLED_PAUSE_MS;
+    }
+    return exit;
+  }
+
+  /**
+   * Edit-only request (no candidate kept): evaluation data. Of its answer,
+   * the event records only "disabled".
+   */
+  private async sendEdit(
+    edit: VocabularyClassifyEdit | undefined,
+    language: string | undefined,
+    event: VocabularyLearningCompletedEvent,
+  ): Promise<void> {
+    if (!edit) return;
+    const exit = await this.termCheck(
+      { candidates: [], language, edit },
+      event,
+    );
+    if (Exit.isFailure(exit)) {
+      logger.main.debug("Edit-only term check failed", {
+        outcome: classifierOutcomeOf(exit.cause),
       });
     }
   }

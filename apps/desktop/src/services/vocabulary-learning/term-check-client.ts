@@ -45,8 +45,9 @@ export type VocabularyTermCheckError =
 /**
  * Term check: asks the server which correction candidates are worth adding
  * to the vocabulary. Same shape as the activity reporting client: id token
- * from the auth service, tagged errors, one bounded request. Only candidate
- * terms and heard forms are sent, never field text.
+ * from the auth service, tagged errors, one bounded request. The request
+ * holds candidate terms and heard forms and, optionally, the pasted text
+ * with the final text of the tracked region.
  */
 export class VocabularyTermCheckClient {
   constructor(private readonly authService: AuthService) {}

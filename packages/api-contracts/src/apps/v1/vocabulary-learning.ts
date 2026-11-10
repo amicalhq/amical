@@ -15,6 +15,8 @@ export const VOCABULARY_CLASSIFY_LIMITS = {
   maxTermLength: 60,
   maxHeardLength: 120,
   maxLanguageLength: 35,
+  maxEditTextLength: 2000,
+  maxSessionIdLength: 64,
 } as const;
 
 export const VocabularyClassifyCandidateSchema = z
@@ -25,15 +27,30 @@ export const VocabularyClassifyCandidateSchema = z
   .strict();
 export type VocabularyClassifyCandidate = z.output<typeof VocabularyClassifyCandidateSchema>;
 
+export const VocabularyClassifyEditSchema = z
+  .object({
+    pasted: z.string().max(VOCABULARY_CLASSIFY_LIMITS.maxEditTextLength),
+    edited: z.string().max(VOCABULARY_CLASSIFY_LIMITS.maxEditTextLength),
+  })
+  .strict();
+export type VocabularyClassifyEdit = z.output<typeof VocabularyClassifyEditSchema>;
+
 export const VocabularyClassifyRequestSchema = z
   .object({
     candidates: z
       .array(VocabularyClassifyCandidateSchema)
-      .min(1)
       .max(VOCABULARY_CLASSIFY_LIMITS.maxCandidates),
     language: z.string().min(1).max(VOCABULARY_CLASSIFY_LIMITS.maxLanguageLength).optional(),
+    edit: VocabularyClassifyEditSchema.optional(),
+    sessionId: z.string().min(1).max(VOCABULARY_CLASSIFY_LIMITS.maxSessionIdLength).optional(),
   })
-  .strict();
+  .strict()
+  .refine(request => request.candidates.length > 0 || request.edit !== undefined, {
+    message: 'candidates or edit is required',
+  })
+  .refine(request => request.edit === undefined || request.sessionId !== undefined, {
+    message: 'sessionId is required with edit',
+  });
 export type VocabularyClassifyRequest = z.output<typeof VocabularyClassifyRequestSchema>;
 
 /**

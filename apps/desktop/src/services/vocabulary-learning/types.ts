@@ -120,6 +120,8 @@ export interface EditTracker {
   onOtherPaste(): void;
   /** The native helper exited or restarted: end "helper_restart". */
   onHelperRestart(): void;
+  /** The pasted text as the tracker compares it (normalized on Windows). */
+  readonly pasted: string;
   /** Resolves once, when the watch ends. */
   readonly result: Promise<EditTrackerResult>;
 }
