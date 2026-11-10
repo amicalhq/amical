@@ -72,18 +72,19 @@ jobs:
         shell: bash
         run: echo "POSTHOG_RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.34.5
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           # 24.2 to at least 24.6 (atm of writing this) has issues with symlink deref in nested directories
           node-version: "24.1.0"
           architecture: ${{ matrix.arch }}
-          cache: "pnpm"
+
+      - name: Setup pnpm
+        # Runs after Node.js: pnpm 11 needs Node.js 22 or later. The version
+        # comes from packageManager in package.json.
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
 
       - name: Install Vulkan SDK
         if: matrix.os == 'windows' && matrix.arch == 'x64'

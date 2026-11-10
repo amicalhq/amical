@@ -5,7 +5,40 @@ packages:
   - "!packages/**/whisper.cpp/**"
   - "!apps/www"
 
-# pnpm 11 no longer reads these settings from .npmrc. Electron Forge needs a
-# hoisted node_modules layout. Keep the values the same as in .npmrc.
+# Electron Forge needs a hoisted node_modules layout.
 nodeLinker: hoisted
 shamefullyHoist: true
+
+# Keep pnpm 10 behavior: do not run an install automatically before
+# `pnpm run` when node_modules is out of date.
+verifyDepsBeforeRun: false
+
+# Moved from the "pnpm" field in package.json, which pnpm 11 no longer reads.
+overrides:
+  "@types/minimatch": "3.0.5"
+  "@electron/windows-sign": "2.1.0"
+
+patchedDependencies:
+  "macos-alias@0.2.12": patches/macos-alias@0.2.12.patch
+  "fs-xattr@0.3.1": patches/fs-xattr@0.3.1.patch
+  "@electron/packager@18.4.2": patches/electron-packager@18.4.2.patch
+
+# Packages whose install scripts may run (true) or are skipped (false).
+# pnpm 11 fails the install for any unlisted package with a build script.
+allowBuilds:
+  "@posthog/cli": true
+  "electron": true
+  "electron-winstaller": true
+  "@amical/whisper-wrapper": true
+  "macos-alias": true
+  "fs-xattr": true
+  "onnxruntime-node": true
+  "jest-worker": true
+  "@tailwindcss/oxide": false
+  "core-js": false
+  "core-js-pure": false
+  "esbuild": false
+  "keytar": false
+  "protobufjs": false
+  "sharp": false
+  "better-sqlite3": false

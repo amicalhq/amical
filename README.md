@@ -111,7 +111,7 @@ Linux is not supported because the app does not yet have a Linux native helper.
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) 24.x
-- pnpm 10.15.0 (the version pinned in `package.json`)
+- pnpm 11 (the exact version is pinned in `package.json`)
 - CMake 3.20 or later
 - **macOS:** Xcode or the Xcode Command Line Tools with Swift 5.9 or later
   (`xcode-select --install`). Local Whisper transcription requires macOS 15 or
