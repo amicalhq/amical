@@ -514,6 +514,12 @@
         "description": "휴대폰 카메라로 스캔하여 iPhone 또는 Android용 Amical을 다운로드하세요.",
         "qrAlt": "Amical 모바일 앱 다운로드용 QR 코드"
       },
+      "referral": {
+        "label": "추천하고 혜택 받기",
+        "loadFailed": "추천 화면을 열지 못했습니다. 다시 시도해 주세요."
+      },
+      "inviteTeam": "팀 초대",
+      "usageAndBilling": "사용량 및 결제",
       "usage": {
         "label": "클라우드 받아쓰기",
         "wordsLeft_one": "{{words}}단어 남음",

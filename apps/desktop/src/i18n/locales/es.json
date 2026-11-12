@@ -514,6 +514,12 @@
         "description": "Escanea el código con la cámara de tu teléfono para descargar Amical en iPhone o Android.",
         "qrAlt": "Código QR para descargar la app móvil de Amical"
       },
+      "referral": {
+        "label": "Recomienda y gana",
+        "loadFailed": "No se pudieron abrir las recomendaciones. Por favor, inténtalo de nuevo."
+      },
+      "inviteTeam": "Invitar al equipo",
+      "usageAndBilling": "Uso y facturación",
       "usage": {
         "label": "Dictado en la nube",
         "wordsLeft_one": "Queda {{words}} palabra",

@@ -35,5 +35,9 @@ export type RemoteConfigIconName = string;
 
 export const DESKTOP_STAR_NUDGE_FLAG = "desktop-star-nudge";
 
+// Shows "Refer & earn". The server decides it per signed-in email, the same
+// users as its referral Widget allowlist.
+export const DESKTOP_REFERRALS_FLAG = "desktop-referrals";
+
 // Reshow window when a surface omits `reshowAfterDays`.
 export const DEFAULT_RESHOW_AFTER_DAYS = 30;

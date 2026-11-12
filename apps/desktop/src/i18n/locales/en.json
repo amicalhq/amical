@@ -511,6 +511,12 @@
         "description": "Scan with your phone's camera to download Amical for iPhone or Android.",
         "qrAlt": "QR code to download the Amical mobile app"
       },
+      "referral": {
+        "label": "Refer & earn",
+        "loadFailed": "Couldn't open referrals. Please try again."
+      },
+      "inviteTeam": "Invite Team",
+      "usageAndBilling": "Usage & Billing",
       "usage": {
         "label": "Cloud dictation",
         "wordsLeft_one": "{{words}} word left",

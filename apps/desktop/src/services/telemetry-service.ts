@@ -715,6 +715,12 @@ export class TelemetryService extends EventEmitter {
     logger.main.debug("Tracked mobile app QR opened", props);
   }
 
+  trackReferralWidgetOpened(): void {
+    this.captureEvent("referral_widget_opened");
+
+    logger.main.debug("Tracked referral widget opened");
+  }
+
   // ============================================================================
   // Edit Watch and Vocabulary Learning Events
   // ============================================================================

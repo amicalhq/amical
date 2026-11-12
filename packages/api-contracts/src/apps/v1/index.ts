@@ -1,5 +1,6 @@
 export * from "./common.js";
 export * from "./dictation-activity.js";
+export * from "./referrals.js";
 export * from "./remote-config.js";
 export * from "./sync.js";
 export * from "./usage.js";

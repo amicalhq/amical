@@ -28,7 +28,10 @@ import {
   DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG,
   DESKTOP_STEREO_MIC_DOWNMIX_FLAG,
 } from "../../src/types/audio-capture";
-import { DESKTOP_STAR_NUDGE_FLAG } from "../../src/types/remote-config";
+import {
+  DESKTOP_REFERRALS_FLAG,
+  DESKTOP_STAR_NUDGE_FLAG,
+} from "../../src/types/remote-config";
 
 describe("RemoteConfigService", () => {
   type PersistedRemoteConfig = Awaited<
@@ -313,6 +316,7 @@ describe("RemoteConfigService", () => {
           [DESKTOP_EDIT_METRICS_FLAG]: true,
           [DESKTOP_AUTO_VOCABULARY_V2_FLAG]: false,
           [DESKTOP_STAR_NUDGE_FLAG]: true,
+          [DESKTOP_REFERRALS_FLAG]: false,
           [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: true,
           [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: false,
         },

@@ -15,6 +15,7 @@ import { remoteConfigRouter } from "./routers/remote-config";
 import { telemetryRouter } from "./routers/telemetry";
 import { skillsRouter } from "./routers/skills";
 import { usageRouter } from "./routers/usage";
+import { referralsRouter } from "./routers/referrals";
 import { createRouter, procedure } from "./trpc";
 
 export const router = createRouter({
@@ -89,6 +90,9 @@ export const router = createRouter({
 
   // Cloud word allowance for the sidebar meter
   usage: usageRouter,
+
+  // RefRef referral Widget token
+  referrals: referralsRouter,
 });
 
 export type AppRouter = typeof router;

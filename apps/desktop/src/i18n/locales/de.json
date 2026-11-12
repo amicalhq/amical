@@ -514,6 +514,12 @@
         "description": "Scanne den Code mit deiner Handykamera, um Amical für iPhone oder Android herunterzuladen.",
         "qrAlt": "QR-Code zum Herunterladen der mobilen Amical-App"
       },
+      "referral": {
+        "label": "Empfehlen & verdienen",
+        "loadFailed": "Empfehlungen konnten nicht geöffnet werden. Bitte versuche es erneut."
+      },
+      "inviteTeam": "Team einladen",
+      "usageAndBilling": "Nutzung & Abrechnung",
       "usage": {
         "label": "Cloud-Diktat",
         "wordsLeft_one": "{{words}} Wort übrig",

@@ -514,6 +514,12 @@
         "description": "使用手機相機掃描，即可下載 iPhone 或 Android 版 Amical。",
         "qrAlt": "下載 Amical 行動應用程式的 QR Code"
       },
+      "referral": {
+        "label": "推薦賺好禮",
+        "loadFailed": "推薦頁面開啟失敗，請再試一次。"
+      },
+      "inviteTeam": "邀請團隊",
+      "usageAndBilling": "用量與帳單",
       "usage": {
         "label": "雲端聽寫",
         "wordsLeft_one": "剩餘 {{words}} 字",

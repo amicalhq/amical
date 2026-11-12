@@ -19,6 +19,7 @@ const telemetryEventSchema = z.discriminatedUnion("event", [
     event: z.literal("mobile_app_qr_opened"),
     payload: mobileAppQrOpenedSchema,
   }),
+  z.object({ event: z.literal("referral_widget_opened") }),
 ]);
 
 // Generic telemetry router for renderer-originated events.
@@ -41,6 +42,9 @@ export const telemetryRouter = createRouter({
           break;
         case "mobile_app_qr_opened":
           telemetryService.trackMobileAppQrOpened(input.payload);
+          break;
+        case "referral_widget_opened":
+          telemetryService.trackReferralWidgetOpened();
           break;
         default:
           input satisfies never;
