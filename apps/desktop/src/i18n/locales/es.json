@@ -520,6 +520,7 @@
       },
       "inviteTeam": "Invitar al equipo",
       "usageAndBilling": "Uso y facturación",
+      "supportChat": "Chatea con nosotros",
       "usage": {
         "label": "Dictado en la nube",
         "wordsLeft_one": "Queda {{words}} palabra",

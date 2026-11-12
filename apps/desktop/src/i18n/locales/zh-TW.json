@@ -520,6 +520,7 @@
       },
       "inviteTeam": "邀請團隊",
       "usageAndBilling": "用量與帳單",
+      "supportChat": "與我們聊天",
       "usage": {
         "label": "雲端聽寫",
         "wordsLeft_one": "剩餘 {{words}} 字",

@@ -517,6 +517,7 @@
       },
       "inviteTeam": "Invite Team",
       "usageAndBilling": "Usage & Billing",
+      "supportChat": "Chat with us",
       "usage": {
         "label": "Cloud dictation",
         "wordsLeft_one": "{{words}} word left",

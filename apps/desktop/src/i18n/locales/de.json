@@ -520,6 +520,7 @@
       },
       "inviteTeam": "Team einladen",
       "usageAndBilling": "Nutzung & Abrechnung",
+      "supportChat": "Mit uns chatten",
       "usage": {
         "label": "Cloud-Diktat",
         "wordsLeft_one": "{{words}} Wort übrig",

@@ -186,6 +186,7 @@
     "embla-carousel-react": "^8.6.0",
     "emoji-picker-react": "^4.13.3",
     "framer-motion": "^12.10.5",
+    "gleap": "^19.8.0",
     "i18next": "^25.10.10",
     "input-otp": "^1.4.2",
     "jest-worker": "^29.7.0",

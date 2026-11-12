@@ -740,6 +740,13 @@ export const settingsRouter = createRouter({
     };
   }),
 
+  // Gleap public SDK key for the footer support chat. Builds without the key
+  // (source builds, CI) get an empty one, which hides the chat.
+  getSupportChatConfig: procedure.query(() => ({
+    apiKey: process.env.GLEAP_API_KEY || __BUNDLED_GLEAP_API_KEY,
+    appVersion: app.getVersion(),
+  })),
+
   onTelemetryEnabledChange: procedure.subscription(({ ctx }) => {
     return observable<boolean>((emit) => {
       const telemetryService = ctx.services.telemetryService;

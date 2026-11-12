@@ -7,4 +7,5 @@ declare const __BUNDLED_AUTH_TOKEN_ENDPOINT: string;
 declare const __BUNDLED_CORE_API_URL: string;
 declare const __BUNDLED_API_ENDPOINT: string;
 declare const __BUNDLED_FEEDBACK_SURVEY_ID: string;
+declare const __BUNDLED_GLEAP_API_KEY: string;
 declare const __BUNDLED_AUTH_REDIRECT_URI: string;

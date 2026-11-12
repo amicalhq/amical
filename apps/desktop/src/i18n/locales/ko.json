@@ -520,6 +520,7 @@
       },
       "inviteTeam": "팀 초대",
       "usageAndBilling": "사용량 및 결제",
+      "supportChat": "채팅 문의",
       "usage": {
         "label": "클라우드 받아쓰기",
         "wordsLeft_one": "{{words}}단어 남음",

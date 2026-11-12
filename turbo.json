@@ -38,6 +38,7 @@
         "AUTH_TOKEN_ENDPOINT",
         "AUTH_REDIRECT_URI",
         "FEEDBACK_SURVEY_ID",
+        "GLEAP_API_KEY",
         "API_ENDPOINT",
         "CORE_API_URL"
       ]

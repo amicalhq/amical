@@ -25,6 +25,7 @@ export default defineConfig({
     __BUNDLED_FEEDBACK_SURVEY_ID: JSON.stringify(
       process.env.FEEDBACK_SURVEY_ID || "",
     ),
+    __BUNDLED_GLEAP_API_KEY: JSON.stringify(process.env.GLEAP_API_KEY || ""),
     __BUNDLED_AUTH_REDIRECT_URI: JSON.stringify(
       process.env.AUTH_REDIRECT_URI || "",
     ),
