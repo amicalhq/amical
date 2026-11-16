@@ -58,8 +58,23 @@ import {
   KeyUpEventSchema,
   FlagsChangedEventSchema,
   ActiveDisplayChangedEventSchema,
-  HelperEventSchema,
+  MacWindowsHelperEventSchema,
+  ShortcutActivatedEventSchema,
+  ShortcutDeactivatedEventSchema,
+  ShortcutsBoundEventSchema,
 } from "../src/schemas/events/helper-events.js";
+import {
+  GetHelperCapabilitiesParamsSchema,
+  GetHelperCapabilitiesResultSchema,
+} from "../src/schemas/methods/get-helper-capabilities.js";
+import {
+  SetHelperOptionsParamsSchema,
+  SetHelperOptionsResultSchema,
+} from "../src/schemas/methods/set-helper-options.js";
+import {
+  PrepareInjectionParamsSchema,
+  PrepareInjectionResultSchema,
+} from "../src/schemas/methods/prepare-injection.js";
 
 // Output directory
 const baseOutputDir = "generated/json-schemas";
@@ -99,7 +114,9 @@ const schemasToGenerate = [
     name: "ActiveDisplayChangedEvent",
     category: "events",
   },
-  { zod: HelperEventSchema, name: "HelperEvent", category: "events" },
+  // The Swift and C# models read this file, so it holds only the events that
+  // those helpers send. Linux-only events have their own files below.
+  { zod: MacWindowsHelperEventSchema, name: "HelperEvent", category: "events" },
   { zod: PasteTextParamsSchema, name: "PasteTextParams", category: "methods" },
   { zod: PasteTextResultSchema, name: "PasteTextResult", category: "methods" },
   {
@@ -201,6 +218,52 @@ const schemasToGenerate = [
     zod: StopEditWatchResultSchema,
     name: "StopEditWatchResult",
     category: "methods",
+  },
+  // Linux helper only
+  {
+    zod: GetHelperCapabilitiesParamsSchema,
+    name: "GetHelperCapabilitiesParams",
+    category: "methods",
+  },
+  {
+    zod: GetHelperCapabilitiesResultSchema,
+    name: "GetHelperCapabilitiesResult",
+    category: "methods",
+  },
+  {
+    zod: SetHelperOptionsParamsSchema,
+    name: "SetHelperOptionsParams",
+    category: "methods",
+  },
+  {
+    zod: SetHelperOptionsResultSchema,
+    name: "SetHelperOptionsResult",
+    category: "methods",
+  },
+  {
+    zod: PrepareInjectionParamsSchema,
+    name: "PrepareInjectionParams",
+    category: "methods",
+  },
+  {
+    zod: PrepareInjectionResultSchema,
+    name: "PrepareInjectionResult",
+    category: "methods",
+  },
+  {
+    zod: ShortcutActivatedEventSchema,
+    name: "ShortcutActivatedEvent",
+    category: "events",
+  },
+  {
+    zod: ShortcutDeactivatedEventSchema,
+    name: "ShortcutDeactivatedEvent",
+    category: "events",
+  },
+  {
+    zod: ShortcutsBoundEventSchema,
+    name: "ShortcutsBoundEvent",
+    category: "events",
   },
 ];
 

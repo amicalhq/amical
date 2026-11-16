@@ -9,11 +9,14 @@ struct FlexibleRPCRequest: Codable {
 }
 
 enum RPCDispatchFailure: Swift.Error {
+    case methodNotFound(method: String)
     case invalidParams(data: Data?, message: String)
     case internalError(data: Data?, message: String)
 
     var code: Int {
         switch self {
+        case .methodNotFound:
+            return -32601
         case .invalidParams:
             return -32602
         case .internalError:
@@ -23,6 +26,8 @@ enum RPCDispatchFailure: Swift.Error {
 
     var data: Data? {
         switch self {
+        case .methodNotFound:
+            return nil
         case .invalidParams(let data, _), .internalError(let data, _):
             return data
         }
@@ -30,6 +35,8 @@ enum RPCDispatchFailure: Swift.Error {
 
     var message: String {
         switch self {
+        case .methodNotFound(let method):
+            return "Method not found: \(method)"
         case .invalidParams(_, let message), .internalError(_, let message):
             return message
         }
@@ -152,6 +159,9 @@ class IOBridge: NSObject {
         case .stopEditWatch:
             return try encodeResult(try await handleStopEditWatch(request))
 
+        // Only the Linux helper implements these.
+        case .getHelperCapabilities, .setHelperOptions, .prepareInjection:
+            throw RPCDispatchFailure.methodNotFound(method: request.method.rawValue)
         }
     }
 
@@ -226,6 +236,7 @@ class IOBridge: NSObject {
                 preserveClipboard: preserveClipboard
             )
             return PasteTextResultSchema(
+                clipboardSet: nil,
                 message: success ? "Pasted successfully" : "Paste failed",
                 success: success
             )

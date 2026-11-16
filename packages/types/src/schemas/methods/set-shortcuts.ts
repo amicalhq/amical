@@ -19,9 +19,26 @@ import { z } from "zod";
 // native consume gate — collapse them into one `chords` array. That touches this
 // schema, the generated Swift/C# models, both RpcHandlers, and the desktop
 // syncShortcutsToNative; left split for now to keep the AMIC-19 fix surgical.
+// Linux only: one descriptor per configured shortcut. A per-key backend
+// consumes the chord keys from keyCodes. A chord backend binds each
+// descriptor with the compositor and reports edges by id. The macOS and
+// Windows helpers ignore this field.
+export const ShortcutDescriptorSchema = z.object({
+  /** `${type}:${index}`, e.g. "pushToTalk:0". Stable across versions: compositors store consent per id. */
+  id: z.string(),
+  /** evdev key codes. */
+  keyCodes: z.array(z.number().int()),
+  /** Localized text that the compositor shows, e.g. "Amical: Push to talk". */
+  label: z.string(),
+  /** hold: push-to-talk and draft. tap: toggle, paste last, new note. */
+  kind: z.enum(["hold", "tap"]),
+});
+export type ShortcutDescriptor = z.infer<typeof ShortcutDescriptorSchema>;
+
 export const SetShortcutsParamsSchema = z.object({
   subsetChords: z.array(z.array(z.number().int())),
   exactChords: z.array(z.array(z.number().int())),
+  shortcuts: z.array(ShortcutDescriptorSchema).optional(),
 });
 export type SetShortcutsParams = z.infer<typeof SetShortcutsParamsSchema>;
 

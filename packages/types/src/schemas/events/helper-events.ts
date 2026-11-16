@@ -50,13 +50,96 @@ export type ActiveDisplayChangedEvent = z.infer<
   typeof ActiveDisplayChangedEventSchema
 >;
 
-// This will be the primary schema for unsolicited events from Swift
+// Chord-level shortcut events. Only the Linux helper sends them, and only in
+// chord mode (a compositor portal binds the shortcuts). A helper never sends
+// these and keyDown/keyUp in the same mode.
+// - One shortcutActivated per physical press: the helper drops key repeats.
+// - Every release that the backend reports becomes a shortcutDeactivated.
+//   The helper never invents one.
+export const ShortcutEdgePayloadSchema = z.object({
+  /** Descriptor id from setShortcuts. */
+  id: z.string(),
+});
+export type ShortcutEdgePayload = z.infer<typeof ShortcutEdgePayloadSchema>;
+
+export const ShortcutActivatedEventSchema = z.object({
+  type: z.literal("shortcutActivated"),
+  payload: ShortcutEdgePayloadSchema,
+  timestamp: z.string().datetime({ offset: true }).optional(),
+});
+export type ShortcutActivatedEvent = z.infer<
+  typeof ShortcutActivatedEventSchema
+>;
+
+export const ShortcutDeactivatedEventSchema = z.object({
+  type: z.literal("shortcutDeactivated"),
+  payload: ShortcutEdgePayloadSchema,
+  timestamp: z.string().datetime({ offset: true }).optional(),
+});
+export type ShortcutDeactivatedEvent = z.infer<
+  typeof ShortcutDeactivatedEventSchema
+>;
+
+export const ShortcutBindFailureReasonSchema = z.enum([
+  "unsupported-shape",
+  "denied",
+  "dismissed",
+  "hyprland-manual-bind",
+  "no-backend",
+  "portal-unavailable",
+  "backend-error",
+]);
+export type ShortcutBindFailureReason = z.infer<
+  typeof ShortcutBindFailureReasonSchema
+>;
+
+// The current binding state. The helper sends it after each bind, after each
+// rebind in system settings, and after it binds again when the portal
+// restarts. Each one replaces the previous state.
+export const ShortcutsBoundEventSchema = z.object({
+  type: z.literal("shortcutsBound"),
+  payload: z.object({
+    bound: z.array(
+      z.object({
+        id: z.string(),
+        /** Trigger text that the compositor shows; null when it reports none. */
+        trigger: z.string().nullable().default(null),
+        /** This chord's shape gets a reliable release from the backend. */
+        holdReliable: z.boolean(),
+      }),
+    ),
+    failed: z.array(
+      z.object({
+        id: z.string(),
+        reason: ShortcutBindFailureReasonSchema,
+        message: z.string().optional(),
+      }),
+    ),
+    /** True while the compositor's bind dialog is open. */
+    pending: z.boolean(),
+  }),
+  timestamp: z.string().datetime({ offset: true }).optional(),
+});
+export type ShortcutsBoundEvent = z.infer<typeof ShortcutsBoundEventSchema>;
+
+// Events that the macOS and Windows helpers send. The Swift and C# models are
+// generated from this union, so Linux-only events stay out of it.
+export const MacWindowsHelperEventSchema = z.discriminatedUnion("type", [
+  KeyDownEventSchema,
+  KeyUpEventSchema,
+  FlagsChangedEventSchema,
+  ActiveDisplayChangedEventSchema,
+]);
+
+// Every event that the desktop accepts from a helper.
 export const HelperEventSchema = z.discriminatedUnion("type", [
   KeyDownEventSchema,
   KeyUpEventSchema,
-  FlagsChangedEventSchema, // Added FlagsChangedEventSchema
+  FlagsChangedEventSchema,
   ActiveDisplayChangedEventSchema,
-  // Future: Add other event types like mouse events, etc.
+  ShortcutActivatedEventSchema,
+  ShortcutDeactivatedEventSchema,
+  ShortcutsBoundEventSchema,
 ]);
 export type HelperEvent = z.infer<typeof HelperEventSchema>;
 

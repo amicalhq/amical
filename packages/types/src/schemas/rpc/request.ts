@@ -21,6 +21,9 @@ const RPCMethodNameSchema = z.union([
   z.literal("startEditWatch"),
   z.literal("readEditWatch"),
   z.literal("stopEditWatch"),
+  z.literal("getHelperCapabilities"),
+  z.literal("setHelperOptions"),
+  z.literal("prepareInjection"),
 ]);
 
 export const RpcRequestSchema = z.object({

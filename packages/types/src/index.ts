@@ -14,6 +14,9 @@ export * from "./schemas/methods/set-allow-injected-keys.js";
 export * from "./schemas/methods/recheck-pressed-keys.js";
 export * from "./schemas/methods/get-selected-text-via-copy.js";
 export * from "./schemas/methods/edit-watch.js";
+export * from "./schemas/methods/get-helper-capabilities.js";
+export * from "./schemas/methods/set-helper-options.js";
+export * from "./schemas/methods/prepare-injection.js";
 
 // Event Schemas
 export * from "./schemas/events/helper-events.js";

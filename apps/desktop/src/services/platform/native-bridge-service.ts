@@ -63,6 +63,15 @@ import {
   StopEditWatchParams,
   StopEditWatchResult,
   StopEditWatchResultSchema,
+  GetHelperCapabilitiesParams,
+  GetHelperCapabilitiesResult,
+  GetHelperCapabilitiesResultSchema,
+  SetHelperOptionsParams,
+  SetHelperOptionsResult,
+  SetHelperOptionsResultSchema,
+  PrepareInjectionParams,
+  PrepareInjectionResult,
+  PrepareInjectionResultSchema,
   AppContext,
 } from "@amical/types";
 
@@ -128,6 +137,19 @@ interface RPCMethods {
     params: StopEditWatchParams;
     result: StopEditWatchResult;
   };
+  // Linux helper only.
+  getHelperCapabilities: {
+    params: GetHelperCapabilitiesParams;
+    result: GetHelperCapabilitiesResult;
+  };
+  setHelperOptions: {
+    params: SetHelperOptionsParams;
+    result: SetHelperOptionsResult;
+  };
+  prepareInjection: {
+    params: PrepareInjectionParams;
+    result: PrepareInjectionResult;
+  };
 }
 
 // Edit-watch answers carry the text of a watched field. Neither their result
@@ -168,6 +190,9 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodType> = {
   startEditWatch: StartEditWatchResultSchema,
   readEditWatch: ReadEditWatchResultSchema,
   stopEditWatch: StopEditWatchResultSchema,
+  getHelperCapabilities: GetHelperCapabilitiesResultSchema,
+  setHelperOptions: SetHelperOptionsResultSchema,
+  prepareInjection: PrepareInjectionResultSchema,
 };
 
 function normalizeAccessibilityContext(
