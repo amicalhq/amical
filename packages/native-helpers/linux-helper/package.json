@@ -1,0 +1,27 @@
+{
+  "name": "@amical/linux-helper",
+  "version": "0.1.0",
+  "description": "Rust native helper for Linux: shortcuts, paste, clipboard and accessibility context",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter @amical/types generate:all && turbo run build:native",
+    "build:native": "node scripts/build.mjs",
+    "clean": "rm -rf target bin .turbo",
+    "dev": "pnpm --filter @amical/types generate:all && cargo build && mkdir -p bin && cp target/debug/linux-helper bin/linux-helper"
+  },
+  "files": [
+    "bin/*"
+  ],
+  "keywords": [
+    "rust",
+    "native",
+    "linux"
+  ],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build:native": {
+      "dependsOn": ["@amical/types#generate:all"],
+      "inputs": ["src/**", "scripts/**", "Cargo.*"],
+      "outputs": ["bin/linux-helper"],
+      "cache": true
+    }
+  }
+}
