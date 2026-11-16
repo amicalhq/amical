@@ -95,7 +95,7 @@
     "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/ui": "^4.0.8",
     "bumpp": "^10.2.3",
-    "electron": "44.3.0",
+    "electron": "44.11.3",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.31.0",

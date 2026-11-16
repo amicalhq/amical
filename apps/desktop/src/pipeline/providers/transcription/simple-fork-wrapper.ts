@@ -1,4 +1,4 @@
-import { fork, ChildProcess } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import { app } from "electron";
 import * as path from "path";
 import { logger } from "../../../main/logger";
@@ -65,10 +65,12 @@ export class SimpleForkWrapper {
       logger.transcription.info(`Using unpacked worker: ${actualWorkerPath}`);
     }
 
-    this.worker = fork(actualWorkerPath, [], {
-      execPath: this.nodeBinaryPath,
+    // Electron's child_process.fork() throws when the RunAsNode fuse is
+    // disabled (release builds), even with a custom execPath. Spawn the
+    // bundled Node binary with an IPC channel, as fork() does internally.
+    this.worker = spawn(this.nodeBinaryPath, [actualWorkerPath], {
       env: workerEnv,
-      silent: true,
+      stdio: ["pipe", "pipe", "pipe", "ipc"],
       cwd: app.isPackaged ? process.resourcesPath : process.cwd(),
     });
 

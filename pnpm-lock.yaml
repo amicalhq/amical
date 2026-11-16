@@ -247,7 +247,7 @@ importers:
         version: 1.0.1(supports-color@8.1.1)
       electron-trpc-experimental:
         specifier: 1.0.0-alpha.1
-        version: 1.0.0-alpha.1(@trpc/client@11.5.0(@trpc/server@11.5.0(@typescript/typescript6@6.0.2))(@typescript/typescript6@6.0.2))(@trpc/server@11.5.0(@typescript/typescript6@6.0.2))(electron@44.3.0(supports-color@8.1.1))(supports-color@8.1.1)
+        version: 1.0.0-alpha.1(@trpc/client@11.5.0(@trpc/server@11.5.0(@typescript/typescript6@6.0.2))(@typescript/typescript6@6.0.2))(@trpc/server@11.5.0(@typescript/typescript6@6.0.2))(electron@44.11.3(supports-color@8.1.1))(supports-color@8.1.1)
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@19.1.1)
@@ -457,8 +457,8 @@ importers:
         specifier: ^10.2.3
         version: 10.2.3
       electron:
-        specifier: 44.3.0
-        version: 44.3.0(supports-color@8.1.1)
+        specifier: 44.11.3
+        version: 44.11.3(supports-color@8.1.1)
       eslint:
         specifier: ^9.39.5
         version: 9.39.5(jiti@2.5.1)(supports-color@8.1.1)
@@ -4647,8 +4647,8 @@ packages:
     resolution: {integrity: sha512-bO3y10YikuUwUuDUQRM4KfwNkKhnpVO7IPdbsrejwN9/AABJzzTQ4GeHwyzNSrVO+tEH3/Np255a3sVZpZDjvg==}
     engines: {node: '>=8.0.0'}
 
-  electron@44.3.0:
-    resolution: {integrity: sha512-St9EV7F2VtYaYWD2qaAjBwUgKxx39eJOUsUJ5+/1113sqbVfNqv4Dbm/W1rN7qmYSPa+mWwR6yr+b7MfgjgVfQ==}
+  electron@44.11.3:
+    resolution: {integrity: sha512-yVzJBAM7hfK/gkD3LHvFD4gfHLj1f6cL3yYgzX8pHQyWyz8U9FTfTj9WOFdwzLj5ta+/oIKDD4BsBTLYiFa2Tg==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -12577,13 +12577,13 @@ snapshots:
 
   electron-to-chromium@1.5.427: {}
 
-  electron-trpc-experimental@1.0.0-alpha.1(@trpc/client@11.5.0(@trpc/server@11.5.0(@typescript/typescript6@6.0.2))(@typescript/typescript6@6.0.2))(@trpc/server@11.5.0(@typescript/typescript6@6.0.2))(electron@44.3.0(supports-color@8.1.1))(supports-color@8.1.1):
+  electron-trpc-experimental@1.0.0-alpha.1(@trpc/client@11.5.0(@trpc/server@11.5.0(@typescript/typescript6@6.0.2))(@typescript/typescript6@6.0.2))(@trpc/server@11.5.0(@typescript/typescript6@6.0.2))(electron@44.11.3(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
       '@trpc/client': 11.5.0(@trpc/server@11.5.0(@typescript/typescript6@6.0.2))(@typescript/typescript6@6.0.2)
       '@trpc/server': 11.5.0(@typescript/typescript6@6.0.2)
       '@watchable/unpromise': 1.0.2
       debug: 4.4.1(supports-color@8.1.1)
-      electron: 44.3.0(supports-color@8.1.1)
+      electron: 44.11.3(supports-color@8.1.1)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
@@ -12601,7 +12601,7 @@ snapshots:
       - supports-color
     optional: true
 
-  electron@44.3.0(supports-color@8.1.1):
+  electron@44.11.3(supports-color@8.1.1):
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0(supports-color@8.1.1)
