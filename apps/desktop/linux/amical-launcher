@@ -1,0 +1,13 @@
+#!/bin/sh
+# Starts Amical under X11, also on a Wayland session (through XWayland).
+# The floating widget needs a fixed position and must stay above other
+# windows; Wayland does not let an app set either. Electron reads this flag
+# before the app code runs, so it must come from the launcher.
+# An --ozone-platform flag from the user wins.
+APP_DIR="$(dirname "$(readlink -f "$0")")/.."
+case " $* " in
+  *" --ozone-platform="* | *" --ozone-platform "*)
+    exec "$APP_DIR/Amical" "$@"
+    ;;
+esac
+exec "$APP_DIR/Amical" --ozone-platform=x11 "$@"

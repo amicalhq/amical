@@ -55,6 +55,25 @@ export const EXTERNAL_DEPENDENCIES = [
   // Add any other native modules you need here
 ];
 
+const NATIVE_HELPER_DIR = {
+  darwin: "swift-helper",
+  win32: "windows-helper",
+  linux: "linux-helper",
+}[process.platform as "darwin" | "win32" | "linux"];
+
+// Shared by the deb and rpm makers. `name` is also the desktop-file id
+// (LINUX_APP_ID in src/utils/platform.ts): the portal and the amical:// URL
+// handler resolve the app through amical-desktop.desktop.
+const LINUX_PACKAGE_OPTIONS = {
+  name: "amical-desktop",
+  productName: "Amical",
+  genericName: "Dictation",
+  bin: "resources/amical-launcher",
+  categories: ["Utility" as const],
+  mimeType: ["x-scheme-handler/amical"],
+  icon: "./assets/icon-512x512.png",
+};
+
 const config: ForgeConfig = {
   hooks: {
     prePackage: async (_forgeConfig, platform, arch) => {
@@ -624,10 +643,12 @@ const config: ForgeConfig = {
     icon: "./assets/logo", // Path to your icon file
     appBundleId: "ai.amical.desktop", // Proper bundle ID
     extraResource: [
-      `${process.platform === "win32" ? "../../packages/native-helpers/windows-helper/bin" : "../../packages/native-helpers/swift-helper/bin"}`,
+      `../../packages/native-helpers/${NATIVE_HELPER_DIR}/bin`,
       "./src/db/migrations",
       "./models",
       "./assets",
+      // The deb/rpm "bin": starts the app with the X11 flag (see the script).
+      ...(process.platform === "linux" ? ["./linux/amical-launcher"] : []),
     ],
     extendInfo: {
       NSMicrophoneUsageDescription:
@@ -700,6 +721,16 @@ const config: ForgeConfig = {
         if (process.platform === "win32") {
           if (
             /^\/node_modules\/onnxruntime-node\/bin\/napi-v\d+\/(darwin|linux)(\/|$)/.test(
+              filePath,
+            )
+          ) {
+            return true;
+          }
+        }
+        // The Linux packages carry only the Linux binaries.
+        if (process.platform === "linux") {
+          if (
+            /^\/node_modules\/onnxruntime-node\/bin\/napi-v\d+\/(darwin|win32)(\/|$)/.test(
               filePath,
             )
           ) {
@@ -820,8 +851,8 @@ const config: ForgeConfig = {
       },
       ["darwin"],
     ),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerRpm({ options: LINUX_PACKAGE_OPTIONS }),
+    new MakerDeb({ options: LINUX_PACKAGE_OPTIONS }),
   ],
   plugins: [
     new VitePlugin({

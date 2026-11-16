@@ -32,7 +32,9 @@ allowBuilds:
   "@amical/whisper-wrapper": true
   "macos-alias": true
   "fs-xattr": true
-  "onnxruntime-node": true
+  # false: its install script only downloads the 227 MB CUDA provider on
+  # linux-x64 (a no-op on macOS and Windows). Amical runs it on the CPU.
+  "onnxruntime-node": false
   "jest-worker": true
   "@tailwindcss/oxide": false
   "core-js": false

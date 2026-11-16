@@ -358,6 +358,10 @@ for (const variant of variants) {
     // the build runner but is not part of the packaged desktop application.
     cmakeParts.push("--CDGGML_OPENMP=OFF");
   }
+  if (platform === "linux") {
+    // With GCC, OpenMP links libgomp.so.1, which the deb/rpm do not declare.
+    cmakeParts.push("--CDGGML_OPENMP=OFF");
+  }
 
   const propagateCMakeBool = (key) => {
     const value = env[key];
