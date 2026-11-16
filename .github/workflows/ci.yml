@@ -59,6 +59,67 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: pnpm --filter @amical/desktop verify:lifecycle-contract-version "$BASE_SHA"
 
+  test_linux_helper:
+    name: Test Linux helper
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/native-helpers/linux-helper
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Keep aligned with .github/workflows/release.yml
+          node-version: "24.1.0"
+
+      - name: Setup pnpm
+        # Runs after Node.js: pnpm 11 needs Node.js 22 or later. The version
+        # comes from packageManager in package.json.
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+
+      - name: Install dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Generate JSON schemas and Rust models
+        working-directory: .
+        run: |
+          pnpm --filter @amical/types generate:json-schemas
+          pnpm --filter @amical/types generate:rust
+
+      - name: Install D-Bus (private-bus tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dbus
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/native-helpers/linux-helper
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --locked --bins
+
+      - name: Process tests (private session bus, temporary HOME and XDG dirs)
+        run: cargo test --locked --test protocol
+
   build_desktop:
     name: Build Desktop (${{ matrix.os }} ${{ matrix.arch }})
     needs: typecheck
