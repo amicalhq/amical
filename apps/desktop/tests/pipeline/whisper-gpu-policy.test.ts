@@ -81,6 +81,10 @@ describe("decideWhisperGpuUse", () => {
     expect(decision.useGpu).toBe(true);
   });
 
+  it("disables GPU on Linux, whose build has no GPU backend", () => {
+    expect(decideWhisperGpuUse([], "linux", "x64").useGpu).toBe(false);
+  });
+
   it("keeps GPU enabled if graphics probing returns no controllers", () => {
     const decision = decideWhisperGpuUse([], "darwin", "x64");
 

@@ -58,6 +58,13 @@ export function decideWhisperGpuUse(
   platform = process.platform,
   arch = process.arch,
 ): WhisperGpuDecision {
+  // The Linux addon has no GPU backend yet; say so instead of "enabled".
+  if (platform === "linux") {
+    return {
+      useGpu: false,
+      reason: "GPU disabled because the Linux build has no GPU backend",
+    };
+  }
   if (platform !== "darwin" || arch !== "x64") {
     return {
       useGpu: true,
