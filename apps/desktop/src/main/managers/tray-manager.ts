@@ -2,7 +2,7 @@ import { app, Tray, Menu, nativeImage } from "electron";
 import * as path from "path";
 import { logger } from "../logger";
 import type { WindowManager } from "../core/window-manager";
-import { isMacOS, isWindows } from "../../utils/platform";
+import { isLinux, isMacOS, isWindows } from "../../utils/platform";
 import { initMainI18n } from "../../i18n/main";
 
 export class TrayManager {
@@ -81,6 +81,10 @@ export class TrayManager {
       this.tray.on("click", openWindow);
       this.tray.on("double-click", openWindow);
     }
+    // Linux has no dock icon; the tray is the way back to the console.
+    if (isLinux()) {
+      this.tray.on("click", openWindow);
+    }
 
     // Create context menu
     const contextMenu = Menu.buildFromTemplate([
@@ -123,7 +127,9 @@ export class TrayManager {
     // Use appropriate icon based on platform
     const iconName = isWindows()
       ? "tray.ico" // Windows uses a dedicated symbol at each display scale
-      : "iconTemplate.png"; // macOS uses template naming convention
+      : isLinux()
+        ? "icon-256x256.png" // Linux panels show a colour icon as is
+        : "iconTemplate.png"; // macOS uses template naming convention
 
     if (app.isPackaged) {
       // When packaged, assets are placed next to the bundled resources path

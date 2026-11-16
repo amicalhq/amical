@@ -1,7 +1,7 @@
-import { app } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "../main/logger";
+import { getAudioDir } from "./audio-dir";
 import type { Transcription } from "../db/schema";
 
 export const DEFAULT_AUDIO_FILE_RETENTION_DAYS = 7;
@@ -20,7 +20,7 @@ export async function cleanupAudioFiles(options?: {
   const maxAgeMs = options?.maxAgeMs ?? DEFAULT_AUDIO_FILE_MAX_AGE_MS;
   const maxSizeBytes = options?.maxSizeBytes ?? 500 * 1024 * 1024; // 500MB
 
-  const audioDir = path.join(app.getPath("temp"), "amical-audio");
+  const audioDir = getAudioDir();
 
   try {
     // Check if directory exists
@@ -112,7 +112,7 @@ export async function cleanupAudioFiles(options?: {
 export async function deleteAudioFile(filePath: string): Promise<void> {
   try {
     // Ensure the file is in the audio directory
-    const audioDir = path.join(app.getPath("temp"), "amical-audio");
+    const audioDir = getAudioDir();
     if (!filePath.startsWith(audioDir)) {
       throw new Error("File is not in the audio directory");
     }

@@ -8,7 +8,7 @@ import { logger } from "./logger";
 import { showFatalStartupDialog } from "./fatal-startup-dialog";
 
 import { AppManager } from "./core/app-manager";
-import { isWindows } from "../utils/platform";
+import { isLinux, isWindows, LINUX_APP_ID } from "../utils/platform";
 import { ServiceManager } from "./managers/service-manager";
 import { isSilentStart } from "./launch-options";
 
@@ -61,6 +61,12 @@ ipcMain.handle(
 // Set App User Model ID for Windows (required for Squirrel.Windows)
 if (isWindows()) {
   app.setAppUserModelId("ai.amical.desktop");
+}
+
+// Linux ties the windows and the amical:// handler to the installed desktop
+// file. Set it before the protocol registration below.
+if (isLinux()) {
+  app.setDesktopName(`${LINUX_APP_ID}.desktop`);
 }
 
 // Register the deep-link protocol. Unpackaged dev builds use their own scheme

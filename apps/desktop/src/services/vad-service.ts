@@ -120,7 +120,9 @@ export class VADService extends EventEmitter {
 
       // Load ONNX model
       this.session = await this.ort.InferenceSession.create(this.modelPath, {
-        executionProviders: ["coreml", "cpu"],
+        // CoreML exists only on macOS; on Linux it would only log a warning.
+        executionProviders:
+          process.platform === "linux" ? ["cpu"] : ["coreml", "cpu"],
       });
 
       // Initialize hidden states (h and c)

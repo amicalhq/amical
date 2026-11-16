@@ -209,6 +209,13 @@ export class AutoUpdaterService extends EventEmitter {
       return;
     }
 
+    // Electron cannot install updates on Linux, and the update server has no
+    // Linux builds yet. The update check is off until a notice-only mode exists.
+    if (process.platform === "linux") {
+      logger.updater.info("Skipping auto-updater: not available on Linux");
+      return;
+    }
+
     this.settingsService = settingsService;
     this.telemetryService = telemetryService;
     this.remoteConfigService = remoteConfigService;
@@ -649,6 +656,10 @@ export class AutoUpdaterService extends EventEmitter {
   async checkForUpdates(userInitiated = false): Promise<void> {
     if (!app.isPackaged) {
       logger.updater.info("Skipping update check: app is not packaged");
+      return;
+    }
+    if (process.platform === "linux") {
+      logger.updater.info("Skipping update check: not available on Linux");
       return;
     }
 

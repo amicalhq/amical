@@ -1,3 +1,4 @@
+import path from "node:path";
 import { app, Menu, MenuItemConstructorOptions, BrowserWindow } from "electron";
 import { initMainI18n } from "../i18n/main";
 
@@ -168,6 +169,18 @@ export const setupApplicationMenu = async (
   if (process.platform === "darwin") {
     app.setAboutPanelOptions({
       applicationVersion: t("menu.version", { version: app.getVersion() }),
+    });
+  }
+  // The Linux About dialog shows only what is set here.
+  if (process.platform === "linux") {
+    app.setAboutPanelOptions({
+      applicationName: app.getName(),
+      applicationVersion: app.getVersion(),
+      iconPath: path.join(
+        app.isPackaged ? process.resourcesPath : app.getAppPath(),
+        "assets",
+        "icon-256x256.png",
+      ),
     });
   }
 };

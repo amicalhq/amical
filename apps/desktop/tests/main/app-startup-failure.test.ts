@@ -42,6 +42,7 @@ vi.mock("../../src/main/logger", () => ({
 
 vi.mock("../../src/utils/platform", () => ({
   isWindows: () => false,
+  isLinux: () => false,
 }));
 
 describe("application startup failure", () => {

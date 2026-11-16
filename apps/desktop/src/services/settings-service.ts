@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import { EventEmitter } from "events";
@@ -21,7 +22,7 @@ import {
   normalizeOpenAICompatibleBaseURL,
 } from "../utils/provider-utils";
 import { DEFAULT_HISTORY_RETENTION_PERIOD } from "../constants/history-retention";
-import { isWindows } from "../utils/platform";
+import { isLinux, isWindows, LINUX_APP_ID } from "../utils/platform";
 import { logger } from "../main/logger";
 import { SILENT_START_ARG } from "../main/launch-options";
 import type {
@@ -59,6 +60,39 @@ function runSquirrelShortcutCommand(
       reject(new Error(`Squirrel shortcut command exited with code ${code}`));
     });
   });
+}
+
+/**
+ * Electron has no login items on Linux. Write or remove an XDG autostart
+ * entry instead. It starts the packaged launcher, so the app gets the same
+ * flags as from the app menu.
+ */
+function syncLinuxAutostart(openAtLogin: boolean): void {
+  const configHome =
+    process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
+  const entryPath = path.join(
+    configHome,
+    "autostart",
+    `${LINUX_APP_ID}.desktop`,
+  );
+  if (!openAtLogin) {
+    rmSync(entryPath, { force: true });
+    return;
+  }
+  const launcher = path.join(process.resourcesPath, "amical-launcher");
+  mkdirSync(path.dirname(entryPath), { recursive: true });
+  writeFileSync(
+    entryPath,
+    [
+      "[Desktop Entry]",
+      "Type=Application",
+      `Name=${app.getName()}`,
+      `Exec="${launcher}" ${SILENT_START_ARG}`,
+      `Icon=${LINUX_APP_ID}`,
+      "X-GNOME-Autostart-enabled=true",
+      "",
+    ].join("\n"),
+  );
 }
 
 function syncWindowsSquirrelAutoLaunch(openAtLogin: boolean): void {
@@ -565,6 +599,11 @@ export class SettingsService extends EventEmitter {
       .then((preferences) => {
         if (isWindows() && app.isPackaged) {
           syncWindowsSquirrelAutoLaunch(preferences.launchAtLogin);
+          return;
+        }
+        if (isLinux()) {
+          // A dev run must not register itself to start at login.
+          if (app.isPackaged) syncLinuxAutostart(preferences.launchAtLogin);
           return;
         }
 
