@@ -8,6 +8,7 @@ export type WidgetNotificationType =
   | "transcription_failed"
   | "recording_duration_warning"
   | "recording_auto_stopped"
+  | "copied_to_clipboard"
   | "vocabulary_learned";
 
 export type WidgetNotificationTone = "error" | "success";
@@ -36,6 +37,7 @@ export interface WidgetNotificationAction {
 }
 
 export interface WidgetNotificationConfig {
+  tone?: WidgetNotificationTone; // Defaults to "error"
   title: LocalizedText;
   description?: LocalizedText;
   subDescription?: LocalizedText;
@@ -83,6 +85,7 @@ export const getNotificationDescription = (
       return {
         key: "widget.notifications.description.recordingAutoStopped",
       };
+    case "copied_to_clipboard":
     case "vocabulary_learned":
       return undefined;
   }
@@ -371,6 +374,14 @@ export const WIDGET_NOTIFICATION_CONFIG: Record<
     },
     description: {
       key: "widget.notifications.type.recordingAutoStopped.description",
+    },
+  },
+  // Paste fallback: the transcript is on the clipboard for a manual paste.
+  copied_to_clipboard: {
+    tone: "success",
+    title: { key: "widget.notifications.type.copiedToClipboard.title" },
+    description: {
+      key: "widget.notifications.type.copiedToClipboard.description",
     },
   },
   // Title and actions are built by the vocabulary learning service per toast.

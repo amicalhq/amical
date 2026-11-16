@@ -3,7 +3,7 @@ import {
   flushAllDictationTraces,
   tracePhase,
 } from "../telemetry/dictation-trace";
-import { ipcMain, app } from "electron";
+import { ipcMain, app, clipboard } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Deferred, Effect, Layer } from "effect";
@@ -171,7 +171,10 @@ export function createDesktopRecordingLifecycle(deps: {
               transcript: options.transcript,
               preserveClipboard: options.preserveClipboard,
             });
-            return { success: !!result?.success };
+            return {
+              success: !!result?.success,
+              clipboardSet: result?.clipboardSet,
+            };
           },
           setDraftEnterCapture: async (armed) => {
             await nativeBridge.setDraftEnterCapture(armed);
@@ -180,6 +183,7 @@ export function createDesktopRecordingLifecycle(deps: {
       : null,
     getPreserveClipboard: async () =>
       (await settingsService.getPreferences()).preserveClipboard,
+    writeClipboard: (text) => clipboard.writeText(text),
     isUpdateRequired: deps.isUpdateRequired,
     onUpdateRequired: deps.onUpdateRequired,
     hasSpeechModelSelected: async () =>

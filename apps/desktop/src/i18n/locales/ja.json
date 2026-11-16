@@ -360,6 +360,10 @@
           "title": "ディクテーションが自動停止しました",
           "description": "最大ディクテーション時間に達しました。必要に応じて新しいディクテーションを開始してください。"
         },
+        "copiedToClipboard": {
+          "title": "クリップボードにコピーしました",
+          "description": "Ctrl+V で貼り付けてください。"
+        },
         "vocabularyLearned": {
           "title": "{{terms}} をカスタム辞書に追加しました"
         }

@@ -40,7 +40,7 @@ export interface HostPasteBridge {
   pasteText(options: {
     transcript: string;
     preserveClipboard: boolean;
-  }): Promise<{ success: boolean }>;
+  }): Promise<{ success: boolean; clipboardSet?: boolean }>;
   setDraftEnterCapture(armed: boolean): Promise<void>;
 }
 
@@ -59,6 +59,9 @@ export interface HostAdapterDeps {
   onSessionPasteConfirmed?: (session: SessionId, text: string) => void;
   /** A post-lifecycle paste (draft confirm, paste-latest) was dispatched. */
   onOtherPaste?: () => void;
+  /** No helper could put the transcript on the clipboard (Linux only: no
+   * helper, or the helper reported clipboardSet: false). */
+  onPasteUnavailable?: (transcript: string) => void;
 }
 
 export interface HostAdapter extends HostPort {
@@ -123,6 +126,7 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
   ): void {
     if (!deps.bridge) {
       logger.main.warn("Native bridge unavailable, cannot paste");
+      deps.onPasteUnavailable?.(transcript);
       return;
     }
     telemetry?.dispatched();
@@ -130,6 +134,9 @@ export function createHostAdapter(deps: HostAdapterDeps): HostAdapter {
       (result) => {
         if (!result?.success) {
           logger.main.warn("Native helper refused the paste");
+        }
+        if (result?.clipboardSet === false) {
+          deps.onPasteUnavailable?.(transcript);
         }
         telemetry?.settled(!!result?.success);
       },

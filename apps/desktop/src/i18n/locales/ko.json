@@ -360,6 +360,10 @@
           "title": "받아쓰기가 자동으로 중지되었습니다",
           "description": "최대 받아쓰기 시간에 도달했습니다. 필요하면 새 받아쓰기를 시작하세요."
         },
+        "copiedToClipboard": {
+          "title": "클립보드에 복사했습니다",
+          "description": "Ctrl+V를 눌러 붙여넣으세요."
+        },
         "vocabularyLearned": {
           "title": "{{terms}}을(를) 사용자 사전에 추가했습니다"
         }

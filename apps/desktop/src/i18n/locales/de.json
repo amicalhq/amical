@@ -360,6 +360,10 @@
           "title": "Diktat automatisch beendet",
           "description": "Maximale Diktatdauer erreicht. Starte bei Bedarf ein neues Diktat."
         },
+        "copiedToClipboard": {
+          "title": "In die Zwischenablage kopiert",
+          "description": "Drücke Strg+V, um es einzufügen."
+        },
         "vocabularyLearned": {
           "title": "{{terms}} zum Vokabular hinzugefügt"
         }

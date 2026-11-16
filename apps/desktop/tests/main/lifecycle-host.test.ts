@@ -27,9 +27,11 @@ function makeHarness(options?: {
   draftSessions?: Set<string>;
   bridgeless?: boolean;
   getPreserveClipboard?: () => Promise<boolean>;
+  pasteResult?: () => { success: boolean; clipboardSet?: boolean };
 }) {
   const facts: LifecyclePortFact[] = [];
   const pastes: Array<{ transcript: string; preserveClipboard: boolean }> = [];
+  const unavailable: string[] = [];
   const enterMasks: boolean[] = [];
   const inputArms: boolean[] = [];
   const draftChanges: Array<PendingDraft | null> = [];
@@ -46,7 +48,7 @@ function makeHarness(options?: {
       : {
           pasteText: async (paste) => {
             pastes.push(paste);
-            return { success: true };
+            return options?.pasteResult?.() ?? { success: true };
           },
           setDraftEnterCapture: async (armed) => {
             enterMasks.push(armed);
@@ -57,6 +59,7 @@ function makeHarness(options?: {
     isDraftSession: (session) => options?.draftSessions?.has(session) ?? false,
     isLifecycleIdle: () => idle,
     setDraftInputActive: (armed) => inputArms.push(armed),
+    onPasteUnavailable: (transcript) => unavailable.push(transcript),
   });
   adapter.onDraftChanged((draft) => draftChanges.push(draft));
 
@@ -65,6 +68,7 @@ function makeHarness(options?: {
     sessionWork,
     facts,
     pastes,
+    unavailable,
     enterMasks,
     inputArms,
     draftChanges,
@@ -266,6 +270,30 @@ describe("lifecycle host adapter", () => {
     expect(h.pastes).toEqual([
       { transcript: "previous words", preserveClipboard: true },
     ]);
+  });
+
+  it("hands the text to the clipboard fallback when there is no helper", async () => {
+    const h = makeHarness({ bridgeless: true });
+    getLatestTranscription.mockResolvedValueOnce({ text: "no helper here" });
+    await h.adapter.pasteLatestTranscription();
+    expect(h.unavailable).toEqual(["no helper here"]);
+  });
+
+  it("hands the text to the clipboard fallback only when the helper could not set the clipboard", async () => {
+    let result: { success: boolean; clipboardSet?: boolean } = {
+      success: false,
+    };
+    const h = makeHarness({ pasteResult: () => result });
+    getLatestTranscription.mockResolvedValueOnce({ text: "refused" });
+    await h.adapter.pasteLatestTranscription();
+    await settle();
+    expect(h.unavailable).toEqual([]);
+
+    result = { success: false, clipboardSet: false };
+    getLatestTranscription.mockResolvedValueOnce({ text: "no clipboard" });
+    await h.adapter.pasteLatestTranscription();
+    await settle();
+    expect(h.unavailable).toEqual(["no clipboard"]);
   });
 });
 

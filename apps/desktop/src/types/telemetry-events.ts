@@ -170,6 +170,7 @@ export const widgetNotificationShownSchema = z.object({
     "transcription_failed",
     "recording_duration_warning",
     "recording_auto_stopped",
+    "copied_to_clipboard",
     "vocabulary_learned",
   ]),
   error_code: z

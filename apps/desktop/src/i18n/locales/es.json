@@ -360,6 +360,10 @@
           "title": "Dictado detenido automáticamente",
           "description": "Se alcanzó la duración máxima de dictado. Inicia un nuevo dictado si es necesario."
         },
+        "copiedToClipboard": {
+          "title": "Copiado al portapapeles",
+          "description": "Pulsa Ctrl+V para pegarlo."
+        },
         "vocabularyLearned": {
           "title": "Se agregó {{terms}} a tu vocabulario"
         }

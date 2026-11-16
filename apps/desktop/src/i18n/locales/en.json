@@ -357,6 +357,10 @@
           "title": "Dictation auto-stopped",
           "description": "Max dictation duration reached. Start a new dictation if needed."
         },
+        "copiedToClipboard": {
+          "title": "Copied to clipboard",
+          "description": "Press Ctrl+V to paste it."
+        },
         "vocabularyLearned": {
           "title": "Added {{terms}} to your vocabulary"
         }

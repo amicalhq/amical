@@ -360,6 +360,10 @@
           "title": "聽寫已自動停止",
           "description": "達到聽寫時間上限，如有需要請開始新的聽寫。"
         },
+        "copiedToClipboard": {
+          "title": "已複製到剪貼簿",
+          "description": "按 Ctrl+V 即可貼上。"
+        },
         "vocabularyLearned": {
           "title": "已將 {{terms}} 加入您的字典"
         }

@@ -60,7 +60,8 @@ export interface LifecycleNotification {
     | "empty_transcript"
     | "transcription_failed"
     | "recording_duration_warning"
-    | "recording_auto_stopped";
+    | "recording_auto_stopped"
+    | "copied_to_clipboard";
   params?: Record<string, string | number>;
   errorCode?: ErrorCode;
   /** transcription_failed only: the failure sealed before recording began,
@@ -89,6 +90,8 @@ export interface RecordingLifecycleDeps {
   onSessionPasteConfirmed?: (session: SessionId, text: string) => void;
   /** A post-lifecycle paste (draft confirm, paste-latest) was dispatched. */
   onOtherPaste?: () => void;
+  /** Writes text to the system clipboard; the paste fallback uses it. */
+  writeClipboard?: (text: string) => void;
   audioFilePathFor: (session: SessionId) => string;
   tuning: LifecycleTuning;
   timers?: ShellTimerHost;
@@ -266,6 +269,11 @@ export function createRecordingLifecycle(
         setDraftInputActive: deps.setDraftInputActive,
         onSessionPasteConfirmed: deps.onSessionPasteConfirmed,
         onOtherPaste: deps.onOtherPaste,
+        onPasteUnavailable: (transcript) => {
+          if (!deps.writeClipboard) return;
+          deps.writeClipboard(transcript);
+          notify({ type: "copied_to_clipboard" });
+        },
       });
 
       return {

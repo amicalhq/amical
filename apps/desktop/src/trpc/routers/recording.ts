@@ -214,6 +214,7 @@ export const recordingRouter = createRouter({
         emit.next({
           id: uuid(),
           type: data.type,
+          tone: config.tone,
           title: data.uiTitle ?? injectParams(config.title),
           description,
           // "Your recording is saved" must not show when the failure sealed
