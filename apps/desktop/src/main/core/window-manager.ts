@@ -734,6 +734,12 @@ export class WindowManager extends EventEmitter {
     if (!this.widgetWindow || this.widgetWindow.isDestroyed()) {
       return;
     }
+    // Linux does not forward mouse moves to a window that ignores the mouse,
+    // so the widget could never turn clickable again. It stays interactive
+    // there until the widget gets an input shape.
+    if (process.platform === "linux") {
+      return;
+    }
 
     this.widgetWindow.setIgnoreMouseEvents(ignore, { forward: true });
   }
