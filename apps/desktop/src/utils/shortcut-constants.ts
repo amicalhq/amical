@@ -1,4 +1,4 @@
-import { MAC_KEYCODES, WINDOWS_KEYCODES } from "./keycodes";
+import { LINUX_KEYCODES, MAC_KEYCODES, WINDOWS_KEYCODES } from "./keycodes";
 
 function expandReservedShortcuts(
   shortcuts: number[][],
@@ -67,6 +67,17 @@ export const WINDOWS_MODIFIER_KEYCODES = new Set<number>([
   WINDOWS_KEYCODES.RSHIFT,
 ]);
 
+export const LINUX_MODIFIER_KEYCODES = new Set<number>([
+  LINUX_KEYCODES.SUPER,
+  LINUX_KEYCODES.RSUPER,
+  LINUX_KEYCODES.CTRL,
+  LINUX_KEYCODES.RCTRL,
+  LINUX_KEYCODES.ALT,
+  LINUX_KEYCODES.RALT,
+  LINUX_KEYCODES.SHIFT,
+  LINUX_KEYCODES.RSHIFT,
+]);
+
 export const MAC_MODIFIER_PAIRS: [number, number][] = [
   [MAC_KEYCODES.SHIFT, MAC_KEYCODES.RSHIFT],
   [MAC_KEYCODES.CTRL, MAC_KEYCODES.RCTRL],
@@ -79,6 +90,13 @@ export const WINDOWS_MODIFIER_PAIRS: [number, number][] = [
   [WINDOWS_KEYCODES.CTRL, WINDOWS_KEYCODES.RCTRL],
   [WINDOWS_KEYCODES.ALT, WINDOWS_KEYCODES.RALT],
   [WINDOWS_KEYCODES.WIN, WINDOWS_KEYCODES.RWIN],
+];
+
+export const LINUX_MODIFIER_PAIRS: [number, number][] = [
+  [LINUX_KEYCODES.SHIFT, LINUX_KEYCODES.RSHIFT],
+  [LINUX_KEYCODES.CTRL, LINUX_KEYCODES.RCTRL],
+  [LINUX_KEYCODES.ALT, LINUX_KEYCODES.RALT],
+  [LINUX_KEYCODES.SUPER, LINUX_KEYCODES.RSUPER],
 ];
 
 export const MAC_SPECIAL_KEYCODES = new Set<number>([
@@ -160,6 +178,49 @@ export const WINDOWS_SPECIAL_KEYCODES = new Set<number>([
   WINDOWS_KEYCODES.F22,
   WINDOWS_KEYCODES.F23,
   WINDOWS_KEYCODES.F24,
+]);
+
+export const LINUX_SPECIAL_KEYCODES = new Set<number>([
+  LINUX_KEYCODES.SPACE,
+  LINUX_KEYCODES.TAB,
+  LINUX_KEYCODES.ENTER,
+  LINUX_KEYCODES.KEYPAD_ENTER,
+  LINUX_KEYCODES.ESCAPE,
+  LINUX_KEYCODES.DELETE,
+  LINUX_KEYCODES.BACKSPACE,
+  LINUX_KEYCODES.UP,
+  LINUX_KEYCODES.DOWN,
+  LINUX_KEYCODES.LEFT,
+  LINUX_KEYCODES.RIGHT,
+  LINUX_KEYCODES.HOME,
+  LINUX_KEYCODES.END,
+  LINUX_KEYCODES.PAGE_UP,
+  LINUX_KEYCODES.PAGE_DOWN,
+  LINUX_KEYCODES.INSERT,
+  LINUX_KEYCODES.F1,
+  LINUX_KEYCODES.F2,
+  LINUX_KEYCODES.F3,
+  LINUX_KEYCODES.F4,
+  LINUX_KEYCODES.F5,
+  LINUX_KEYCODES.F6,
+  LINUX_KEYCODES.F7,
+  LINUX_KEYCODES.F8,
+  LINUX_KEYCODES.F9,
+  LINUX_KEYCODES.F10,
+  LINUX_KEYCODES.F11,
+  LINUX_KEYCODES.F12,
+  LINUX_KEYCODES.F13,
+  LINUX_KEYCODES.F14,
+  LINUX_KEYCODES.F15,
+  LINUX_KEYCODES.F16,
+  LINUX_KEYCODES.F17,
+  LINUX_KEYCODES.F18,
+  LINUX_KEYCODES.F19,
+  LINUX_KEYCODES.F20,
+  LINUX_KEYCODES.F21,
+  LINUX_KEYCODES.F22,
+  LINUX_KEYCODES.F23,
+  LINUX_KEYCODES.F24,
 ]);
 
 const RESERVED_SHORTCUTS_MACOS_BASE: number[][] = [
@@ -293,6 +354,75 @@ const RESERVED_SHORTCUTS_WINDOWS_BASE: number[][] = [
   [WINDOWS_KEYCODES.CTRL, WINDOWS_KEYCODES.K],
 ];
 
+const L = LINUX_KEYCODES;
+const RESERVED_SHORTCUTS_LINUX_BASE: number[][] = [
+  // Clipboard, including the chords the helper sends to paste and copy, so
+  // an injected chord can never trigger a bound shortcut
+  [L.CTRL, L.C],
+  [L.CTRL, L.V],
+  [L.CTRL, L.X],
+  [L.CTRL, L.Z],
+  [L.CTRL, L.SHIFT, L.Z],
+  [L.CTRL, L.SHIFT, L.V],
+  [L.CTRL, L.SHIFT, L.C],
+  [L.CTRL, L.INSERT],
+  [L.SHIFT, L.INSERT],
+  // Window and session management (GNOME, KDE)
+  [L.ALT, L.TAB],
+  [L.ALT, L.F2],
+  [L.ALT, L.F4],
+  [L.ALT, L.SPACE],
+  [L.SUPER, L.TAB],
+  [L.SUPER, L.SPACE],
+  [L.SUPER, L.L],
+  [L.CTRL, L.ALT, L.T],
+  [L.CTRL, L.ALT, L.D],
+  [L.CTRL, L.ALT, L.L],
+  [L.CTRL, L.ALT, L.DELETE],
+  [L.CTRL, L.ALT, L.BACKSPACE],
+  [L.CTRL, L.ALT, L.UP],
+  [L.CTRL, L.ALT, L.DOWN],
+  [L.CTRL, L.ALT, L.LEFT],
+  [L.CTRL, L.ALT, L.RIGHT],
+  // Virtual terminal switching
+  ...[
+    L.F1,
+    L.F2,
+    L.F3,
+    L.F4,
+    L.F5,
+    L.F6,
+    L.F7,
+    L.F8,
+    L.F9,
+    L.F10,
+    L.F11,
+    L.F12,
+  ].map((fn) => [L.CTRL, L.ALT, fn]),
+  // Input method switching
+  [L.CTRL, L.SPACE],
+  [L.CTRL, L.SHIFT, L.SPACE],
+  // Clipboard managers (Klipper)
+  [L.CTRL, L.ALT, L.V],
+  [L.CTRL, L.ALT, L.R],
+  [L.CTRL, L.ALT, L.X],
+  // File and edit operations
+  [L.CTRL, L.A],
+  [L.CTRL, L.S],
+  [L.CTRL, L.W],
+  [L.CTRL, L.Q],
+  [L.CTRL, L.N],
+  [L.CTRL, L.O],
+  [L.CTRL, L.P],
+  [L.CTRL, L.F],
+  // Single keys
+  [L.F1],
+  [L.F5],
+  [L.F10],
+  [L.F11],
+  [L.PRINT_SCREEN],
+];
+
 export const RESERVED_SHORTCUTS_MACOS = expandReservedShortcuts(
   RESERVED_SHORTCUTS_MACOS_BASE,
   MAC_MODIFIER_PAIRS,
@@ -301,4 +431,9 @@ export const RESERVED_SHORTCUTS_MACOS = expandReservedShortcuts(
 export const RESERVED_SHORTCUTS_WINDOWS = expandReservedShortcuts(
   RESERVED_SHORTCUTS_WINDOWS_BASE,
   WINDOWS_MODIFIER_PAIRS,
+);
+
+export const RESERVED_SHORTCUTS_LINUX = expandReservedShortcuts(
+  RESERVED_SHORTCUTS_LINUX_BASE,
+  LINUX_MODIFIER_PAIRS,
 );

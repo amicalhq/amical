@@ -29,8 +29,12 @@ import {
   dictationLanguageForLocale,
   oneCodePerLanguage,
 } from "../constants/languages";
-import { isMacOS } from "../utils/platform";
-import { MAC_KEYCODES, WINDOWS_KEYCODES } from "../utils/keycodes";
+import { isLinux, isMacOS } from "../utils/platform";
+import {
+  LINUX_KEYCODES,
+  MAC_KEYCODES,
+  WINDOWS_KEYCODES,
+} from "../utils/keycodes";
 import {
   CURRENT_SETTINGS_VERSION,
   migrateSettings,
@@ -51,6 +55,20 @@ const getDefaultShortcuts = () => {
       ],
       newNote: [[MAC_KEYCODES.CMD, MAC_KEYCODES.CTRL, MAC_KEYCODES.N]],
       draftMode: [[MAC_KEYCODES.FN, MAC_KEYCODES.CTRL]],
+    };
+  }
+
+  // One Ctrl+Alt set on every Linux desktop. Compositor shortcut portals
+  // need a non-modifier key in each shortcut, and Ctrl+Alt+key is rarely
+  // taken by GNOME or KDE.
+  if (isLinux()) {
+    const { CTRL, ALT } = LINUX_KEYCODES;
+    return {
+      pushToTalk: [[CTRL, ALT, LINUX_KEYCODES.SPACE]],
+      toggleRecording: [[CTRL, ALT, LINUX_KEYCODES.H]],
+      pasteLastTranscript: [[CTRL, ALT, LINUX_KEYCODES.Z]],
+      newNote: [[CTRL, ALT, LINUX_KEYCODES.N]],
+      draftMode: [[CTRL, ALT, LINUX_KEYCODES.ENTER]],
     };
   }
 

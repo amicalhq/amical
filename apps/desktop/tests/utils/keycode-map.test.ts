@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const platform = vi.hoisted(() => ({ windows: false }));
+const platform = vi.hoisted(() => ({
+  name: "darwin" as "darwin" | "win32" | "linux",
+}));
 vi.mock("../../src/utils/platform", () => ({
-  isWindows: () => platform.windows,
+  isWindows: () => platform.name === "win32",
+  matchPlatform: <T>(arms: Record<"darwin" | "win32" | "linux", T>) =>
+    arms[platform.name],
 }));
 
 import {
@@ -10,11 +14,15 @@ import {
   keycodeToDisplay,
   keycodeToLegend,
 } from "../../src/utils/keycode-map";
-import { MAC_KEYCODES, WINDOWS_KEYCODES } from "../../src/utils/keycodes";
+import {
+  LINUX_KEYCODES,
+  MAC_KEYCODES,
+  WINDOWS_KEYCODES,
+} from "../../src/utils/keycodes";
 
 describe("keycode map", () => {
   beforeEach(() => {
-    platform.windows = false;
+    platform.name = "darwin";
   });
 
   it("shows macOS modifiers as glyphs and Fn and Return as words", () => {
@@ -25,7 +33,7 @@ describe("keycode map", () => {
   });
 
   it("shows Windows keys as title-case words", () => {
-    platform.windows = true;
+    platform.name = "win32";
     expect(keycodeToDisplay(WINDOWS_KEYCODES.ALT)).toBe("Alt");
     expect(keycodeToDisplay(WINDOWS_KEYCODES.RALT)).toBe("Right Alt");
     expect(keycodeToDisplay(WINDOWS_KEYCODES.ESCAPE)).toBe("Esc");
@@ -54,7 +62,7 @@ describe("keycode map", () => {
   });
 
   it("formats a Windows shortcut in Microsoft order with plus signs", () => {
-    platform.windows = true;
+    platform.name = "win32";
     expect(
       formatShortcut([
         WINDOWS_KEYCODES.DELETE,
@@ -62,5 +70,24 @@ describe("keycode map", () => {
         WINDOWS_KEYCODES.RCTRL,
       ]),
     ).toBe("Ctrl+Alt+Delete");
+  });
+
+  it("shows Linux keys with Super, as title-case words", () => {
+    platform.name = "linux";
+    expect(keycodeToDisplay(LINUX_KEYCODES.SUPER)).toBe("Super");
+    expect(keycodeToDisplay(LINUX_KEYCODES.RCTRL)).toBe("Right Ctrl");
+    expect(keycodeToDisplay(LINUX_KEYCODES.ESCAPE)).toBe("Esc");
+  });
+
+  it("formats a Linux shortcut with Super first and plus signs", () => {
+    platform.name = "linux";
+    expect(
+      formatShortcut([
+        LINUX_KEYCODES.SPACE,
+        LINUX_KEYCODES.ALT,
+        LINUX_KEYCODES.CTRL,
+        LINUX_KEYCODES.RSUPER,
+      ]),
+    ).toBe("Super+Ctrl+Alt+Space");
   });
 });

@@ -4,14 +4,14 @@ import {
   keycodeToLegend,
   sortKeycodesForDisplay,
 } from "@/utils/keycode-map";
-import { isWindows } from "@/utils/platform";
+import { isMacOS } from "@/utils/platform";
 import { cn } from "@/lib/utils";
 import { Globe } from "lucide-react";
 
 // Mac keycaps print words in lowercase, but letters and function keys (F5) in
-// uppercase. Windows keycaps keep the case of the word.
+// uppercase. Windows and Linux keycaps keep the case of the word.
 function keycapCase(label: string): string {
-  const keepCase = isWindows() || label.length === 1 || /^F\d+$/.test(label);
+  const keepCase = !isMacOS() || label.length === 1 || /^F\d+$/.test(label);
   return keepCase ? label : label.toLowerCase();
 }
 

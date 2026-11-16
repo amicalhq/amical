@@ -1,6 +1,7 @@
-import { isWindows } from "./platform";
-import { MAC_KEYCODES, WINDOWS_KEYCODES } from "./keycodes";
+import { matchPlatform } from "./platform";
+import { LINUX_KEYCODES, MAC_KEYCODES, WINDOWS_KEYCODES } from "./keycodes";
 import {
+  LINUX_MODIFIER_PAIRS,
   MAC_MODIFIER_PAIRS,
   WINDOWS_MODIFIER_PAIRS,
 } from "./shortcut-constants";
@@ -331,9 +332,136 @@ const windowsVKToKey: Record<number, string> = {
   0xe7: "Packet",
 };
 
+// Linux evdev key names. They match the Windows names where the key exists
+// on both, so the legends and shortcut text read the same.
+const linuxKeycodeToKey: Record<number, string> = {
+  [LINUX_KEYCODES.ESCAPE]: "Escape",
+  [LINUX_KEYCODES.ONE]: "1",
+  [LINUX_KEYCODES.TWO]: "2",
+  [LINUX_KEYCODES.THREE]: "3",
+  [LINUX_KEYCODES.FOUR]: "4",
+  [LINUX_KEYCODES.FIVE]: "5",
+  [LINUX_KEYCODES.SIX]: "6",
+  [LINUX_KEYCODES.SEVEN]: "7",
+  [LINUX_KEYCODES.EIGHT]: "8",
+  [LINUX_KEYCODES.NINE]: "9",
+  [LINUX_KEYCODES.ZERO]: "0",
+  [LINUX_KEYCODES.MINUS]: "-",
+  [LINUX_KEYCODES.EQUAL]: "=",
+  [LINUX_KEYCODES.BACKSPACE]: "Backspace",
+  [LINUX_KEYCODES.TAB]: "Tab",
+  [LINUX_KEYCODES.Q]: "Q",
+  [LINUX_KEYCODES.W]: "W",
+  [LINUX_KEYCODES.E]: "E",
+  [LINUX_KEYCODES.R]: "R",
+  [LINUX_KEYCODES.T]: "T",
+  [LINUX_KEYCODES.Y]: "Y",
+  [LINUX_KEYCODES.U]: "U",
+  [LINUX_KEYCODES.I]: "I",
+  [LINUX_KEYCODES.O]: "O",
+  [LINUX_KEYCODES.P]: "P",
+  [LINUX_KEYCODES.LEFT_BRACKET]: "[",
+  [LINUX_KEYCODES.RIGHT_BRACKET]: "]",
+  [LINUX_KEYCODES.ENTER]: "Enter",
+  [LINUX_KEYCODES.CTRL]: "Ctrl",
+  [LINUX_KEYCODES.A]: "A",
+  [LINUX_KEYCODES.S]: "S",
+  [LINUX_KEYCODES.D]: "D",
+  [LINUX_KEYCODES.F]: "F",
+  [LINUX_KEYCODES.G]: "G",
+  [LINUX_KEYCODES.H]: "H",
+  [LINUX_KEYCODES.J]: "J",
+  [LINUX_KEYCODES.K]: "K",
+  [LINUX_KEYCODES.L]: "L",
+  [LINUX_KEYCODES.SEMICOLON]: ";",
+  [LINUX_KEYCODES.QUOTE]: "'",
+  [LINUX_KEYCODES.BACKTICK]: "`",
+  [LINUX_KEYCODES.SHIFT]: "Shift",
+  [LINUX_KEYCODES.BACKSLASH]: "\\",
+  [LINUX_KEYCODES.Z]: "Z",
+  [LINUX_KEYCODES.X]: "X",
+  [LINUX_KEYCODES.C]: "C",
+  [LINUX_KEYCODES.V]: "V",
+  [LINUX_KEYCODES.B]: "B",
+  [LINUX_KEYCODES.N]: "N",
+  [LINUX_KEYCODES.M]: "M",
+  [LINUX_KEYCODES.COMMA]: ",",
+  [LINUX_KEYCODES.PERIOD]: ".",
+  [LINUX_KEYCODES.SLASH]: "/",
+  [LINUX_KEYCODES.RSHIFT]: "RShift",
+  [LINUX_KEYCODES.KEYPAD_MULTIPLY]: "Multiply",
+  [LINUX_KEYCODES.ALT]: "Alt",
+  [LINUX_KEYCODES.SPACE]: "Space",
+  [LINUX_KEYCODES.CAPS_LOCK]: "CapsLock",
+  [LINUX_KEYCODES.F1]: "F1",
+  [LINUX_KEYCODES.F2]: "F2",
+  [LINUX_KEYCODES.F3]: "F3",
+  [LINUX_KEYCODES.F4]: "F4",
+  [LINUX_KEYCODES.F5]: "F5",
+  [LINUX_KEYCODES.F6]: "F6",
+  [LINUX_KEYCODES.F7]: "F7",
+  [LINUX_KEYCODES.F8]: "F8",
+  [LINUX_KEYCODES.F9]: "F9",
+  [LINUX_KEYCODES.F10]: "F10",
+  [LINUX_KEYCODES.NUM_LOCK]: "NumLock",
+  [LINUX_KEYCODES.SCROLL_LOCK]: "ScrollLock",
+  [LINUX_KEYCODES.KEYPAD_7]: "Numpad7",
+  [LINUX_KEYCODES.KEYPAD_8]: "Numpad8",
+  [LINUX_KEYCODES.KEYPAD_9]: "Numpad9",
+  [LINUX_KEYCODES.KEYPAD_MINUS]: "Subtract",
+  [LINUX_KEYCODES.KEYPAD_4]: "Numpad4",
+  [LINUX_KEYCODES.KEYPAD_5]: "Numpad5",
+  [LINUX_KEYCODES.KEYPAD_6]: "Numpad6",
+  [LINUX_KEYCODES.KEYPAD_PLUS]: "Add",
+  [LINUX_KEYCODES.KEYPAD_1]: "Numpad1",
+  [LINUX_KEYCODES.KEYPAD_2]: "Numpad2",
+  [LINUX_KEYCODES.KEYPAD_3]: "Numpad3",
+  [LINUX_KEYCODES.KEYPAD_0]: "Numpad0",
+  [LINUX_KEYCODES.KEYPAD_DECIMAL]: "Decimal",
+  [LINUX_KEYCODES.F11]: "F11",
+  [LINUX_KEYCODES.F12]: "F12",
+  [LINUX_KEYCODES.KEYPAD_ENTER]: "KeypadEnter",
+  [LINUX_KEYCODES.RCTRL]: "RCtrl",
+  [LINUX_KEYCODES.KEYPAD_DIVIDE]: "Divide",
+  [LINUX_KEYCODES.PRINT_SCREEN]: "PrintScreen",
+  [LINUX_KEYCODES.RALT]: "RAlt",
+  [LINUX_KEYCODES.HOME]: "Home",
+  [LINUX_KEYCODES.UP]: "Up",
+  [LINUX_KEYCODES.PAGE_UP]: "PageUp",
+  [LINUX_KEYCODES.LEFT]: "Left",
+  [LINUX_KEYCODES.RIGHT]: "Right",
+  [LINUX_KEYCODES.END]: "End",
+  [LINUX_KEYCODES.DOWN]: "Down",
+  [LINUX_KEYCODES.PAGE_DOWN]: "PageDown",
+  [LINUX_KEYCODES.INSERT]: "Insert",
+  [LINUX_KEYCODES.DELETE]: "Delete",
+  [LINUX_KEYCODES.MUTE]: "VolumeMute",
+  [LINUX_KEYCODES.VOLUME_DOWN]: "VolumeDown",
+  [LINUX_KEYCODES.VOLUME_UP]: "VolumeUp",
+  [LINUX_KEYCODES.PAUSE]: "Pause",
+  [LINUX_KEYCODES.SUPER]: "Super",
+  [LINUX_KEYCODES.RSUPER]: "RSuper",
+  [LINUX_KEYCODES.MENU]: "Menu",
+  [LINUX_KEYCODES.F13]: "F13",
+  [LINUX_KEYCODES.F14]: "F14",
+  [LINUX_KEYCODES.F15]: "F15",
+  [LINUX_KEYCODES.F16]: "F16",
+  [LINUX_KEYCODES.F17]: "F17",
+  [LINUX_KEYCODES.F18]: "F18",
+  [LINUX_KEYCODES.F19]: "F19",
+  [LINUX_KEYCODES.F20]: "F20",
+  [LINUX_KEYCODES.F21]: "F21",
+  [LINUX_KEYCODES.F22]: "F22",
+  [LINUX_KEYCODES.F23]: "F23",
+  [LINUX_KEYCODES.F24]: "F24",
+};
+
 export function getKeyFromKeycode(keycode: number): string | undefined {
-  // Use the appropriate mapping based on platform
-  const mapping = isWindows() ? windowsVKToKey : macOSKeycodeToKey;
+  const mapping = matchPlatform({
+    darwin: macOSKeycodeToKey,
+    win32: windowsVKToKey,
+    linux: linuxKeycodeToKey,
+  });
   return mapping[keycode];
 }
 
@@ -386,12 +514,21 @@ const windowsLegends: Record<string, KeyLegend> = {
 
 export function keycodeToLegend(keycode: number): KeyLegend {
   // A right-side modifier shows its left twin's legend, marked as right.
-  const pairs = isWindows() ? WINDOWS_MODIFIER_PAIRS : MAC_MODIFIER_PAIRS;
+  const pairs = matchPlatform({
+    darwin: MAC_MODIFIER_PAIRS,
+    win32: WINDOWS_MODIFIER_PAIRS,
+    linux: LINUX_MODIFIER_PAIRS,
+  });
   const left = pairs.find(([, right]) => right === keycode)?.[0];
   if (left !== undefined) return { ...keycodeToLegend(left), right: true };
 
   const name = getKeyFromKeycode(keycode) ?? `Key${keycode}`;
-  const legends = isWindows() ? windowsLegends : macOSLegends;
+  // Linux desktops write key names like Windows does ("Page Up", "Esc").
+  const legends = matchPlatform({
+    darwin: macOSLegends,
+    win32: windowsLegends,
+    linux: windowsLegends,
+  });
   return legends[name] || { word: name };
 }
 
@@ -408,7 +545,8 @@ export function keycodeToDisplay(keycode: number): string {
 
 // Modifiers go first, in each platform's standard order: Fn, Control, Option,
 // Shift, Command on macOS (Apple Style Guide); Windows, Ctrl, Alt, Shift on
-// Windows (Windows UX guidelines). Other keys keep their press order.
+// Windows (Windows UX guidelines); the same order with Super on Linux. Other
+// keys keep their press order.
 const macOSModifierOrder: number[] = [
   MAC_KEYCODES.FN,
   MAC_KEYCODES.CTRL,
@@ -431,9 +569,24 @@ const windowsModifierOrder: number[] = [
   WINDOWS_KEYCODES.RSHIFT,
 ];
 
+const linuxModifierOrder: number[] = [
+  LINUX_KEYCODES.SUPER,
+  LINUX_KEYCODES.RSUPER,
+  LINUX_KEYCODES.CTRL,
+  LINUX_KEYCODES.RCTRL,
+  LINUX_KEYCODES.ALT,
+  LINUX_KEYCODES.RALT,
+  LINUX_KEYCODES.SHIFT,
+  LINUX_KEYCODES.RSHIFT,
+];
+
 /** The keys of a shortcut in display order. The stored order is unchanged. */
 export function sortKeycodesForDisplay(keycodes: number[]): number[] {
-  const order = isWindows() ? windowsModifierOrder : macOSModifierOrder;
+  const order = matchPlatform({
+    darwin: macOSModifierOrder,
+    win32: windowsModifierOrder,
+    linux: linuxModifierOrder,
+  });
   const rank = (keycode: number) => {
     const index = order.indexOf(keycode);
     return index === -1 ? order.length : index;
@@ -443,8 +596,8 @@ export function sortKeycodesForDisplay(keycodes: number[]): number[] {
 
 /**
  * A shortcut as text, in each platform's standard form: "⇧⌘3" on macOS,
- * "Ctrl+Alt+Delete" on Windows. The modifier side is left out, as in system
- * shortcut lists.
+ * "Ctrl+Alt+Delete" on Windows and Linux. The modifier side is left out, as
+ * in system shortcut lists.
  */
 export function formatShortcut(keycodes: number[]): string {
   return sortKeycodesForDisplay(keycodes)
@@ -452,7 +605,7 @@ export function formatShortcut(keycodes: number[]): string {
       const { glyph, word } = keycodeToLegend(keycode);
       return glyph ?? word;
     })
-    .join(isWindows() ? "+" : "");
+    .join(matchPlatform({ darwin: "", win32: "+", linux: "+" }));
 }
 
 function buildReverseMap(
@@ -469,6 +622,7 @@ function buildReverseMap(
 
 const macKeyToKeycode = buildReverseMap(macOSKeycodeToKey);
 const windowsKeyToKeycode = buildReverseMap(windowsVKToKey);
+const linuxKeyToKeycode = buildReverseMap(linuxKeycodeToKey);
 
 export function getKeycodeFromKeyName(keyName: string): number | undefined {
   if (keyName.startsWith("Key")) {
@@ -479,6 +633,10 @@ export function getKeycodeFromKeyName(keyName: string): number | undefined {
     }
   }
 
-  const mapping = isWindows() ? windowsKeyToKeycode : macKeyToKeycode;
+  const mapping = matchPlatform({
+    darwin: macKeyToKeycode,
+    win32: windowsKeyToKeycode,
+    linux: linuxKeyToKeycode,
+  });
   return mapping[keyName];
 }

@@ -5,14 +5,18 @@
 
 import type { ParseKeys } from "i18next";
 import { formatShortcut } from "./keycode-map";
-import { MAC_KEYCODES, WINDOWS_KEYCODES } from "./keycodes";
+import { LINUX_KEYCODES, MAC_KEYCODES, WINDOWS_KEYCODES } from "./keycodes";
 import {
+  LINUX_MODIFIER_KEYCODES,
   MAC_MODIFIER_KEYCODES,
   WINDOWS_MODIFIER_KEYCODES,
+  LINUX_MODIFIER_PAIRS,
   MAC_MODIFIER_PAIRS,
   WINDOWS_MODIFIER_PAIRS,
+  LINUX_SPECIAL_KEYCODES,
   MAC_SPECIAL_KEYCODES,
   WINDOWS_SPECIAL_KEYCODES,
+  RESERVED_SHORTCUTS_LINUX,
   RESERVED_SHORTCUTS_MACOS,
   RESERVED_SHORTCUTS_WINDOWS,
 } from "./shortcut-constants";
@@ -67,6 +71,45 @@ const WINDOWS_MODIFIER_NAMES: Record<number, string> = {
   [WINDOWS_KEYCODES.SHIFT]: "Shift",
   [WINDOWS_KEYCODES.WIN]: "Windows",
 };
+const LINUX_MODIFIER_NAMES: Record<number, string> = {
+  [LINUX_KEYCODES.CTRL]: "Ctrl",
+  [LINUX_KEYCODES.ALT]: "Alt",
+  [LINUX_KEYCODES.SHIFT]: "Shift",
+  [LINUX_KEYCODES.SUPER]: "Super",
+};
+
+// The key sets of one platform. Validation takes the platform as a value;
+// any platform other than macOS and Linux uses the Windows sets.
+function platformKeys(platform: NodeJS.Platform) {
+  if (platform === "darwin") {
+    return {
+      modifiers: MAC_MODIFIER_KEYCODES,
+      special: MAC_SPECIAL_KEYCODES,
+      pairs: MAC_MODIFIER_PAIRS,
+      names: MAC_MODIFIER_NAMES,
+      reserved: RESERVED_SHORTCUTS_MACOS,
+      suggestedModifiers: ["Command", "Control", "Fn"],
+    };
+  }
+  if (platform === "linux") {
+    return {
+      modifiers: LINUX_MODIFIER_KEYCODES,
+      special: LINUX_SPECIAL_KEYCODES,
+      pairs: LINUX_MODIFIER_PAIRS,
+      names: LINUX_MODIFIER_NAMES,
+      reserved: RESERVED_SHORTCUTS_LINUX,
+      suggestedModifiers: ["Ctrl", "Alt", "Super"],
+    };
+  }
+  return {
+    modifiers: WINDOWS_MODIFIER_KEYCODES,
+    special: WINDOWS_SPECIAL_KEYCODES,
+    pairs: WINDOWS_MODIFIER_PAIRS,
+    names: WINDOWS_MODIFIER_NAMES,
+    reserved: RESERVED_SHORTCUTS_WINDOWS,
+    suggestedModifiers: ["Ctrl", "Alt", "Windows"],
+  };
+}
 
 /**
  * Helper function to compare two sorted arrays
@@ -136,10 +179,7 @@ export function checkReservedShortcut(
   keys: number[],
   platform: NodeJS.Platform,
 ): ValidationResult {
-  const reserved =
-    platform === "darwin"
-      ? RESERVED_SHORTCUTS_MACOS
-      : RESERVED_SHORTCUTS_WINDOWS;
+  const { reserved } = platformKeys(platform);
 
   const normalizedKeys = normalizeKeys(keys);
 
@@ -166,10 +206,11 @@ export function checkAlphanumericOnly(
   keys: number[],
   platform: NodeJS.Platform,
 ): ValidationResult {
-  const modifierSet =
-    platform === "darwin" ? MAC_MODIFIER_KEYCODES : WINDOWS_MODIFIER_KEYCODES;
-  const specialSet =
-    platform === "darwin" ? MAC_SPECIAL_KEYCODES : WINDOWS_SPECIAL_KEYCODES;
+  const {
+    modifiers: modifierSet,
+    special: specialSet,
+    suggestedModifiers,
+  } = platformKeys(platform);
 
   // Check if any key is a modifier
   const hasModifier = keys.some((key) => modifierSet.has(key));
@@ -184,10 +225,7 @@ export function checkAlphanumericOnly(
   }
 
   // All keys are alphanumeric - need a modifier
-  const [mod1, mod2, mod3] =
-    platform === "darwin"
-      ? ["Command", "Control", "Fn"]
-      : ["Ctrl", "Alt", "Windows"];
+  const [mod1, mod2, mod3] = suggestedModifiers;
   return {
     valid: false,
     error: {
@@ -205,10 +243,7 @@ export function checkDuplicateModifierPairs(
   keys: number[],
   platform: NodeJS.Platform,
 ): ValidationResult {
-  const modifierPairs =
-    platform === "darwin" ? MAC_MODIFIER_PAIRS : WINDOWS_MODIFIER_PAIRS;
-  const modifierNames =
-    platform === "darwin" ? MAC_MODIFIER_NAMES : WINDOWS_MODIFIER_NAMES;
+  const { pairs: modifierPairs, names: modifierNames } = platformKeys(platform);
 
   for (const [left, right] of modifierPairs) {
     if (keys.includes(left) && keys.includes(right)) {

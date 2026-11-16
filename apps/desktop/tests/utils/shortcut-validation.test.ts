@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkAlphanumericOnly,
+  checkReservedShortcut,
   checkDuplicateModifierPairs,
   checkMaxKeysLength,
   type ShortcutType,
@@ -136,5 +137,15 @@ describe("shortcut validation", () => {
         platform: "darwin",
       }),
     ).toEqual({ valid: true, warning: undefined });
+  });
+
+  it("uses the Linux key sets for Linux", () => {
+    // Ctrl+C (evdev 29+46) is reserved; a lone letter (Q, 16) suggests Super.
+    expect(checkReservedShortcut([29, 46], "linux").valid).toBe(false);
+    expect(checkAlphanumericOnly([16], "linux").error?.params).toEqual({
+      mod1: "Ctrl",
+      mod2: "Alt",
+      mod3: "Super",
+    });
   });
 });
