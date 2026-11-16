@@ -195,6 +195,24 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodType> = {
   prepareInjection: PrepareInjectionResultSchema,
 };
 
+function resolveNativeHelperPath(): string {
+  const helperName = getNativeHelperName();
+  const helperDir = getNativeHelperDir();
+
+  return electronApp.isPackaged
+    ? path.join(process.resourcesPath, "bin", helperName)
+    : path.join(
+        electronApp.getAppPath(),
+        "..",
+        "..",
+        "packages",
+        "native-helpers",
+        helperDir,
+        "bin",
+        helperName,
+      );
+}
+
 function normalizeAccessibilityContext(
   context: AppContext | null,
 ): AppContext | null {
@@ -327,6 +345,16 @@ export class NativeBridge extends EventEmitter {
     this.startHelperProcess();
   }
 
+  /** True when the helper binary exists and is executable. */
+  static helperAvailable(): boolean {
+    try {
+      fs.accessSync(resolveNativeHelperPath(), fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private popPending(id: string): PendingRpc | null {
     const pending = this.pending.get(id);
     if (!pending) {
@@ -336,6 +364,10 @@ export class NativeBridge extends EventEmitter {
     clearTimeout(pending.timeoutHandle);
     this.pending.delete(id);
     return pending;
+  }
+
+  private determineHelperPath(): string {
+    return resolveNativeHelperPath();
   }
 
   private rejectAllPendingOnCrash(
@@ -361,24 +393,6 @@ export class NativeBridge extends EventEmitter {
       );
     }
     this.pending.clear();
-  }
-
-  private determineHelperPath(): string {
-    const helperName = getNativeHelperName();
-    const helperDir = getNativeHelperDir();
-
-    return electronApp.isPackaged
-      ? path.join(process.resourcesPath, "bin", helperName)
-      : path.join(
-          electronApp.getAppPath(),
-          "..",
-          "..",
-          "packages",
-          "native-helpers",
-          helperDir,
-          "bin",
-          helperName,
-        );
   }
 
   private startHelperProcess(): void {

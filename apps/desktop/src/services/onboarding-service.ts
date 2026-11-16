@@ -15,6 +15,7 @@ import type { TelemetryService } from "./telemetry-service";
 import type { ModelService } from "./model-service";
 import type { AppSettingsData } from "../db/schema";
 import { isLocalTranscriptionSupported } from "../utils/os-version";
+import { isLinux } from "../utils/platform";
 import {
   OnboardingScreen,
   FeatureInterest,
@@ -26,6 +27,18 @@ import {
   type SystemSpecs,
   type DiscoverySource,
 } from "../types/onboarding";
+
+/**
+ * Microphone permission status. Electron defines no permission API on Linux,
+ * where any app can open the microphone, so Linux reports "granted".
+ */
+export function getMicrophoneAccessStatus(): ReturnType<
+  typeof systemPreferences.getMediaAccessStatus
+> {
+  return isLinux()
+    ? "granted"
+    : systemPreferences.getMediaAccessStatus("microphone");
+}
 
 /**
  * Database representation of onboarding state
@@ -402,8 +415,7 @@ export class OnboardingService extends EventEmitter {
     microphone: boolean;
     accessibility: boolean;
   } {
-    const microphone =
-      systemPreferences.getMediaAccessStatus("microphone") === "granted";
+    const microphone = getMicrophoneAccessStatus() === "granted";
 
     const accessibility =
       process.platform === "darwin"
@@ -446,7 +458,7 @@ export class OnboardingService extends EventEmitter {
       logger.main.info("Onboarding needed", {
         forceOnboarding,
         notCompleted: !hasCompleted,
-        microphoneStatus: systemPreferences.getMediaAccessStatus("microphone"),
+        microphoneStatus: getMicrophoneAccessStatus(),
         accessibility: permissions.accessibility,
       });
     }

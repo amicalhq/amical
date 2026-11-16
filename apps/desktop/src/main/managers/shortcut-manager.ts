@@ -5,6 +5,7 @@ import { NativeBridge } from "@/services/platform/native-bridge-service";
 import { KeyEventPayload, HelperEvent } from "@amical/types";
 import { logger } from "@/main/logger";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
+import { isLinux } from "@/utils/platform";
 import {
   validateShortcutBindings,
   type ShortcutBindings,
@@ -45,7 +46,8 @@ export class ShortcutManager extends EventEmitter {
     draftMode: [],
   };
   private settingsService: SettingsService;
-  private nativeBridge: NativeBridge;
+  // Null on Linux when the helper is missing: no hotkeys, settings still work.
+  private nativeBridge: NativeBridge | null;
   private shortcutMutationChain: Promise<void> = Promise.resolve();
   private isRecordingShortcut: boolean = false;
   private recheckInFlight = false;
@@ -95,7 +97,7 @@ export class ShortcutManager extends EventEmitter {
   // build this manager, which also makes single-construction structural.
   private constructor(
     settingsService: SettingsService,
-    nativeBridge: NativeBridge,
+    nativeBridge: NativeBridge | null,
   ) {
     super();
     this.settingsService = settingsService;
@@ -125,9 +127,8 @@ export class ShortcutManager extends EventEmitter {
       const settingsService = yield* SettingsServiceTag;
       const nativeBridge = yield* NativeBridgeTag;
       const recordingLifecycle = yield* RecordingLifecycleTag;
-      if (!nativeBridge) {
-        // Unsupported platform (Linux): boot stays fatal with the old
-        // initializeShortcutManager guard's exact message.
+      if (!nativeBridge && !isLinux()) {
+        // macOS/Windows always have a bridge; boot stays fatal without one.
         return yield* Effect.die(
           new Error(
             "SettingsService and NativeBridge must be initialized first",
@@ -165,9 +166,13 @@ export class ShortcutManager extends EventEmitter {
 
   private async initialize() {
     await this.loadShortcuts();
+    if (!this.nativeBridge) {
+      log.warn("No native helper: global shortcuts are unavailable");
+      return;
+    }
     this.syncShortcutsToNative(); // fire-and-forget
     this.syncAllowInjectedKeysToNative(); // fire-and-forget
-    this.setupEventListeners();
+    this.setupEventListeners(this.nativeBridge);
     this.startPeriodicRecheck();
   }
 
@@ -193,6 +198,7 @@ export class ShortcutManager extends EventEmitter {
    * dropped.
    */
   private async syncShortcutsToNative() {
+    if (!this.nativeBridge) return;
     try {
       const subsetChords = [
         ...this.shortcuts.pushToTalk,
@@ -226,6 +232,7 @@ export class ShortcutManager extends EventEmitter {
    * and whenever the preference is toggled.
    */
   async syncAllowInjectedKeysToNative() {
+    if (!this.nativeBridge) return;
     try {
       const { allowInjectedKeys } = await this.settingsService.getPreferences();
       await this.nativeBridge.setAllowInjectedKeys(allowInjectedKeys);
@@ -338,7 +345,7 @@ export class ShortcutManager extends EventEmitter {
     }
 
     const pressedKeyCodes = this.getActiveKeys();
-    if (pressedKeyCodes.length === 0) {
+    if (pressedKeyCodes.length === 0 || !this.nativeBridge) {
       return;
     }
 
@@ -561,8 +568,8 @@ export class ShortcutManager extends EventEmitter {
     log.info("Shortcut recording state changed", { isRecording });
   }
 
-  private setupEventListeners() {
-    this.nativeBridge.on("helperEvent", (event: HelperEvent) => {
+  private setupEventListeners(nativeBridge: NativeBridge) {
+    nativeBridge.on("helperEvent", (event: HelperEvent) => {
       switch (event.type) {
         case "keyDown":
           this.handleKeyDown(event.payload);
@@ -575,8 +582,8 @@ export class ShortcutManager extends EventEmitter {
     // Each helper start (also a crash restart) emits "ready", and the new
     // process has none of the old one's state. The boot "ready" fires before
     // this subscribes; if not, the re-sync only repeats the initial sync.
-    this.nativeBridge.on("ready", () => {
-      void this.resyncNativeHelper();
+    nativeBridge.on("ready", () => {
+      void this.resyncNativeHelper(nativeBridge);
     });
   }
 
@@ -584,12 +591,12 @@ export class ShortcutManager extends EventEmitter {
    * Push all helper state to a new helper process. Each push logs its own
    * failure.
    */
-  private async resyncNativeHelper() {
+  private async resyncNativeHelper(nativeBridge: NativeBridge) {
     log.info("Native helper started, re-syncing helper state");
     await this.syncShortcutsToNative();
     await this.syncAllowInjectedKeysToNative();
     if (this.draftActive) {
-      await this.nativeBridge.setDraftEnterCapture(true);
+      await nativeBridge.setDraftEnterCapture(true);
     }
   }
 

@@ -9,6 +9,8 @@ import {
   type OnboardingFeatureFlags,
 } from "../../types/onboarding";
 import { logger } from "../../main/logger";
+import { getMicrophoneAccessStatus } from "../../services/onboarding-service";
+import { isLinux } from "../../utils/platform";
 
 export const onboardingRouter = createRouter({
   // --------------------------------------------------------------------------
@@ -258,7 +260,7 @@ export const onboardingRouter = createRouter({
    */
   checkMicrophonePermission: procedure.query(async (): Promise<string> => {
     try {
-      const status = systemPreferences.getMediaAccessStatus("microphone");
+      const status = getMicrophoneAccessStatus();
       logger.main.debug("Microphone permission status:", status);
       return status;
     } catch (error) {
@@ -300,6 +302,8 @@ export const onboardingRouter = createRouter({
   requestMicrophonePermission: procedure.mutation(
     async (): Promise<boolean> => {
       try {
+        // Linux has no microphone permission to ask for.
+        if (isLinux()) return true;
         const status = await systemPreferences.askForMediaAccess("microphone");
         logger.main.info("Microphone permission requested, status:", status);
         return status;

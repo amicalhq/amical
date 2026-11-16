@@ -81,7 +81,7 @@ import type { BrowserWindow } from "electron";
 import { logger } from "../logger";
 import { addRelease, up } from "./layer-helpers";
 import { installDictationTrace } from "../telemetry/dictation-trace";
-import { isMacOS, isWindows } from "../../utils/platform";
+import { isLinux, isMacOS, isWindows } from "../../utils/platform";
 
 import { SettingsService } from "../../services/settings-service";
 import { SettingsSyncService } from "../../services/settings-sync-service";
@@ -141,9 +141,13 @@ export const NativeBridgeLive: Layer.Layer<
   NativeBridgeTag,
   Effect.gen(function* () {
     const telemetryService = yield* TelemetryServiceTag;
-    // Platform gate: the bridge (and its helper process) exists only on
-    // macOS/Windows — Linux holds null, and the shortcut layer dies on it.
-    if (!isMacOS() && !isWindows()) {
+    if (!isMacOS() && !isWindows() && !isLinux()) {
+      return null;
+    }
+    // Linux runs without a helper: no hotkeys, and paste falls back to the
+    // clipboard. macOS and Windows keep a missing helper fatal at boot.
+    if (isLinux() && !NativeBridge.helperAvailable()) {
+      logger.main.warn("Native helper not found, running without it");
       return null;
     }
     const appScope = yield* AppScopeTag;

@@ -30,18 +30,47 @@ export function isLinux(): boolean {
   return getPlatform() === "linux";
 }
 
+export type SupportedPlatform = "darwin" | "win32" | "linux";
+
+/**
+ * Pick the value for the current platform. Every supported platform needs an
+ * arm, so a new platform cannot fall into another platform's branch. An
+ * unsupported platform gets `fallback`, or the macOS arm when none is given.
+ */
+export function matchPlatform<T>(
+  arms: Record<SupportedPlatform, T>,
+  fallback?: T,
+): T {
+  const platform = getPlatform();
+  if (platform === "darwin" || platform === "win32" || platform === "linux") {
+    return arms[platform];
+  }
+  return fallback ?? arms.darwin;
+}
+
+/** Desktop-file id of the Linux package. The portal and URL handler use it. */
+export const LINUX_APP_ID = "amical-desktop";
+
 /**
  * Get the native helper name for the current platform
  */
 export function getNativeHelperName(): string {
-  return isWindows() ? "WindowsHelper.exe" : "SwiftHelper";
+  return matchPlatform({
+    darwin: "SwiftHelper",
+    win32: "WindowsHelper.exe",
+    linux: "linux-helper",
+  });
 }
 
 /**
  * Get the native helper directory name for the current platform
  */
 export function getNativeHelperDir(): string {
-  return isWindows() ? "windows-helper" : "swift-helper";
+  return matchPlatform({
+    darwin: "swift-helper",
+    win32: "windows-helper",
+    linux: "linux-helper",
+  });
 }
 
 /**
