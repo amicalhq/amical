@@ -572,6 +572,25 @@ export class ShortcutManager extends EventEmitter {
           break;
       }
     });
+    // Each helper start (also a crash restart) emits "ready", and the new
+    // process has none of the old one's state. The boot "ready" fires before
+    // this subscribes; if not, the re-sync only repeats the initial sync.
+    this.nativeBridge.on("ready", () => {
+      void this.resyncNativeHelper();
+    });
+  }
+
+  /**
+   * Push all helper state to a new helper process. Each push logs its own
+   * failure.
+   */
+  private async resyncNativeHelper() {
+    log.info("Native helper started, re-syncing helper state");
+    await this.syncShortcutsToNative();
+    await this.syncAllowInjectedKeysToNative();
+    if (this.draftActive) {
+      await this.nativeBridge.setDraftEnterCapture(true);
+    }
   }
 
   private startPeriodicRecheck() {

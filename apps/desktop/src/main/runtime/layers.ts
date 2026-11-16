@@ -149,6 +149,12 @@ export const NativeBridgeLive: Layer.Layer<
     const appScope = yield* AppScopeTag;
     // The constructor spawns the native helper process — that IS the acquire.
     const nativeBridge = new NativeBridge(telemetryService);
+    // An "error" event with no listener throws. The bridge already reports
+    // these errors to telemetry, so this only logs. Added after construction
+    // on purpose: the constructor's missing-binary error stays fatal at boot.
+    nativeBridge.on("error", (error) => {
+      logger.main.error("Native helper error", { error });
+    });
     yield* addRelease(
       appScope,
       "Stopping native helper...",

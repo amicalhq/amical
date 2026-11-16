@@ -482,8 +482,12 @@ export class NativeBridge extends EventEmitter {
       }
     });
 
+    const proc = this.proc;
     process.nextTick(() => {
-      this.emit("ready"); // Emit ready on next tick
+      // A failed spawn has already emitted "error" and cleared this.proc.
+      if (this.proc === proc) {
+        this.emit("ready");
+      }
     });
     this.logger.info("Helper process started and listeners attached");
   }
