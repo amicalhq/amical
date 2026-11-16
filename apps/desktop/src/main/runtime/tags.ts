@@ -7,8 +7,8 @@
  * auth-service import cycle. The only value import is `effect` itself.
  *
  * Nullability is honest at the tag level where reality is nullable:
- * - NativeBridgeTag is `NativeBridge | null` — the bridge only exists on
- *   macOS/Windows (service-manager platform gate).
+ * - NativeBridgeTag is `NativeBridge | null` — null on Linux when the
+ *   helper binary is missing (NativeBridgeLive owns this policy).
  * - TranscriptionServiceTag is `TranscriptionService | null` — its init
  *   failure is swallowed (non-fatal) and the container holds null.
  * VADService stays non-null: its constructor is empty and initialize() never

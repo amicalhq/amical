@@ -133,10 +133,7 @@ export const MacWindowsHelperEventSchema = z.discriminatedUnion("type", [
 
 // Every event that the desktop accepts from a helper.
 export const HelperEventSchema = z.discriminatedUnion("type", [
-  KeyDownEventSchema,
-  KeyUpEventSchema,
-  FlagsChangedEventSchema,
-  ActiveDisplayChangedEventSchema,
+  ...MacWindowsHelperEventSchema.options,
   ShortcutActivatedEventSchema,
   ShortcutDeactivatedEventSchema,
   ShortcutsBoundEventSchema,

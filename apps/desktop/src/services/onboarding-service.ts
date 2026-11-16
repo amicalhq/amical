@@ -41,6 +41,13 @@ export function getMicrophoneAccessStatus(): ReturnType<
 }
 
 /**
+ * Ask for microphone permission. Linux has no permission to ask for.
+ */
+export async function requestMicrophoneAccess(): Promise<boolean> {
+  return isLinux() || systemPreferences.askForMediaAccess("microphone");
+}
+
+/**
  * Database representation of onboarding state
  * Enums are stored as strings in SQLite
  */

@@ -5,7 +5,6 @@ import { NativeBridge } from "@/services/platform/native-bridge-service";
 import { KeyEventPayload, HelperEvent } from "@amical/types";
 import { logger } from "@/main/logger";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
-import { isLinux } from "@/utils/platform";
 import {
   validateShortcutBindings,
   type ShortcutBindings,
@@ -127,14 +126,6 @@ export class ShortcutManager extends EventEmitter {
       const settingsService = yield* SettingsServiceTag;
       const nativeBridge = yield* NativeBridgeTag;
       const recordingLifecycle = yield* RecordingLifecycleTag;
-      if (!nativeBridge && !isLinux()) {
-        // macOS/Windows always have a bridge; boot stays fatal without one.
-        return yield* Effect.die(
-          new Error(
-            "SettingsService and NativeBridge must be initialized first",
-          ),
-        );
-      }
       const appScope = yield* AppScopeTag;
       const manager = new ShortcutManager(settingsService, nativeBridge);
       yield* addRelease(

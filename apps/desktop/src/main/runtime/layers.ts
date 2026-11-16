@@ -142,10 +142,12 @@ export const NativeBridgeLive: Layer.Layer<
   Effect.gen(function* () {
     const telemetryService = yield* TelemetryServiceTag;
     if (!isMacOS() && !isWindows() && !isLinux()) {
-      return null;
+      return yield* Effect.die(
+        new Error(`Unsupported platform: ${process.platform}`),
+      );
     }
-    // Linux runs without a helper: no hotkeys, and paste falls back to the
-    // clipboard. macOS and Windows keep a missing helper fatal at boot.
+    // Only Linux runs without a helper: no hotkeys, and paste falls back to
+    // the clipboard. macOS and Windows keep a missing helper fatal at boot.
     if (isLinux() && !NativeBridge.helperAvailable()) {
       logger.main.warn("Native helper not found, running without it");
       return null;

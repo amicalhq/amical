@@ -31,6 +31,7 @@ import {
   PLATFORMS,
 } from "./scripts/download-node-binaries";
 import { stageBetterSqlite3ForElectron } from "./scripts/stage-better-sqlite3";
+import { getNativeHelperDir, LINUX_APP_ID } from "./src/utils/platform";
 // Use flora-colossus for finding all dependencies of EXTERNAL_DEPENDENCIES
 // flora-colossus is maintained by MarshallOfSound (a top electron-forge contributor)
 // already included as a dependency of electron-packager/galactus (so we do NOT have to add it to package.json)
@@ -55,17 +56,10 @@ export const EXTERNAL_DEPENDENCIES = [
   // Add any other native modules you need here
 ];
 
-const NATIVE_HELPER_DIR = {
-  darwin: "swift-helper",
-  win32: "windows-helper",
-  linux: "linux-helper",
-}[process.platform as "darwin" | "win32" | "linux"];
-
-// Shared by the deb and rpm makers. `name` is also the desktop-file id
-// (LINUX_APP_ID in src/utils/platform.ts): the portal and the amical:// URL
-// handler resolve the app through amical-desktop.desktop.
+// Shared by the deb and rpm makers. `name` is also the desktop-file id: the
+// portal and the amical:// URL handler resolve the app through it.
 const LINUX_PACKAGE_OPTIONS = {
-  name: "amical-desktop",
+  name: LINUX_APP_ID,
   productName: "Amical",
   genericName: "Dictation",
   bin: "resources/amical-launcher",
@@ -643,7 +637,7 @@ const config: ForgeConfig = {
     icon: "./assets/logo", // Path to your icon file
     appBundleId: "ai.amical.desktop", // Proper bundle ID
     extraResource: [
-      `../../packages/native-helpers/${NATIVE_HELPER_DIR}/bin`,
+      `../../packages/native-helpers/${getNativeHelperDir()}/bin`,
       "./src/db/migrations",
       "./models",
       "./assets",
@@ -715,27 +709,19 @@ const config: ForgeConfig = {
         ) {
           return true;
         }
-        // Foreign-platform native binaries must not ship in the Windows
-        // package: Squirrel's releasify signs every .exe/.dll/.node it packs
-        // and aborts on Mach-O/ELF files — and they're dead weight anyway.
-        if (process.platform === "win32") {
-          if (
-            /^\/node_modules\/onnxruntime-node\/bin\/napi-v\d+\/(darwin|linux)(\/|$)/.test(
-              filePath,
-            )
-          ) {
-            return true;
-          }
-        }
-        // The Linux packages carry only the Linux binaries.
-        if (process.platform === "linux") {
-          if (
-            /^\/node_modules\/onnxruntime-node\/bin\/napi-v\d+\/(darwin|win32)(\/|$)/.test(
-              filePath,
-            )
-          ) {
-            return true;
-          }
+        // Foreign-platform native binaries must not ship in the Windows or
+        // Linux packages: Squirrel's releasify signs every .exe/.dll/.node it
+        // packs and aborts on Mach-O/ELF files — and they're dead weight anyway.
+        const onnxPlatform =
+          /^\/node_modules\/onnxruntime-node\/bin\/napi-v\d+\/(darwin|linux|win32)(\/|$)/.exec(
+            filePath,
+          )?.[1];
+        if (
+          (process.platform === "win32" || process.platform === "linux") &&
+          onnxPlatform &&
+          onnxPlatform !== process.platform
+        ) {
+          return true;
         }
         const KEEP_FILE = {
           keep: false,

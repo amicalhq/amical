@@ -4,13 +4,12 @@ import {
   tracePhase,
 } from "../telemetry/dictation-trace";
 import { ipcMain, clipboard } from "electron";
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { Deferred, Effect, Layer } from "effect";
 import { v4 as uuid } from "uuid";
 import type { GetAccessibilityContextResult } from "@amical/types";
 import { logger } from "../logger";
-import { getAudioDir } from "../../utils/audio-dir";
+import { ensureAudioDir } from "../../utils/audio-dir";
 import { ServiceInitFailed } from "../../types/errors";
 import { addRelease, up } from "../runtime/layer-helpers";
 import {
@@ -198,11 +197,7 @@ export function createDesktopRecordingLifecycle(deps: {
       for (const listener of otherPasteListeners) listener();
     },
     audioFilePathFor: (session) => {
-      const audioDir = getAudioDir();
-      fs.mkdirSync(audioDir, {
-        recursive: true,
-        ...(process.platform === "linux" && { mode: 0o700 }),
-      });
+      const audioDir = ensureAudioDir();
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       return path.join(audioDir, `audio-${session}-${timestamp}.wav`);
     },

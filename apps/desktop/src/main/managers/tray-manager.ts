@@ -2,7 +2,12 @@ import { app, Tray, Menu, nativeImage } from "electron";
 import * as path from "path";
 import { logger } from "../logger";
 import type { WindowManager } from "../core/window-manager";
-import { isLinux, isMacOS, isWindows } from "../../utils/platform";
+import {
+  isLinux,
+  isMacOS,
+  isWindows,
+  matchPlatform,
+} from "../../utils/platform";
 import { initMainI18n } from "../../i18n/main";
 
 export class TrayManager {
@@ -125,11 +130,11 @@ export class TrayManager {
 
   private getIconPath(): string {
     // Use appropriate icon based on platform
-    const iconName = isWindows()
-      ? "tray.ico" // Windows uses a dedicated symbol at each display scale
-      : isLinux()
-        ? "icon-256x256.png" // Linux panels show a colour icon as is
-        : "iconTemplate.png"; // macOS uses template naming convention
+    const iconName = matchPlatform({
+      darwin: "iconTemplate.png", // macOS uses template naming convention
+      win32: "tray.ico", // Windows uses a dedicated symbol at each display scale
+      linux: "icon-256x256.png", // Linux panels show a colour icon as is
+    });
 
     if (app.isPackaged) {
       // When packaged, assets are placed next to the bundled resources path

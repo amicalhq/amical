@@ -30,22 +30,19 @@ export function isLinux(): boolean {
   return getPlatform() === "linux";
 }
 
-export type SupportedPlatform = "darwin" | "win32" | "linux";
-
 /**
  * Pick the value for the current platform. Every supported platform needs an
  * arm, so a new platform cannot fall into another platform's branch. An
- * unsupported platform gets `fallback`, or the macOS arm when none is given.
+ * unsupported platform gets the macOS arm.
  */
 export function matchPlatform<T>(
-  arms: Record<SupportedPlatform, T>,
-  fallback?: T,
+  arms: Record<"darwin" | "win32" | "linux", T>,
 ): T {
   const platform = getPlatform();
   if (platform === "darwin" || platform === "win32" || platform === "linux") {
     return arms[platform];
   }
-  return fallback ?? arms.darwin;
+  return arms.darwin;
 }
 
 /** Desktop-file id of the Linux package. The portal and URL handler use it. */

@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import { EventEmitter } from "events";
@@ -68,10 +67,9 @@ function runSquirrelShortcutCommand(
  * flags as from the app menu.
  */
 function syncLinuxAutostart(openAtLogin: boolean): void {
-  const configHome =
-    process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
+  // On Linux appData is $XDG_CONFIG_HOME, or ~/.config.
   const entryPath = path.join(
-    configHome,
+    app.getPath("appData"),
     "autostart",
     `${LINUX_APP_ID}.desktop`,
   );

@@ -106,14 +106,13 @@ describe("login launch registration", () => {
 
 describe("Linux login launch", () => {
   let configHome: string;
-  const env = process.env.XDG_CONFIG_HOME;
   const resourcesPath = process.resourcesPath;
 
   beforeEach(() => {
     vi.mocked(isWindows).mockReturnValue(false);
     vi.mocked(isLinux).mockReturnValue(true);
     configHome = mkdtempSync(path.join(os.tmpdir(), "amical-autostart-"));
-    process.env.XDG_CONFIG_HOME = configHome;
+    vi.spyOn(app, "getPath").mockReturnValue(configHome);
     Object.defineProperty(process, "resourcesPath", {
       value: "/usr/lib/amical-desktop/resources",
       configurable: true,
@@ -121,8 +120,6 @@ describe("Linux login launch", () => {
   });
   afterEach(() => {
     rmSync(configHome, { recursive: true, force: true });
-    if (env === undefined) delete process.env.XDG_CONFIG_HOME;
-    else process.env.XDG_CONFIG_HOME = env;
     Object.defineProperty(process, "resourcesPath", {
       value: resourcesPath,
       configurable: true,
