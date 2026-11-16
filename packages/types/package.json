@@ -12,7 +12,8 @@
     "generate:json-schemas": "tsx scripts/generate-json-schemas.ts",
     "generate:swift": "tsx scripts/generate-swift-models.ts",
     "generate:csharp": "tsx scripts/generate-csharp-models.ts",
-    "generate:all": "pnpm run generate:json-schemas && pnpm run generate:swift && pnpm run generate:csharp",
+    "generate:rust": "tsx scripts/generate-rust-models.ts",
+    "generate:all": "pnpm run generate:json-schemas && pnpm run generate:swift && pnpm run generate:csharp && pnpm run generate:rust",
     "lint": "eslint .",
     "type:check": "tsc --noEmit"
   },

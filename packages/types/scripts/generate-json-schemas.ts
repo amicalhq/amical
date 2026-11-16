@@ -12,6 +12,10 @@ import {
 import {
   GetAccessibilityContextParamsSchema,
   GetAccessibilityContextResultSchema,
+  GetAccessibilityStatusParamsSchema,
+  GetAccessibilityStatusResultSchema,
+  RequestAccessibilityPermissionParamsSchema,
+  RequestAccessibilityPermissionResultSchema,
 } from "../src/schemas/methods/get-accessibility-context.js";
 import {
   PasteTextParamsSchema,
@@ -100,6 +104,26 @@ const schemasToGenerate = [
   {
     zod: GetAccessibilityContextResultSchema,
     name: "GetAccessibilityContextResult",
+    category: "methods",
+  },
+  {
+    zod: GetAccessibilityStatusParamsSchema,
+    name: "GetAccessibilityStatusParams",
+    category: "methods",
+  },
+  {
+    zod: GetAccessibilityStatusResultSchema,
+    name: "GetAccessibilityStatusResult",
+    category: "methods",
+  },
+  {
+    zod: RequestAccessibilityPermissionParamsSchema,
+    name: "RequestAccessibilityPermissionParams",
+    category: "methods",
+  },
+  {
+    zod: RequestAccessibilityPermissionResultSchema,
+    name: "RequestAccessibilityPermissionResult",
     category: "methods",
   },
   { zod: KeyDownEventSchema, name: "KeyDownEvent", category: "events" },
