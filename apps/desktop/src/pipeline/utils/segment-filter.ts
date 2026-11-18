@@ -28,12 +28,12 @@ interface Segment {
 /**
  * Determines if a segment should be dropped based on quality metrics.
  * Rules:
- * 1. noSpeechProb > 0.8 → drop (high confidence no speech)
+ * 1. noSpeechProb > 0.95 → drop (high confidence no speech)
  * 2. noSpeechProb > 0.4 AND text is a known hallucination phrase → drop
  */
 export function shouldDropSegment(segment: Segment): boolean {
   // Rule 1: High noSpeechProb
-  if (segment.noSpeechProb !== undefined && segment.noSpeechProb > 0.8) {
+  if (segment.noSpeechProb !== undefined && segment.noSpeechProb > 0.95) {
     return true;
   }
 
