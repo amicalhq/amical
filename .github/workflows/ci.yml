@@ -63,6 +63,13 @@ jobs:
     name: Build Desktop (${{ matrix.os }} ${{ matrix.arch }})
     needs: typecheck
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        # bash, not pwsh: pwsh adds its module paths to PSModulePath, and a
+        # child powershell.exe (Expand-Archive in @posthog/cli postinstall and
+        # download-node-binaries.ts) then loads a module that fails in Windows
+        # PowerShell 5.1.
+        shell: bash
     permissions:
       contents: read
     strategy:

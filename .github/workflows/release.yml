@@ -22,6 +22,13 @@ jobs:
   build:
     name: Build ${{ matrix.os == 'macos' && 'macOS' || 'Windows' }} (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        # bash, not pwsh: pwsh adds its module paths to PSModulePath, and a
+        # child powershell.exe (Expand-Archive in @posthog/cli postinstall and
+        # download-node-binaries.ts) then loads a module that fails in Windows
+        # PowerShell 5.1.
+        shell: bash
     strategy:
       matrix:
         include:
@@ -105,10 +112,6 @@ jobs:
           echo ""
 
       - name: Install dependencies
-        # bash, not pwsh: pwsh adds its module paths to PSModulePath, and the
-        # @posthog/cli postinstall then loads an Expand-Archive that fails in
-        # Windows PowerShell 5.1.
-        shell: bash
         env:
           GGML_NATIVE: OFF # ensure postinstall builds avoid i8mm on CI runners
         run: pnpm install --frozen-lockfile
