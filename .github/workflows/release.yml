@@ -105,6 +105,10 @@ jobs:
           echo ""
 
       - name: Install dependencies
+        # bash, not pwsh: pwsh adds its module paths to PSModulePath, and the
+        # @posthog/cli postinstall then loads an Expand-Archive that fails in
+        # Windows PowerShell 5.1.
+        shell: bash
         env:
           GGML_NATIVE: OFF # ensure postinstall builds avoid i8mm on CI runners
         run: pnpm install --frozen-lockfile
