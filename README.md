@@ -3,68 +3,65 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://amical.ai/github-readme-header-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://amical.ai/github-readme-header-light.png">
-  <img alt="Amical" src="https://amical.ai/github-readme-header-light.png">
+  <img alt="Amical: free, open source voice typing and dictation app for macOS and Windows" src="https://amical.ai/github-readme-header-light.png">
 </picture>
 </div>
 
 <p align="center">
-  <a href='http://makeapullrequest.com'>
-    <img alt='PRs Welcome' src='https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=shields'/>
+  <a href="https://github.com/amicalhq/amical/releases/latest">
+    <img src="https://img.shields.io/github/v/release/amicalhq/amical?label=Release" alt="latest release">
   </a>
+  <a href="https://github.com/amicalhq/amical/releases">
+    <img src="https://img.shields.io/github/downloads/amicalhq/amical/total?label=Downloads" alt="downloads">
+  </a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="platform: macOS | Windows">
   <a href="https://opensource.org/license/MIT/">
     <img src="https://img.shields.io/github/license/amicalhq/amical?logo=opensourceinitiative&logoColor=white&label=License&color=8A2BE2" alt="license">
   </a>
-  <br>
   <a href="https://amical.ai/community">
-    <img src="https://img.shields.io/badge/discord-7289da.svg?style=flat-square&logo=discord" alt="discord" style="height: 20px;">
+    <img src="https://img.shields.io/badge/discord-7289da.svg?logo=discord&logoColor=white" alt="discord">
   </a>
 </p>
 
+<h3 align="center">Talk instead of type.</h3>
+
 <p align="center">
-  <a href="https://amical.ai">Website</a> - <a href="https://amical.ai/docs">Docs</a> - <a href="https://amical.ai/community">Community</a> - <a href="https://github.com/amicalhq/amical/issues/new?assignees=&labels=bug&template=bug_report.md">Bug reports</a>
+  Free, open source voice typing for macOS and Windows.<br>
+  Hold a key, speak, and your words appear at your cursor, in any app.
 </p>
 
-## Table of Contents
+<p align="center">
+  <b>Runs on your computer</b> · <b>Works offline</b> · <b>No account</b> · <b>Up to 99 languages</b>
+</p>
 
-- [⬇️ Download](#️-download)
-- [🔮 Overview](#-overview)
-- [✨ Features](#-features)
-- [🔰 Tech Stack](#-tech-stack)
-- [Local Development](#local-development)
-- [🤗 Contributing](#-contributing)
-- [🎗 License](#-license)
+<p align="center">
+  <a href="https://amical.ai">Website</a> · <a href="https://amical.ai/docs">Docs</a> · <a href="https://amical.ai/community">Discord</a>
+</p>
 
 ## ⬇️ Download
 
 <p>
-  <a href="https://github.com/amicalhq/amical/releases/latest">
-    <img src="https://amical.ai/download_button_macos.png" alt="Download for macOS" height="60">
+  <a href="https://github.com/amicalhq/amical/releases/latest/download/Amical-macos-arm64.dmg">
+    <img src="https://amical.ai/download_button_macos.png" alt="Download Amical for macOS" height="60">
   </a>
-  <a href="https://github.com/amicalhq/amical/releases/latest">
-    <img src="https://amical.ai/download_button_windows.png" alt="Download for Windows" height="60">
-  </a>
-  <a href="https://amical.ai/android">
-    <img src="https://amical.ai/Store=Google%20Play,%20Type=Dark,%20Language=English.svg" alt="Get it on Google Play" height="60">
-  </a>
-  <a href="https://amical.ai/ios">
-    <img src="https://amical.ai/Store=App%20Store,%20Type=Dark,%20Language=English.svg" alt="Download on the App Store" width="180" height="60">
+  <a href="https://github.com/amicalhq/amical/releases/latest/download/Amical-windows-x64.exe">
+    <img src="https://amical.ai/download_button_windows.png" alt="Download Amical for Windows" height="60">
   </a>
 </p>
 
-### Homebrew (macOS)
+Intel Mac: [.dmg](https://github.com/amicalhq/amical/releases/latest/download/Amical-macos-x64.dmg) ·
+Windows on ARM: [.exe](https://github.com/amicalhq/amical/releases/latest/download/Amical-windows-arm64.exe) ·
+[All releases](https://github.com/amicalhq/amical/releases)
+
+Local speech models need macOS 15 or later.
+
+**Homebrew (macOS):**
 
 ```bash
 brew install --cask amical
 ```
 
-## 🔮 Overview
-
-Local-first AI Dictation app.
-
-Amical is an open source AI-powered dictation and note-taking app that runs entirely on your machine.
-Powered by [Whisper](https://github.com/openai/whisper) for speech-to-text and open source LLMs for intelligent processing, Amical gives you the power of AI dictation with complete privacy.
-
-Context-aware dictation that adapts to what you're doing: drafting an email, chatting on Discord, writing prompts in your IDE, or messaging friends. Amical detects the active app and formats your speech accordingly.
+📱 Also on [iOS](https://amical.ai/ios) and [Android](https://amical.ai/android).
 
 <p align="center">
   <img src="https://amical.ai/demo/dictation-demo-component.gif" alt="Amical dictation demo" width="600">
@@ -72,36 +69,69 @@ Context-aware dictation that adapts to what you're doing: drafting an email, cha
 
 ## ✨ Features
 
-> ✔︎ - Done, ◑ - In Progress, ◯ - Planned
+🎙️ **Dictate into any app.** Hold a key to talk (push-to-talk), press once for hands-free, or click the floating widget.
 
-🚀 Super-fast dictation with AI-enhanced accuracy ✔︎
+🧠 **Fit the app you are in.** Connect your own language model, and Amical formats for the active app: paragraphs and a sign-off in email, short replies in chat, lists in notes.
 
-🧠 Context-aware speech-to-text based on the active app ✔︎
+📖 **Teach it your words.** Add names, terms, and spellings to your vocabulary, and set replacements.
 
-📒 Smart voice notes → summaries, tasks, structured notes ◑
+⚡ **Snippets.** Say a short trigger to insert longer text, such as a meeting link or an address.
 
-🔌 MCP integration → voice commands that control your apps ◯
+📒 **Notes.** Dictate into a built-in notes window with Markdown formatting.
 
-🎙️ Real-time meeting transcription (mic + system audio) ◯
+🕘 **History.** Replay, copy, or retry any transcription. One shortcut pastes your last transcript.
 
-🔧 Extensible via hotkeys, voice macros, custom workflows ✔︎
+🎚️ **Microphone priority.** Set the order of microphones that Amical uses.
 
-🔐 Privacy-first: works offline, one click setup of local models in-app ✔︎
+🌐 **Six interface languages.** English, German, Spanish, Japanese, Korean, and Traditional Chinese.
 
-🪟 Floating widget for frictionless start/stop with custom hotkeys ✔︎
+> ⭐ **Like Amical? [Star the repo](https://github.com/amicalhq/amical).** It helps other people find it.
+
+## 🆓 Local Speech Models: Whisper and Parakeet
+
+Amical downloads a speech model once, then transcribes on your computer, also
+when you are offline. Choose a model during setup, and change it at any time in
+**Settings → AI Models**.
+
+Not sure which one? Start with **Parakeet v3** for European languages, or
+**Whisper Large v3 Turbo** for all other languages.
+
+| Model                  | Best for                                 | Languages                                     | Download |
+| ---------------------- | ---------------------------------------- | --------------------------------------------- | -------- |
+| Parakeet v3            | Very fast and accurate, with punctuation | 25 European languages, detected automatically | ~640 MB  |
+| Whisper Large v3 Turbo | Fast, with high accuracy                 | 99 languages                                  | ~1.5 GB  |
+| Whisper Large v3       | Highest accuracy, difficult audio        | 99 languages                                  | ~3.1 GB  |
+| Whisper Small          | High accuracy at moderate speed          | 99 languages                                  | ~488 MB  |
+
+<details>
+<summary>More Whisper models: Medium, Base, Tiny</summary>
+
+| Model          | Best for                    | Languages    | Download |
+| -------------- | --------------------------- | ------------ | -------- |
+| Whisper Medium | Very high accuracy          | 99 languages | ~1.5 GB  |
+| Whisper Base   | Balanced speed and accuracy | 99 languages | ~148 MB  |
+| Whisper Tiny   | Fastest and smallest        | 99 languages | ~78 MB   |
+
+</details>
+
+Amical runs these models with [whisper.cpp](https://github.com/ggml-org/whisper.cpp),
+with GPU acceleration through Metal on macOS and Vulkan on Windows. Speed and
+accuracy depend on your hardware.
+
+**Add AI formatting with your own model.** Connect [Ollama](https://ollama.com)
+or an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), in
+**Settings → AI Models**. Then turn on formatting in **Settings → Dictation**.
+You can also use a hosted provider, such as OpenRouter, with your own API key.
 
 ## 🔰 Tech Stack
 
-- 🎤 [Whisper](https://github.com/openai/whisper)
-- 🦙 [Ollama](https://ollama.ai)
-- 🧑‍💻 [Typescript](https://www.typescriptlang.org/)
-- 🖥️ [Electron](https://electronjs.org/)
-- 🎨 [TailwindCSS](https://tailwindcss.com/)
-- 🧑🏼‍🎨 [Shadcn](https://ui.shadcn.com/)
-- 🔒 [Better-Auth](https://better-auth.com/)
-- 🧘‍♂️ [Zod](https://zod.dev/)
-- 🐞 [Vitest](https://vitest.dev/)
-- 🌀 [Turborepo](https://turbo.build/)
+- 🎤 [whisper.cpp](https://github.com/ggml-org/whisper.cpp): local Whisper and Parakeet inference
+- 🖥️ [Electron](https://electronjs.org/) and [TypeScript](https://www.typescriptlang.org/)
+- ⚛️ [React](https://react.dev/), [TailwindCSS](https://tailwindcss.com/), and [shadcn/ui](https://ui.shadcn.com/)
+- 🧩 [Effect](https://effect.website/), [tRPC](https://trpc.io/), and [Zod](https://zod.dev/)
+- 🗄️ [Drizzle ORM](https://orm.drizzle.team/) with SQLite
+- 🍎 Swift native helper for macOS, 🪟 C# (.NET) native helper for Windows
+- 🐞 [Vitest](https://vitest.dev/) and 🌀 [Turborepo](https://turbo.build/)
 
 ## Local Development
 
@@ -191,8 +221,16 @@ pnpm test
 Contributions are welcome! Reach out to the team in our [Discord server](https://amical.ai/community) to learn more.
 
 - **🐛 [Report an Issue][issues]**: Found a bug? Let us know!
-- **💬 [Start a Discussion][discussions]**: Have ideas or suggestions? We'd love to hear from you.
+- **💬 [Chat on Discord][discussions]**: Have ideas or suggestions? We'd love to hear from you.
 - **⭐ [Star Amical on GitHub][repo]**: A star helps other people find Amical.
+
+## 🙏 Acknowledgments
+
+- [OpenAI Whisper](https://github.com/openai/whisper): multilingual speech recognition models
+- [NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3): fast speech recognition model
+- [whisper.cpp](https://github.com/ggml-org/whisper.cpp): local inference for Whisper and Parakeet
+- [Silero VAD](https://github.com/snakers4/silero-vad): voice activity detection
+- [Ollama](https://ollama.com): local language models for formatting
 
 ## 🎗 License
 
