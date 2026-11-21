@@ -40,7 +40,9 @@
         "FEEDBACK_SURVEY_ID",
         "GLEAP_API_KEY",
         "API_ENDPOINT",
-        "CORE_API_URL"
+        "CORE_API_URL",
+        "SEQUENZY_PUBLIC_KEY",
+        "SEQUENZY_COMPANY_ID"
       ]
     },
     "build:native": {

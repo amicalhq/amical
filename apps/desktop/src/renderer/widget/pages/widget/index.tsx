@@ -5,6 +5,8 @@ import { useRecordingSettingsSync } from "../../hooks/useRecordingSettingsSync";
 import { useHealPendingMicrophone } from "../../hooks/useHealPendingMicrophone";
 import { useDraftReview } from "../../hooks/useDraftReview";
 import { useWidgetVisibility } from "../../hooks/useWidgetVisibility";
+import { useWidgetFeed } from "../../hooks/useWidgetFeed";
+import { WidgetFeedCard } from "../../components/WidgetFeedCard";
 import { useRecording } from "@/hooks/useRecording";
 
 export function WidgetPage() {
@@ -18,11 +20,16 @@ export function WidgetPage() {
   // toast from the previous session before it can bleed into this recording.
   const { hasVisibleNotification, notificationSequence } =
     useWidgetNotifications(recording.recordingStatus.state);
+  const feed = useWidgetFeed({
+    recordingState: recording.recordingStatus.state,
+    hasVisibleToast: hasVisibleNotification,
+    hasPendingDraft: draft.review !== null,
+  });
   useWidgetVisibility({
     recordingState: recording.recordingStatus.state,
     hasPendingDraft: draft.review !== null,
-    hasVisibleNotification,
-    notificationSequence,
+    hasVisibleNotification: hasVisibleNotification || feed.card !== null,
+    notificationSequence: notificationSequence + feed.showSequence,
   });
   useRecordingSettingsSync();
   useHealPendingMicrophone();
@@ -41,12 +48,21 @@ export function WidgetPage() {
   }
 
   return (
-    <FloatingButton
-      recordingStatus={recording.recordingStatus}
-      audioLevelRef={recording.audioLevelRef}
-      startRecording={recording.startRecording}
-      stopRecording={recording.stopRecording}
-      dismissRecording={recording.dismissRecording}
-    />
+    <>
+      {feed.card && (
+        // Above the FAB, in the space the toasts use. The slot spans the window
+        // above that, less room for the card's shadow, so a tall card scrolls.
+        <div className="pointer-events-none fixed inset-x-0 top-3 bottom-10 flex items-end justify-center">
+          <WidgetFeedCard key={feed.card.item.id} {...feed.card} />
+        </div>
+      )}
+      <FloatingButton
+        recordingStatus={recording.recordingStatus}
+        audioLevelRef={recording.audioLevelRef}
+        startRecording={recording.startRecording}
+        stopRecording={recording.stopRecording}
+        dismissRecording={recording.dismissRecording}
+      />
+    </>
   );
 }

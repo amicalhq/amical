@@ -5,19 +5,9 @@ import {
   type RemoteConfigSurface,
   type RemoteConfigTone,
 } from "@/types/remote-config";
-import {
-  APP_NAV_ITEMS,
-  SETTINGS_NAV_ITEMS,
-} from "@/renderer/main/lib/settings-navigation";
+import { isAppPageRoute } from "@/shared/app-routes";
 
 const ALLOWED_CTA_DOMAIN = "amical.ai";
-
-// Internal app routes an `open_route` CTA may target — derived from the nav tree
-// so it stays in sync as routes are added/removed. Config is untrusted, so an
-// unknown route is dropped rather than handed to the router.
-const ALLOWED_CTA_ROUTES: ReadonlySet<string> = new Set(
-  [...APP_NAV_ITEMS, ...SETTINGS_NAV_ITEMS].map((item) => item.url),
-);
 
 // Default lucide glyph per tone — used when a surface names no `icon`/`iconUrl`,
 // and as the renderer's fallback when a named icon isn't a real lucide icon.
@@ -111,6 +101,8 @@ export function isSafeRemoteConfigUrl(rawUrl: string): boolean {
   }
 }
 
+// An `open_route` CTA may target only a real app page. Config is untrusted, so
+// an unknown route is dropped rather than handed to the router.
 export function isSafeRemoteConfigRoute(route: string): boolean {
-  return ALLOWED_CTA_ROUTES.has(route);
+  return isAppPageRoute(route);
 }

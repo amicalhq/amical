@@ -28,6 +28,7 @@ import type { SettingsService } from "../../services/settings-service";
 import type { SettingsSyncService } from "../../services/settings-sync-service";
 import type { ActivityReportingService } from "../../services/activity-reporting-service";
 import type { UsageService } from "../../services/usage-service";
+import type { WidgetFeedService } from "../../services/widget-feed-service";
 import type { AuthService } from "../../services/auth-service";
 import type { PostHogClient } from "../../services/posthog-client";
 import type { TelemetryService } from "../../services/telemetry-service";
@@ -76,6 +77,11 @@ export class UsageServiceTag extends Context.Service<
   UsageServiceTag,
   UsageService
 >()("AmicalApp/UsageService") {}
+
+export class WidgetFeedServiceTag extends Context.Service<
+  WidgetFeedServiceTag,
+  WidgetFeedService
+>()("AmicalApp/WidgetFeedService") {}
 
 export class PostHogClientTag extends Context.Service<
   PostHogClientTag,
@@ -199,6 +205,7 @@ export type AppServices =
   | SettingsSyncServiceTag
   | ActivityReportingServiceTag
   | UsageServiceTag
+  | WidgetFeedServiceTag
   | PostHogClientTag
   | TelemetryServiceTag
   | FeatureFlagServiceTag

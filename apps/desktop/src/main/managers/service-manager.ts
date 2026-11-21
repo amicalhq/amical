@@ -23,6 +23,7 @@ import type { RemoteConfigService } from "../../services/remote-config-service";
 import type { SettingsSyncService } from "../../services/settings-sync-service";
 import type { ActivityReportingService } from "../../services/activity-reporting-service";
 import type { UsageService } from "../../services/usage-service";
+import type { WidgetFeedService } from "../../services/widget-feed-service";
 
 /**
  * Service map for type-safe service access
@@ -42,6 +43,7 @@ export interface ServiceMap {
   settingsSyncService: SettingsSyncService;
   activityReportingService: ActivityReportingService;
   usageService: UsageService;
+  widgetFeedService: WidgetFeedService;
   vadService: VADService;
   nativeBridge: NativeBridge | null;
   autoUpdaterService: AutoUpdaterService;

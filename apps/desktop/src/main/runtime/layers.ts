@@ -87,6 +87,7 @@ import { SettingsService } from "../../services/settings-service";
 import { SettingsSyncService } from "../../services/settings-sync-service";
 import { ActivityReportingService } from "../../services/activity-reporting-service";
 import { UsageService } from "../../services/usage-service";
+import { WidgetFeedService } from "../../services/widget-feed-service";
 import { AuthService } from "../../services/auth-service";
 import { PostHogClient } from "../../services/posthog-client";
 import { TelemetryService } from "../../services/telemetry-service";
@@ -112,6 +113,7 @@ import {
   SettingsSyncServiceTag,
   ActivityReportingServiceTag,
   UsageServiceTag,
+  WidgetFeedServiceTag,
   AuthServiceTag,
   PostHogClientTag,
   TelemetryServiceTag,
@@ -180,6 +182,7 @@ export const ServicesBundleLive: Layer.Layer<
   | SettingsSyncServiceTag
   | ActivityReportingServiceTag
   | UsageServiceTag
+  | WidgetFeedServiceTag
   | PostHogClientTag
   | TelemetryServiceTag
   | FeatureFlagServiceTag
@@ -211,6 +214,7 @@ export const ServicesBundleLive: Layer.Layer<
       settingsSyncService: yield* SettingsSyncServiceTag,
       activityReportingService: yield* ActivityReportingServiceTag,
       usageService: yield* UsageServiceTag,
+      widgetFeedService: yield* WidgetFeedServiceTag,
       vadService: yield* VadServiceTag,
       nativeBridge: yield* NativeBridgeTag,
       autoUpdaterService: yield* AutoUpdaterServiceTag,
@@ -290,6 +294,7 @@ export const AppLive: Layer.Layer<
       SettingsSyncService.Live,
       ActivityReportingService.Live,
       UsageService.Live,
+      WidgetFeedService.Live,
     ),
   ),
   Layer.provideMerge(RecordingLifecycleLive),

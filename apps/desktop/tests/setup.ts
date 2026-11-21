@@ -23,6 +23,8 @@ process.env.POSTHOG_HOST ??= "https://posthog.test";
 process.env.POSTHOG_API_KEY ??= "test-posthog-key";
 process.env.TELEMETRY_ENABLED ??= "true";
 process.env.FEEDBACK_SURVEY_ID ??= "test-survey-id";
+process.env.SEQUENZY_PUBLIC_KEY ??= "seq_pk_test";
+process.env.SEQUENZY_COMPANY_ID ??= "test-sequenzy-company";
 
 // Forge's vite plugin defines these window-entry globals in real builds;
 // under vitest they'd be bare ReferenceErrors the first time a window class

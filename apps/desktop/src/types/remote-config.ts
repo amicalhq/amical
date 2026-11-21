@@ -39,5 +39,8 @@ export const DESKTOP_STAR_NUDGE_FLAG = "desktop-star-nudge";
 // users as its referral Widget allowlist.
 export const DESKTOP_REFERRALS_FLAG = "desktop-referrals";
 
+// Fills the widget notification card from Sequenzy for signed-in users.
+export const DESKTOP_WIDGET_FEED_FLAG = "desktop-widget-notifications";
+
 // Reshow window when a surface omits `reshowAfterDays`.
 export const DEFAULT_RESHOW_AFTER_DAYS = 30;
