@@ -69,6 +69,10 @@ export function initializePostHog(
     // Popover surveys show only in the main window; the widget, notes and
     // onboarding windows are too small or too early for them.
     disable_surveys_automatic_display: surface !== "main",
+    // The widget is always visible, so posthog-js would refresh flags in it
+    // for as long as the app runs. The widget gets its flags from the main
+    // process and shows no surveys, so it does not call /flags.
+    advanced_disable_flags: surface === "widget",
     persistence: "memory",
     person_profiles: "identified_only",
     bootstrap: {
