@@ -36,7 +36,8 @@ use crate::models::{GetSelectedTextViaCopyResult, PasteTextResult};
 use crate::writer::WeakOut;
 use clipboard::{Owner, Reader};
 use keys::KeyInput;
-use transaction::Transaction;
+pub use transaction::{ChordSender, Selection};
+use transaction::{Keys, Transaction, XSelection};
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -182,8 +183,9 @@ pub struct Features {
 pub struct X11Backend {
     features: Features,
     keys: Arc<KeyInput>,
-    owner: Option<Arc<Owner>>,
-    transaction: Mutex<Transaction>,
+    transaction: Transaction,
+    /// None without XFIXES. Its lock serializes the transactions.
+    selection: Option<Mutex<XSelection>>,
 }
 
 fn has_extension(conn: &RustConnection, name: &'static str) -> bool {
@@ -223,15 +225,22 @@ impl X11Backend {
         };
 
         let (reader_conn, _) = RustConnection::connect(display)?;
+        let reader_conn = Arc::new(reader_conn);
         let xtest = has_extension(&reader_conn, xtest::X11_EXTENSION_NAME);
         if !xtest {
             log!("X11", "no injection: the X server has no XTEST");
         }
-        let reader = Reader::new(reader_conn, root, atoms)?;
+        let selection = match owner {
+            Some(owner) => Some(Mutex::new(XSelection {
+                owner,
+                reader: Reader::new(reader_conn.clone(), root, atoms)?,
+            })),
+            None => None,
+        };
 
         let features = Features {
             injection: xtest,
-            clipboard: owner.is_some(),
+            clipboard: selection.is_some(),
         };
         log!(
             "X11",
@@ -242,8 +251,13 @@ impl X11Backend {
         Ok(Self {
             features,
             keys,
-            owner,
-            transaction: Mutex::new(Transaction { reader, xtest }),
+            transaction: Transaction {
+                conn: reader_conn,
+                root,
+                atoms,
+                xtest,
+            },
+            selection,
         })
     }
 
@@ -286,31 +300,95 @@ impl X11Backend {
     /// Without injection the transcript stays on the clipboard and the
     /// result says that nothing was pasted.
     pub fn paste(&self, transcript: &str, preserve: bool) -> PasteTextResult {
-        let Some(owner) = &self.owner else {
+        let Some(selection) = &self.selection else {
             return PasteTextResult {
                 success: false,
                 clipboard_set: Some(false),
                 message: Some("No clipboard on this X server".to_owned()),
             };
         };
-        lock(&self.transaction).paste(&self.keys, owner, transcript, preserve)
+        self.transaction.paste(
+            &Keys::XTest(&self.keys),
+            &mut *lock(selection),
+            transcript,
+            preserve,
+        )
     }
 
     pub fn copy_selection(&self) -> GetSelectedTextViaCopyResult {
-        let Some(owner) = &self.owner else {
+        let Some(selection) = &self.selection else {
             return GetSelectedTextViaCopyResult {
                 selected_text: None,
                 clipboard_changed: false,
                 message: Some("No clipboard on this X server".to_owned()),
             };
         };
-        lock(&self.transaction).copy_selection(&self.keys, owner)
+        self.transaction
+            .copy_selection(&Keys::XTest(&self.keys), &mut *lock(selection))
     }
 
     /// Removes the key grabs. The clipboard stays served until the process
     /// exits.
     pub fn shutdown(&self) {
         self.keys.ungrab_all();
+    }
+}
+
+/// A clipboard with the paste and copy keys, on a Wayland session.
+pub trait PasteRoute: Send + Sync {
+    fn paste(&self, sender: &dyn ChordSender, transcript: &str, preserve: bool) -> PasteTextResult;
+    fn copy_selection(&self, sender: &dyn ChordSender) -> GetSelectedTextViaCopyResult;
+}
+
+/// `S` holds the clipboard. An Xwayland connection gives the keymap (it
+/// follows the compositor's) and the kind of a focused X window; a
+/// [`ChordSender`] sends the keys. No key input and no XTest.
+pub struct WaylandClipboard<S> {
+    transaction: Transaction,
+    /// Its lock serializes the transactions.
+    selection: Mutex<S>,
+}
+
+impl<S: Selection + Send> PasteRoute for WaylandClipboard<S> {
+    fn paste(&self, sender: &dyn ChordSender, transcript: &str, preserve: bool) -> PasteTextResult {
+        self.transaction.paste(
+            &Keys::Sender(sender),
+            &mut *lock(&self.selection),
+            transcript,
+            preserve,
+        )
+    }
+
+    fn copy_selection(&self, sender: &dyn ChordSender) -> GetSelectedTextViaCopyResult {
+        self.transaction
+            .copy_selection(&Keys::Sender(sender), &mut *lock(&self.selection))
+    }
+}
+
+impl WaylandClipboard<XSelection> {
+    /// Xwayland's CLIPBOARD, on a compositor that bridges X selections both
+    /// ways (GNOME). `lost` is notified when a connection closes.
+    pub fn xwayland(display: Option<&str>, lost: Arc<Notify>) -> Result<Self, Error> {
+        let (owner_conn, screen) = RustConnection::connect(display)?;
+        let root = owner_conn.setup().roots[screen].root;
+        let atoms = Atoms::new(&owner_conn)?.reply()?;
+        if !has_extension(&owner_conn, xfixes::X11_EXTENSION_NAME) {
+            return Err("the X server has no XFIXES".into());
+        }
+        let owner = Owner::start(owner_conn, root, atoms, lost)?;
+        let (reader_conn, _) = RustConnection::connect(display)?;
+        let conn = Arc::new(reader_conn);
+        let reader = Reader::new(conn.clone(), root, atoms)?;
+        log!("X11", "connected to Xwayland for the clipboard");
+        Ok(Self {
+            transaction: Transaction {
+                conn,
+                root,
+                atoms,
+                xtest: false,
+            },
+            selection: Mutex::new(XSelection { owner, reader }),
+        })
     }
 }
 

@@ -458,7 +458,7 @@ impl From<ReplyOrIdError> for ReadError {
 
 /// Reads selections as a requestor. Used by one transaction at a time.
 pub struct Reader {
-    pub conn: RustConnection,
+    pub conn: Arc<RustConnection>,
     pub root: Window,
     pub atoms: Atoms,
     window: Window,
@@ -468,7 +468,11 @@ pub struct Reader {
 }
 
 impl Reader {
-    pub fn new(conn: RustConnection, root: Window, atoms: Atoms) -> Result<Self, ReplyOrIdError> {
+    pub fn new(
+        conn: Arc<RustConnection>,
+        root: Window,
+        atoms: Atoms,
+    ) -> Result<Self, ReplyOrIdError> {
         let window = create_window(&conn, root)?;
         Ok(Self {
             conn,

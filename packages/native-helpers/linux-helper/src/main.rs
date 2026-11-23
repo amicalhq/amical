@@ -15,6 +15,7 @@ mod dispatch;
 mod log;
 mod models;
 mod portal;
+mod remote_desktop;
 mod rpc;
 mod writer;
 mod x11;
@@ -117,7 +118,7 @@ async fn run() -> i32 {
 /// (audio mute, key grabs, portal sessions) undoes the change here.
 async fn shutdown(ctx: &Ctx, reason: &str) {
     log!("Main", "shutting down: {reason}");
-    ctx.shutdown();
+    ctx.shutdown().await;
 }
 
 fn task_failed(task: &str, error: JoinError) -> i32 {

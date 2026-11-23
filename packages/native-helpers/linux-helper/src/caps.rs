@@ -9,14 +9,14 @@
 //! - clipboard: x11, wl-data-control, portal-clipboard, wl-copy
 //! - accessibility context: AT-SPI; sounds and mute: audio tools
 //!
-//! This build has the X11 backend (xi2, xtest, x11) for X11 sessions. Other
-//! sessions get no backend yet.
+//! This build has the X11 backend (xi2, xtest, x11) for X11 sessions, and
+//! on Wayland sessions the RemoteDesktop portal for paste keys with the
+//! Xwayland clipboard (GNOME).
 
 use crate::models::{
     Capabilities, ChordConsume, ClipboardBackend, Evdev, EvdevReason, HoldSupport,
     InjectionBackend, InjectionConsent, KeyInputBackend, KeyInputMode, SessionType,
 };
-use crate::x11::Features;
 
 /// The environment variables that the probe reads, captured at startup.
 #[derive(Debug, Default)]
@@ -56,16 +56,35 @@ pub fn session_type(env: &SessionEnv) -> SessionType {
     }
 }
 
-/// `x11`: what the X11 backend can do, when it is connected (only on X11
-/// sessions, see `Ctx::x11`). A connected backend always has key input.
-pub fn select(env: &SessionEnv, x11: Option<Features>) -> Capabilities {
-    let key_input = x11.is_some();
-    let x11 = x11.unwrap_or_default();
+/// What the connected backends can do.
+#[derive(Clone, Debug, Default)]
+pub struct Backends {
+    /// XInput 2 key input and consumption (X11 sessions).
+    pub xi2: bool,
+    pub injection: Option<(InjectionBackend, InjectionConsent)>,
+    pub clipboard: Option<ClipboardBackend>,
+}
+
+/// True when XDG_CURRENT_DESKTOP names `name`. It can list several
+/// desktops, separated by ':' (for example "ubuntu:GNOME").
+pub fn desktop_is(env: &SessionEnv, name: &str) -> bool {
+    env.xdg_current_desktop.as_deref().is_some_and(|desktops| {
+        desktops
+            .split(':')
+            .any(|desktop| desktop.eq_ignore_ascii_case(name))
+    })
+}
+
+pub fn select(env: &SessionEnv, backends: Backends) -> Capabilities {
+    let key_input = backends.xi2;
     let mut missing = Vec::new();
     for (available, name) in [
         (key_input, "key input"),
-        (x11.injection && x11.clipboard, "paste"),
-        (x11.clipboard, "clipboard"),
+        (
+            backends.injection.is_some() && backends.clipboard.is_some(),
+            "paste",
+        ),
+        (backends.clipboard.is_some(), "clipboard"),
         (false, "accessibility"),
         (false, "sound"),
     ] {
@@ -95,10 +114,12 @@ pub fn select(env: &SessionEnv, x11: Option<Features>) -> Capabilities {
         } else {
             ChordConsume::None
         },
-        injection_available: x11.injection,
-        injection_backend: x11.injection.then_some(InjectionBackend::Xtest),
-        injection_consent: InjectionConsent::None,
-        clipboard_backend: x11.clipboard.then_some(ClipboardBackend::X11),
+        injection_available: backends.injection.is_some(),
+        injection_backend: backends.injection.clone().map(|(backend, _)| backend),
+        injection_consent: backends
+            .injection
+            .map_or(InjectionConsent::None, |(_, consent)| consent),
+        clipboard_backend: backends.clipboard,
         clipboard_steals_focus: false,
         accessibility_context_available: false,
         ambiance_available: false,
@@ -153,16 +174,17 @@ mod tests {
 
     #[test]
     fn a_connected_x11_backend_gives_its_capabilities() {
-        let full = Features {
-            injection: true,
-            clipboard: true,
+        let full = Backends {
+            xi2: true,
+            injection: Some((InjectionBackend::Xtest, InjectionConsent::None)),
+            clipboard: Some(ClipboardBackend::X11),
         };
         let x11 = SessionEnv {
             xdg_session_type: Some("x11".to_owned()),
             display: Some(":0".to_owned()),
             ..SessionEnv::default()
         };
-        let capabilities = select(&x11, Some(full));
+        let capabilities = select(&x11, full);
         assert_eq!(capabilities.key_input_mode, KeyInputMode::PerKey);
         assert_eq!(capabilities.key_input_backend, Some(KeyInputBackend::Xi2));
         assert_eq!(capabilities.hold_support, HoldSupport::Any);

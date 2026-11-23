@@ -11,33 +11,70 @@ use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::{Notify, OnceCell};
 
-use crate::caps::{self, SessionEnv};
+use crate::caps::{self, Backends, SessionEnv};
 use crate::log::{log, Redacted};
 use crate::models::*;
 use crate::portal::{self, PortalProbe};
+use crate::remote_desktop::{self, Consent, Policy, RemoteDesktop};
 use crate::rpc::{optional, required, RpcError};
 use crate::writer::Out;
-use crate::x11::X11Backend;
+use crate::x11::{ChordSender, PasteRoute, WaylandClipboard, X11Backend};
 
 /// Covers the three X connections and their setup. The desktop's call
 /// timeout is 7 s.
 const X11_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+/// How long a paste waits for the remote control session. A restored
+/// session starts in well under this; a longer wait means that the consent
+/// dialog is open, and the desktop then shows the transcript on the
+/// clipboard instead.
+const SESSION_WAIT: Duration = Duration::from_secs(1);
+/// How long prepareInjection waits for the user to answer the dialog. The
+/// desktop gives this call a longer timeout than this.
+const PREPARE_WAIT: Duration = Duration::from_secs(110);
 
 pub struct Ctx {
     pub out: Out,
     env: SessionEnv,
     probe: OnceCell<Probe>,
     x11: OnceCell<Option<Arc<X11Backend>>>,
-    /// Notified when the X11 backend loses its X connection.
+    wayland: OnceCell<Wayland>,
+    /// Notified when an X connection closes.
     x11_lost: Arc<Notify>,
 }
 
 /// The first capability request runs the probe; later requests reuse it.
 struct Probe {
-    capabilities: Capabilities,
-    _portal: PortalProbe,
+    portal: PortalProbe,
     /// The app id the portal registration ran with, if any.
     app_id: Option<String>,
+}
+
+/// The backends of a Wayland session.
+#[derive(Default)]
+struct Wayland {
+    /// The RemoteDesktop portal, for the paste and copy keys.
+    injector: Option<Arc<RemoteDesktop>>,
+    /// The clipboard of the paste route, and its kind.
+    clipboard: Option<(Arc<dyn PasteRoute>, ClipboardBackend)>,
+}
+
+/// Sends chords through the RemoteDesktop portal from a blocking thread.
+struct PortalChords {
+    injector: Arc<RemoteDesktop>,
+    runtime: tokio::runtime::Handle,
+}
+
+impl ChordSender for PortalChords {
+    fn send(&self, codes: &[u16]) -> Result<(), String> {
+        self.runtime.block_on(async {
+            // The portal may have closed the session since the paste began.
+            self.injector
+                .session(SESSION_WAIT, false)
+                .await
+                .map_err(|unavailable| unavailable.message())?;
+            self.injector.send_chord(codes).await
+        })
+    }
 }
 
 impl Ctx {
@@ -47,6 +84,7 @@ impl Ctx {
             env,
             probe: OnceCell::new(),
             x11: OnceCell::new(),
+            wayland: OnceCell::new(),
             x11_lost: Arc::new(Notify::new()),
         }
     }
@@ -91,41 +129,158 @@ impl Ctx {
     }
 
     /// Undoes what the backends changed (key grabs).
-    pub fn shutdown(&self) {
+    pub async fn shutdown(&self) {
         if let Some(Some(backend)) = self.x11.get() {
             backend.shutdown();
         }
+        if let Some(injector) = self
+            .wayland
+            .get()
+            .and_then(|wayland| wayland.injector.as_ref())
+        {
+            injector.shutdown().await;
+        }
     }
 
-    async fn capabilities(&self, app_id: Option<&str>) -> Capabilities {
+    /// The portal probe, run once. Registration needs the app id, so the
+    /// first call should carry it.
+    async fn probe(&self, app_id: Option<&str>) -> &Probe {
         let probe = self
             .probe
             .get_or_init(|| async {
-                let (portal, x11) = tokio::join!(portal::probe(app_id), self.x11());
-                let capabilities = caps::select(&self.env, x11.map(|backend| backend.features()));
+                let (portal, _) = tokio::join!(portal::probe(app_id), self.x11());
                 log!(
                     "Caps",
                     "session={:?} desktop={} portal={}",
-                    capabilities.session_type,
-                    capabilities.desktop.as_deref().unwrap_or("unset"),
+                    caps::session_type(&self.env),
+                    self.env.xdg_current_desktop.as_deref().unwrap_or("unset"),
                     portal.summary()
                 );
                 Probe {
-                    capabilities,
-                    _portal: portal,
+                    portal,
                     app_id: app_id.map(str::to_owned),
                 }
             })
             .await;
-        // The probe runs once. The desktop sends getHelperCapabilities with
-        // its app id first; a later id cannot register any more.
+        // The desktop sends getHelperCapabilities with its app id first; a
+        // later id cannot register any more.
         if app_id.is_some() && probe.app_id.is_none() {
             log!(
                 "Caps",
                 "app id arrived after the probe ran; portal registration skipped"
             );
         }
-        probe.capabilities.clone()
+        probe
+    }
+
+    /// The Wayland backends on a Wayland session, set up at the first call.
+    async fn wayland(&self) -> &Wayland {
+        self.wayland
+            .get_or_init(|| async {
+                if caps::session_type(&self.env) != SessionType::Wayland {
+                    return Wayland::default();
+                }
+                let portal = &self.probe(None).await.portal;
+                let injector = match (portal.connection(), portal.versions()) {
+                    (Some(connection), Some(versions)) if versions.remote_desktop >= 1 => {
+                        // KDE shows a notification each time a restored
+                        // session starts, so it keeps one.
+                        let policy = if caps::desktop_is(&self.env, "KDE") {
+                            Policy::Keep
+                        } else {
+                            Policy::CloseWhenIdle
+                        };
+                        Some(RemoteDesktop::new(
+                            connection.clone(),
+                            policy,
+                            remote_desktop::default_token_file(),
+                        ))
+                    }
+                    _ => None,
+                };
+                let clipboard = if caps::desktop_is(&self.env, "GNOME") {
+                    self.xwayland_clipboard().await
+                } else {
+                    None
+                };
+                Wayland {
+                    injector,
+                    clipboard,
+                }
+            })
+            .await
+    }
+
+    /// Xwayland's CLIPBOARD, which GNOME bridges both ways.
+    async fn xwayland_clipboard(&self) -> Option<(Arc<dyn PasteRoute>, ClipboardBackend)> {
+        let display = self.env.display.clone()?;
+        let lost = self.x11_lost.clone();
+        let connect =
+            tokio::task::spawn_blocking(move || WaylandClipboard::xwayland(Some(&display), lost));
+        match tokio::time::timeout(X11_CONNECT_TIMEOUT, connect).await {
+            Ok(Ok(Ok(clipboard))) => Some((Arc::new(clipboard), ClipboardBackend::X11)),
+            Ok(Ok(Err(error))) => {
+                log!("X11", "no Xwayland clipboard: {error}");
+                None
+            }
+            Ok(Err(error)) => {
+                log!("X11", "the Xwayland clipboard setup stopped: {error}");
+                None
+            }
+            Err(_) => {
+                log!(
+                    "X11",
+                    "no Xwayland connection within {X11_CONNECT_TIMEOUT:?}"
+                );
+                None
+            }
+        }
+    }
+
+    /// What the backends of this session can do now. The probe runs once;
+    /// the consent state is read at each call.
+    async fn backends(&self) -> Backends {
+        if let Some(backend) = self.x11().await {
+            let features = backend.features();
+            return Backends {
+                xi2: true,
+                injection: features
+                    .injection
+                    .then_some((InjectionBackend::Xtest, InjectionConsent::None)),
+                clipboard: features.clipboard.then_some(ClipboardBackend::X11),
+            };
+        }
+        let wayland = self.wayland().await;
+        Backends {
+            xi2: false,
+            injection: wayland.injector.as_ref().map(|injector| {
+                let consent = match injector.consent() {
+                    Consent::Granted => InjectionConsent::Granted,
+                    Consent::Required => InjectionConsent::Required,
+                    Consent::Denied => InjectionConsent::Denied,
+                };
+                (InjectionBackend::PortalRemoteDesktop, consent)
+            }),
+            clipboard: wayland
+                .clipboard
+                .as_ref()
+                .map(|(_, backend)| backend.clone()),
+        }
+    }
+
+    async fn capabilities(&self, app_id: Option<&str>) -> Capabilities {
+        self.probe(app_id).await;
+        caps::select(&self.env, self.backends().await)
+    }
+
+    /// The Wayland paste route: the portal sends the keys, Xwayland holds
+    /// the clipboard. None when the session has no such route.
+    async fn wayland_routes(&self) -> Option<(Arc<RemoteDesktop>, Arc<dyn PasteRoute>)> {
+        let wayland = self.wayland().await;
+        Some((
+            wayland.injector.clone()?,
+            wayland.clipboard.as_ref()?.0.clone(),
+        ))
     }
 }
 
@@ -165,9 +320,34 @@ pub async fn handle(
             // The transcript must not reach an error message either.
             let params: PasteTextParams =
                 required(name, params).map_err(RpcError::without_content)?;
+            let preserve = params.preserve_clipboard.unwrap_or(true);
             if let Some(backend) = ctx.x11().await {
-                let preserve = params.preserve_clipboard.unwrap_or(true);
                 let result = blocking(move || backend.paste(&params.transcript, preserve)).await?;
+                return to_value(result);
+            }
+            if let Some((injector, clipboard)) = ctx.wayland_routes().await {
+                if let Err(unavailable) = injector.session(SESSION_WAIT, false).await {
+                    log!(
+                        "Paste",
+                        "{}; transcript {}",
+                        unavailable.message(),
+                        Redacted(&params.transcript)
+                    );
+                    // clipboardSet false: the desktop puts the transcript
+                    // on the clipboard and tells the user.
+                    return to_value(PasteTextResult {
+                        success: false,
+                        clipboard_set: Some(false),
+                        message: Some(unavailable.message()),
+                    });
+                }
+                let sender = PortalChords {
+                    injector,
+                    runtime: tokio::runtime::Handle::current(),
+                };
+                let result =
+                    blocking(move || clipboard.paste(&sender, &params.transcript, preserve))
+                        .await?;
                 return to_value(result);
             }
             log!(
@@ -246,6 +426,20 @@ pub async fn handle(
             if let Some(backend) = ctx.x11().await {
                 return to_value(blocking(move || backend.copy_selection()).await?);
             }
+            if let Some((injector, clipboard)) = ctx.wayland_routes().await {
+                if let Err(unavailable) = injector.session(SESSION_WAIT, false).await {
+                    return to_value(GetSelectedTextViaCopyResult {
+                        selected_text: None,
+                        clipboard_changed: false,
+                        message: Some(unavailable.message()),
+                    });
+                }
+                let sender = PortalChords {
+                    injector,
+                    runtime: tokio::runtime::Handle::current(),
+                };
+                return to_value(blocking(move || clipboard.copy_selection(&sender)).await?);
+            }
             to_value(GetSelectedTextViaCopyResult {
                 selected_text: None,
                 clipboard_changed: false,
@@ -300,6 +494,15 @@ pub async fn handle(
                 return to_value(PrepareInjectionResult {
                     ready: true,
                     message: None,
+                });
+            }
+            if let Some(injector) = ctx.wayland().await.injector.clone() {
+                // Shows the portal dialog when there is no saved consent,
+                // also after an earlier refusal.
+                let result = injector.session(PREPARE_WAIT, true).await;
+                return to_value(PrepareInjectionResult {
+                    ready: result.is_ok(),
+                    message: result.err().map(|unavailable| unavailable.message()),
                 });
             }
             to_value(PrepareInjectionResult {

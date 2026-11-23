@@ -1,9 +1,12 @@
-//! pasteText and getSelectedTextViaCopy on X11 (G2 §5.1, §5.4; contract
-//! §2.5, §2.6): the clipboard dance around one XTest chord. One transaction
-//! runs at a time (the caller holds the transaction lock).
+//! pasteText and getSelectedTextViaCopy (G2 §5.1, §5.4; contract §2.5,
+//! §2.6): the clipboard dance around one chord. The clipboard is a
+//! [`Selection`] (X selections, or Wayland data-control); the chord goes out
+//! through XTest or a [`ChordSender`]. One transaction runs at a time (the
+//! caller holds the selection lock).
 //!
 //! Neither the transcript nor clipboard text is logged; only lengths.
 
+use std::sync::Arc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -12,12 +15,14 @@ use x11rb::protocol::xproto::{
     AtomEnum, ConnectionExt as _, InputFocus, Window, KEY_PRESS_EVENT, KEY_RELEASE_EVENT,
 };
 use x11rb::protocol::xtest::ConnectionExt as _;
+use x11rb::rust_connection::RustConnection;
 use x11rb::{CURRENT_TIME, NONE};
 
-use super::active_window;
 use super::clipboard::{text_items, Owner, Reader, Snapshot};
+use super::keymap::Keymap;
 use super::keymap::{XK_CONTROL_L, XK_INSERT, XK_LOWER_C, XK_LOWER_V, XK_SHIFT_L};
 use super::keys::{is_down, KeyInput};
+use super::{active_window, Atoms};
 use crate::log::{log, Redacted};
 use crate::models::{GetSelectedTextViaCopyResult, PasteTextResult};
 
@@ -119,23 +124,93 @@ pub fn target_of(wm_class: &[u8]) -> Target {
     }
 }
 
+/// The clipboard side of a transaction.
+pub trait Selection {
+    type Snapshot;
+    /// Every format of the clipboard now, read within `budget`.
+    fn snapshot(&mut self, budget: Duration) -> Self::Snapshot;
+    /// False when the clipboard could not be read: there is nothing to put
+    /// back.
+    fn is_readable(snapshot: &Self::Snapshot) -> bool;
+    /// Puts `text` on the clipboard and waits until the compositor (or a
+    /// bridge) has taken it.
+    fn set_text(&mut self, text: &str) -> Result<(), String>;
+    /// True while the clipboard still holds what this helper put there.
+    fn owns(&self) -> bool;
+    /// Clipboard changes by any client, counted since the start.
+    fn changes(&self) -> u64;
+    fn read_text(&mut self, deadline: Instant) -> Option<String>;
+    fn restore(&mut self, snapshot: Self::Snapshot) -> Result<(), String>;
+}
+
+/// The CLIPBOARD selection of an X server: [`Owner`] serves it, [`Reader`]
+/// reads it.
+pub struct XSelection {
+    pub owner: Arc<Owner>,
+    pub reader: Reader,
+}
+
+impl Selection for XSelection {
+    type Snapshot = Snapshot;
+
+    fn snapshot(&mut self, budget: Duration) -> Snapshot {
+        self.reader.snapshot(&self.owner, budget)
+    }
+
+    fn is_readable(snapshot: &Snapshot) -> bool {
+        !matches!(snapshot, Snapshot::Unreadable)
+    }
+
+    /// Settles on the first selection request after the set (a clipboard
+    /// manager or the compositor bridge asking for TARGETS), at most
+    /// SETTLE_MAX.
+    fn set_text(&mut self, text: &str) -> Result<(), String> {
+        let requests = self.owner.requests();
+        self.owner
+            .set(text_items(text, &self.reader.atoms))
+            .map_err(|error| error.to_string())?;
+        if self.owner.wait_for_request(requests, SETTLE_MAX) {
+            sleep(SETTLE_MARGIN);
+        }
+        Ok(())
+    }
+
+    fn owns(&self) -> bool {
+        self.owner.owns()
+    }
+
+    fn changes(&self) -> u64 {
+        self.owner.changes()
+    }
+
+    fn read_text(&mut self, deadline: Instant) -> Option<String> {
+        self.reader.read_text(deadline)
+    }
+
+    fn restore(&mut self, snapshot: Snapshot) -> Result<(), String> {
+        self.owner
+            .restore(snapshot)
+            .map_err(|error| error.to_string())
+    }
+}
+
 /// Puts `snapshot` back when `unchanged` says that the clipboard still
 /// holds what the transaction put there. Returns the note for the result.
-fn restore(
-    owner: &Owner,
-    snapshot: Snapshot,
-    unchanged: impl FnOnce() -> bool,
+fn restore<S: Selection>(
+    selection: &mut S,
+    snapshot: S::Snapshot,
+    unchanged: bool,
     after: &str,
 ) -> Option<String> {
-    if matches!(snapshot, Snapshot::Unreadable) {
+    if !S::is_readable(&snapshot) {
         return Some("Clipboard not restored: the previous clipboard could not be read".to_owned());
     }
-    if !unchanged() {
+    if !unchanged {
         return Some(format!(
             "Clipboard not restored: it changed after the {after}"
         ));
     }
-    match owner.restore(snapshot) {
+    match selection.restore(snapshot) {
         Ok(()) => None,
         Err(error) => {
             log!("Clipboard", "cannot restore the clipboard: {error}");
@@ -151,8 +226,26 @@ fn log_note(note: &Option<String>) -> String {
         .unwrap_or_default()
 }
 
+/// Sends a chord where XTest cannot reach the focused app: the
+/// RemoteDesktop portal on a Wayland session. Takes evdev key codes.
+pub trait ChordSender {
+    fn send(&self, codes: &[u16]) -> Result<(), String>;
+}
+
+/// The keyboard side of a transaction.
+pub enum Keys<'a> {
+    /// X11 session: the key state and XTest.
+    XTest(&'a KeyInput),
+    /// Wayland session: the helper cannot see which keys the user holds.
+    Sender(&'a dyn ChordSender),
+}
+
+/// The keyboard side of a transaction, on an X connection: the focused
+/// window's kind, the keymap, and XTest.
 pub struct Transaction {
-    pub reader: Reader,
+    pub conn: Arc<RustConnection>,
+    pub root: Window,
+    pub atoms: Atoms,
     pub xtest: bool,
 }
 
@@ -160,7 +253,10 @@ impl Transaction {
     /// Waits until no modifier key is held and no consumed key is held, at
     /// most `timeout`. A consuming grab still active then is ended, so that
     /// the chord reaches the app and not this helper.
-    fn wait_until_idle(&self, keys: &KeyInput, timeout: Duration) {
+    fn wait_until_idle(&self, keys: &Keys<'_>, timeout: Duration) {
+        let Keys::XTest(keys) = *keys else {
+            return;
+        };
         let deadline = Instant::now() + timeout;
         let modifiers = keys.keymap().held_modifier_keycodes();
         loop {
@@ -190,7 +286,7 @@ impl Transaction {
     /// The focused window: _NET_ACTIVE_WINDOW from the window manager, else
     /// the input focus.
     fn focused_window(&self) -> Result<Window, ReplyError> {
-        let (conn, root, atoms) = (&self.reader.conn, self.reader.root, &self.reader.atoms);
+        let (conn, root, atoms) = (&*self.conn, self.root, &self.atoms);
         let active = active_window(conn, root, atoms)?;
         if active != NONE {
             return Ok(active);
@@ -203,11 +299,11 @@ impl Transaction {
     /// The target of the focused window, or of its nearest ancestor with a
     /// WM_CLASS.
     fn target(&self) -> Target {
-        let conn = &self.reader.conn;
+        let conn = &self.conn;
         let lookup = || -> Result<Target, ReplyError> {
             let mut window = self.focused_window()?;
             for _ in 0..8 {
-                if window == NONE || window == self.reader.root {
+                if window == NONE || window == self.root {
                     break;
                 }
                 let class = conn
@@ -223,8 +319,31 @@ impl Transaction {
         lookup().unwrap_or(Target::App)
     }
 
+    fn can_inject(&self, keys: &Keys<'_>) -> bool {
+        matches!(keys, Keys::Sender(_)) || self.xtest
+    }
+
     /// Sends `keysyms` as one chord: presses in order, releases in reverse.
-    fn inject(&self, keys: &KeyInput, keysyms: &[u32]) -> Result<(), String> {
+    fn inject(&self, keys: &Keys<'_>, keysyms: &[u32]) -> Result<(), String> {
+        let keys = match *keys {
+            Keys::XTest(keys) => keys,
+            Keys::Sender(sender) => {
+                // Xwayland's keymap follows the compositor's, so it gives
+                // the keys of the active layout.
+                let keymap = Keymap::fetch(&*self.conn).map_err(|error| error.to_string())?;
+                let codes = keysyms
+                    .iter()
+                    .map(|&keysym| {
+                        keymap
+                            .resolve(keysym)
+                            .and_then(|keycode| keycode.checked_sub(8))
+                    })
+                    .map(|code| code.map(u16::from))
+                    .collect::<Option<Vec<u16>>>()
+                    .ok_or("no key for the chord")?;
+                return sender.send(&codes);
+            }
+        };
         if !self.xtest {
             return Err("the X server has no XTEST extension".to_owned());
         }
@@ -240,7 +359,7 @@ impl Transaction {
             .chain(keycodes.iter().rev().map(|&keycode| (keycode, false)))
             .collect();
         keys.expect_echo(&events);
-        let conn = &self.reader.conn;
+        let conn = &self.conn;
         let mut first_error = None;
         for (index, &(keycode, down)) in events.iter().enumerate() {
             let kind = if down {
@@ -267,10 +386,10 @@ impl Transaction {
         }
     }
 
-    pub fn paste(
-        &mut self,
-        keys: &KeyInput,
-        owner: &Owner,
+    pub fn paste<S: Selection>(
+        &self,
+        keys: &Keys<'_>,
+        selection: &mut S,
         transcript: &str,
         preserve: bool,
     ) -> PasteTextResult {
@@ -293,19 +412,14 @@ impl Transaction {
                 ),
             };
         }
-        let snapshot = preserve.then(|| self.reader.snapshot(owner, PASTE_SNAPSHOT_BUDGET));
-
-        let requests = owner.requests();
-        if let Err(error) = owner.set(text_items(transcript, &self.reader.atoms)) {
+        let snapshot = preserve.then(|| selection.snapshot(PASTE_SNAPSHOT_BUDGET));
+        if let Err(error) = selection.set_text(transcript) {
             log!("Paste", "cannot set the clipboard: {error}");
             return PasteTextResult {
                 success: false,
                 clipboard_set: Some(false),
                 message: Some("Could not set the clipboard".to_owned()),
             };
-        }
-        if owner.wait_for_request(requests, SETTLE_MAX) {
-            sleep(SETTLE_MARGIN);
         }
 
         let terminal = target == Target::Terminal;
@@ -325,8 +439,10 @@ impl Transaction {
         }
 
         sleep(RESTORE_DELAY);
-        let message =
-            snapshot.and_then(|snapshot| restore(owner, snapshot, || owner.owns(), "paste"));
+        let message = snapshot.and_then(|snapshot| {
+            let unchanged = selection.owns();
+            restore(selection, snapshot, unchanged, "paste")
+        });
         log!(
             "Paste",
             "pasted transcript {} with {} in {} ms{}",
@@ -342,17 +458,17 @@ impl Transaction {
         }
     }
 
-    pub fn copy_selection(
-        &mut self,
-        keys: &KeyInput,
-        owner: &Owner,
+    pub fn copy_selection<S: Selection>(
+        &self,
+        keys: &Keys<'_>,
+        selection: &mut S,
     ) -> GetSelectedTextViaCopyResult {
         let none = |message: &str| GetSelectedTextViaCopyResult {
             selected_text: None,
             clipboard_changed: false,
             message: Some(message.to_owned()),
         };
-        if !self.xtest {
+        if !self.can_inject(keys) {
             return none("Injection is not available");
         }
         let start = Instant::now();
@@ -361,8 +477,8 @@ impl Transaction {
         if target == Target::NoClipboardKeys {
             return none("The focused terminal has no key that copies to the clipboard");
         }
-        let snapshot = self.reader.snapshot(owner, COPY_SNAPSHOT_BUDGET);
-        let changes = owner.changes();
+        let snapshot = selection.snapshot(COPY_SNAPSHOT_BUDGET);
+        let changes = selection.changes();
         let chord: &[u32] = if target == Target::Terminal {
             &[XK_CONTROL_L, XK_SHIFT_L, XK_LOWER_C]
         } else {
@@ -374,16 +490,17 @@ impl Transaction {
             return none("Could not send the copy keys");
         }
         let poll_deadline = Instant::now() + COPY_WAIT;
-        while owner.changes() == changes {
+        while selection.changes() == changes {
             if Instant::now() >= poll_deadline {
                 log!("Copy", "no copy within {} ms", COPY_WAIT.as_millis());
                 return none("No copy landed within timeout");
             }
             sleep(COPY_POLL);
         }
-        let copied = owner.changes();
-        let text = self.reader.read_text(Instant::now() + COPY_READ_BUDGET);
-        let message = restore(owner, snapshot, || owner.changes() == copied, "copy");
+        let copied = selection.changes();
+        let text = selection.read_text(Instant::now() + COPY_READ_BUDGET);
+        let unchanged = selection.changes() == copied;
+        let message = restore(selection, snapshot, unchanged, "copy");
         log!(
             "Copy",
             "copied {} in {} ms{}",

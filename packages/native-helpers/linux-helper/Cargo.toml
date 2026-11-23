@@ -23,6 +23,8 @@ zbus = { version = "5.19", default-features = false, features = ["tokio"] }
 x11rb = { version = "0.14", default-features = false, features = ["xinput", "xtest", "xfixes"] }
 # poll(2) with a timeout on the X connections; x11rb already depends on it.
 rustix = { version = "1", default-features = false, features = ["std", "event"] }
+# Signal streams for the portal clients; zbus already depends on it.
+futures-util = { version = "0.3", default-features = false }
 
 [features]
 # Integration tests against a real X server (run under xvfb-run).

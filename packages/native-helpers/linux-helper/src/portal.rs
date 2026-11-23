@@ -11,8 +11,8 @@ use zbus::Connection;
 
 use crate::log::log;
 
-const PORTAL_SERVICE: &str = "org.freedesktop.portal.Desktop";
-const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
+pub const PORTAL_SERVICE: &str = "org.freedesktop.portal.Desktop";
+pub const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 const REGISTRY_INTERFACE: &str = "org.freedesktop.host.portal.Registry";
 const PROPERTIES_INTERFACE: &str = "org.freedesktop.DBus.Properties";
 /// Covers bus connection, registration and version reads. The desktop's
@@ -29,16 +29,24 @@ pub struct PortalVersions {
 pub struct PortalProbe {
     versions: Option<PortalVersions>,
     /// The registry binds the app id to this connection, so it stays open
-    /// for the life of the helper.
-    _connection: Option<Connection>,
+    /// for the life of the helper, and every portal call uses it.
+    connection: Option<Connection>,
 }
 
 impl PortalProbe {
     fn unavailable() -> Self {
         Self {
             versions: None,
-            _connection: None,
+            connection: None,
         }
+    }
+
+    pub fn versions(&self) -> Option<&PortalVersions> {
+        self.versions.as_ref()
+    }
+
+    pub fn connection(&self) -> Option<&Connection> {
+        self.connection.as_ref()
     }
 
     pub fn summary(&self) -> String {
@@ -76,7 +84,7 @@ async fn probe_bus(app_id: Option<&str>) -> zbus::Result<PortalProbe> {
     let versions = versions(&connection).await;
     Ok(PortalProbe {
         versions,
-        _connection: Some(connection),
+        connection: Some(connection),
     })
 }
 
@@ -145,7 +153,7 @@ fn portal_is_missing(error: &zbus::Error) -> bool {
 }
 
 /// For a D-Bus error, its name only: never the message text.
-fn error_name(error: &zbus::Error) -> String {
+pub fn error_name(error: &zbus::Error) -> String {
     match error {
         zbus::Error::MethodError(name, _, _) => name.to_string(),
         other => other.to_string(),
