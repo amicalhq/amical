@@ -5,7 +5,6 @@ import type { RecordingState } from "@/types/recording";
 
 const mocks = vi.hoisted(() => ({
   setVisible: vi.fn(),
-  shortcutsAvailable: true,
   subscription: undefined as
     | {
         onData: (showWhileInactive: boolean) => void;
@@ -17,9 +16,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/trpc/react", () => ({
   api: {
     settings: {
-      getShortcutSupport: {
-        useQuery: () => ({ data: { available: mocks.shortcutsAvailable } }),
-      },
       widgetVisibilityPreference: {
         useSubscription: (
           _input: undefined,
@@ -58,7 +54,6 @@ const idleProps: HookProps = {
 
 beforeEach(() => {
   mocks.setVisible.mockClear();
-  mocks.shortcutsAvailable = true;
   mocks.subscription = undefined;
 });
 
@@ -116,15 +111,6 @@ describe("useWidgetVisibility", () => {
 
     rerender(idleProps);
     expect(mocks.setVisible).toHaveBeenLastCalledWith({ visible: false });
-  });
-
-  it("keeps the widget shown without global shortcuts, whatever the preference", () => {
-    mocks.shortcutsAvailable = false;
-    renderHook((props: HookProps) => useWidgetVisibility(props), {
-      initialProps: idleProps,
-    });
-    act(() => mocks.subscription?.onData(false));
-    expect(mocks.setVisible).toHaveBeenLastCalledWith({ visible: true });
   });
 
   it("keeps a terminal notification visible after the FSM returns to idle", () => {

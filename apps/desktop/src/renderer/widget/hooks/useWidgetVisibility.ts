@@ -17,10 +17,6 @@ export const useWidgetVisibility = ({
     null,
   );
   const { mutate: setVisible } = api.widget.setVisible.useMutation();
-  // Without global shortcuts (Linux for now) the widget is the only way to
-  // start a dictation, so it stays visible whatever the preference says.
-  const { data: shortcutSupport } = api.settings.getShortcutSupport.useQuery();
-  const widgetIsTheOnlyStart = shortcutSupport?.available === false;
 
   api.settings.widgetVisibilityPreference.useSubscription(undefined, {
     onData: setShowWhileInactive,
@@ -31,8 +27,7 @@ export const useWidgetVisibility = ({
 
   const hasVisibleContent =
     recordingState !== "idle" || hasPendingDraft || hasVisibleNotification;
-  const shouldShowWidget =
-    showWhileInactive === true || widgetIsTheOnlyStart || hasVisibleContent;
+  const shouldShowWidget = showWhileInactive === true || hasVisibleContent;
   const hasActiveRecording =
     recordingState === "starting" || recordingState === "recording";
 
