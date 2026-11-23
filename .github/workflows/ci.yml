@@ -95,8 +95,8 @@ jobs:
           pnpm --filter @amical/types generate:json-schemas
           pnpm --filter @amical/types generate:rust
 
-      - name: Install D-Bus (private-bus tests)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dbus
+      - name: Install D-Bus and Xvfb (process and X11 tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dbus xvfb xauth
 
       - name: Install Rust
         # The version and components come from rust-toolchain.toml.
@@ -111,13 +111,17 @@ jobs:
         run: cargo fmt --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+        # it-x11 only adds the X11 test target, so this also lints it.
+        run: cargo clippy --all-targets --locked --features it-x11 -- -D warnings
 
       - name: Unit tests
         run: cargo test --locked --bins
 
       - name: Process tests (private session bus, temporary HOME and XDG dirs)
         run: cargo test --locked --test protocol
+
+      - name: X11 tests (Xvfb)
+        run: xvfb-run -a cargo test --locked --features it-x11 --test x11
 
   build_desktop:
     name: Build Desktop (${{ matrix.os }} ${{ matrix.arch }})
