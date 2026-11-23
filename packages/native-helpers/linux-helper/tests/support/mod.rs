@@ -3,6 +3,10 @@
 //! and either a private session bus or no bus at all, so that a test never
 //! touches the user's home directory or session services.
 
+// Each test binary uses its own part of this module.
+#![allow(dead_code)]
+
+use std::collections::VecDeque;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -16,6 +20,31 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 pub const TIMEOUT: Duration = Duration::from_secs(10);
+
+pub fn schema(file: &str) -> Value {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../types/generated/json-schemas")
+        .join(file);
+    let text = fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}. Run `pnpm --filter @amical/types generate:all` first.",
+            path.display()
+        )
+    });
+    serde_json::from_str(&text).unwrap()
+}
+
+pub fn assert_valid(file: &str, instance: &Value) {
+    let validator = jsonschema::validator_for(&schema(file)).unwrap();
+    let errors: Vec<String> = validator
+        .iter_errors(instance)
+        .map(|error| error.to_string())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "{file}: {instance} is invalid: {errors:?}"
+    );
+}
 
 /// A fresh directory under the system temp directory (short paths: a unix
 /// socket path has a 108-byte limit), removed on drop.
@@ -55,6 +84,8 @@ pub struct Helper {
     child: Child,
     stdin: Option<ChildStdin>,
     stdout: Receiver<String>,
+    /// Lines that arrived while `call` waited for its answer (events).
+    pending: VecDeque<String>,
     stderr: Option<JoinHandle<String>>,
     stderr_text: String,
     next_id: usize,
@@ -111,6 +142,7 @@ impl Helper {
             stdin: child.stdin.take(),
             child,
             stdout,
+            pending: VecDeque::new(),
             stderr: Some(stderr),
             stderr_text: String::new(),
             next_id: 0,
@@ -124,26 +156,57 @@ impl Helper {
         stdin.flush().unwrap();
     }
 
-    /// Sends a request and returns its answer.
+    /// Sends a request and returns its answer. Other lines that arrive
+    /// first stay for `next_line`.
     pub fn call(&mut self, method: &str, params: Value) -> Value {
+        let id = self.send_request(method, params);
+        self.answer(&id)
+    }
+
+    /// Sends a request without waiting; returns its id for `answer`.
+    pub fn send_request(&mut self, method: &str, params: Value) -> String {
         self.next_id += 1;
         let id = format!("call-{}", self.next_id);
         self.send(&json!({ "id": id, "method": method, "params": params }).to_string());
+        id
+    }
+
+    /// The answer to request `id`. Other lines stay for `next_line`.
+    pub fn answer(&mut self, id: &str) -> Value {
+        let is_answer = |line: &str| serde_json::from_str::<Value>(line).unwrap()["id"] == id;
+        if let Some(index) = self.pending.iter().position(|line| is_answer(line)) {
+            let line = self.pending.remove(index).unwrap();
+            return serde_json::from_str(&line).unwrap();
+        }
         loop {
-            let line = self.next_line().expect("stdout closed before the answer");
-            let message: Value = serde_json::from_str(&line).unwrap();
-            if message["id"] == id {
-                return message;
+            let line = match self.stdout.recv_timeout(TIMEOUT) {
+                Ok(line) => line,
+                Err(_) => panic!("no answer to {id} within {TIMEOUT:?}"),
+            };
+            if is_answer(&line) {
+                return serde_json::from_str(&line).unwrap();
             }
+            self.pending.push_back(line);
         }
     }
 
     pub fn next_line(&mut self) -> Option<String> {
+        if let Some(line) = self.pending.pop_front() {
+            return Some(line);
+        }
         match self.stdout.recv_timeout(TIMEOUT) {
             Ok(line) => Some(line),
             Err(RecvTimeoutError::Disconnected) => None,
             Err(RecvTimeoutError::Timeout) => panic!("no stdout line within {TIMEOUT:?}"),
         }
+    }
+
+    /// The next stdout line within `wait`, or None.
+    pub fn next_line_within(&mut self, wait: Duration) -> Option<String> {
+        if let Some(line) = self.pending.pop_front() {
+            return Some(line);
+        }
+        self.stdout.recv_timeout(wait).ok()
     }
 
     /// Every stdout line until the helper closes stdout.

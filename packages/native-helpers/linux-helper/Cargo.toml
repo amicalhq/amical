@@ -19,6 +19,14 @@ tokio = { version = "1", features = [
   "time",
 ] }
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }
+# X11 backend: pure-Rust connection, no libX11/libxcb at run time.
+x11rb = { version = "0.14", default-features = false, features = ["xinput", "xtest", "xfixes"] }
+# poll(2) with a timeout on the X connections; x11rb already depends on it.
+rustix = { version = "1", default-features = false, features = ["std", "event"] }
+
+[features]
+# Integration tests against a real X server (run under xvfb-run).
+it-x11 = []
 
 [dev-dependencies]
 jsonschema = { version = "0.61", default-features = false }

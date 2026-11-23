@@ -5,40 +5,13 @@
 mod support;
 
 use std::collections::{BTreeSet, HashMap};
-use std::fs;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
-use support::{Helper, PrivateBus};
+use support::{assert_valid, schema, Helper, PrivateBus};
 use zbus::zvariant::OwnedValue;
 
 const TRANSCRIPT: &str = "transcript canary 7f3a";
-
-fn schema(file: &str) -> Value {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../types/generated/json-schemas")
-        .join(file);
-    let text = fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "{}: {error}. Run `pnpm --filter @amical/types generate:all` first.",
-            path.display()
-        )
-    });
-    serde_json::from_str(&text).unwrap()
-}
-
-fn assert_valid(file: &str, instance: &Value) {
-    let validator = jsonschema::validator_for(&schema(file)).unwrap();
-    let errors: Vec<String> = validator
-        .iter_errors(instance)
-        .map(|error| error.to_string())
-        .collect();
-    assert!(
-        errors.is_empty(),
-        "{file}: {instance} is invalid: {errors:?}"
-    );
-}
 
 fn kebab_case(name: &str) -> String {
     let mut kebab = String::new();

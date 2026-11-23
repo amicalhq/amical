@@ -22,7 +22,10 @@ pub fn write(component: &str, message: fmt::Arguments<'_>) {
     let since_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
-    let line = format!("[{}] [{component}] {message}\n", timestamp(since_epoch));
+    let line = format!(
+        "[{}] [{component}] {message}\n",
+        timestamp(since_epoch, ' ')
+    );
     // One write per line, so that lines from different threads do not mix.
     let _ = std::io::stderr().lock().write_all(line.as_bytes());
 }
@@ -54,12 +57,20 @@ pub fn install_panic_hook() {
     }));
 }
 
-fn timestamp(since_epoch: Duration) -> String {
+/// The current time for event timestamps: ISO 8601, UTC, milliseconds.
+pub fn iso8601_now() -> String {
+    let since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    timestamp(since_epoch, 'T')
+}
+
+fn timestamp(since_epoch: Duration, separator: char) -> String {
     let secs = since_epoch.as_secs();
     let (year, month, day) = civil_from_days((secs / 86_400) as i64);
     let second_of_day = secs % 86_400;
     format!(
-        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}.{:03}Z",
+        "{year:04}-{month:02}-{day:02}{separator}{:02}:{:02}:{:02}.{:03}Z",
         second_of_day / 3600,
         second_of_day / 60 % 60,
         second_of_day % 60,
@@ -94,15 +105,15 @@ mod tests {
     #[test]
     fn timestamp_is_utc_with_milliseconds() {
         assert_eq!(
-            timestamp(Duration::from_millis(1_700_000_000_123)),
+            timestamp(Duration::from_millis(1_700_000_000_123), ' '),
             "2023-11-14 22:13:20.123Z"
         );
         // The leap day at the end of a 400-year era (eras start on 1 March).
         assert_eq!(
-            timestamp(Duration::from_millis(951_782_400_000)),
-            "2000-02-29 00:00:00.000Z"
+            timestamp(Duration::from_millis(951_782_400_000), 'T'),
+            "2000-02-29T00:00:00.000Z"
         );
-        assert_eq!(timestamp(Duration::ZERO), "1970-01-01 00:00:00.000Z");
+        assert_eq!(timestamp(Duration::ZERO, ' '), "1970-01-01 00:00:00.000Z");
     }
 
     #[test]

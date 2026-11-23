@@ -4,7 +4,9 @@
 
 use serde::Serialize;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{
+    unbounded_channel, UnboundedReceiver, UnboundedSender, WeakUnboundedSender,
+};
 
 use crate::log::log;
 
@@ -23,6 +25,24 @@ impl Out {
             // and the helper is shutting down), so the line has nowhere to go.
             Ok(line) => drop(self.0.send(line)),
             Err(error) => log!("Writer", "cannot serialize a message: {error}"),
+        }
+    }
+
+    /// A handle that does not keep the writer alive, for backend threads
+    /// that outlive every request: the writer finishes when the last
+    /// [`Out`] is dropped, and later events go nowhere.
+    pub fn downgrade(&self) -> WeakOut {
+        WeakOut(self.0.downgrade())
+    }
+}
+
+#[derive(Clone)]
+pub struct WeakOut(WeakUnboundedSender<String>);
+
+impl WeakOut {
+    pub fn send<T: Serialize>(&self, message: &T) {
+        if let Some(sender) = self.0.upgrade() {
+            Out(sender).send(message);
         }
     }
 }

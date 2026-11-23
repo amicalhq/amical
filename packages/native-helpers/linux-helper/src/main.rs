@@ -4,8 +4,9 @@
 //! writes to it.
 //!
 //! Exit codes: 0 after SIGTERM, SIGINT, SIGHUP, stdin EOF or a closed stdout;
-//! 1 when startup fails; 2 after a panic outside a request handler. The
-//! desktop restarts the helper after a non-zero exit.
+//! 1 when startup fails; 2 after a panic outside a request handler; 3 when
+//! the X connection closes on an X11 session (see `x11`). The desktop
+//! restarts the helper after a non-zero exit.
 
 #![deny(clippy::print_stdout)]
 
@@ -16,6 +17,7 @@ mod models;
 mod portal;
 mod rpc;
 mod writer;
+mod x11;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,6 +32,9 @@ use crate::log::log;
 const EXIT_OK: i32 = 0;
 const EXIT_STARTUP_FAILED: i32 = 1;
 const EXIT_PANIC: i32 = 2;
+/// On an X11 session the X server is the session; a restarted helper
+/// probes it again.
+const EXIT_X_CONNECTION_LOST: i32 = 3;
 
 /// How long requests still in flight at shutdown get to answer.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
@@ -67,33 +72,36 @@ async fn run() -> i32 {
     let ctx = Arc::new(Ctx::new(out, SessionEnv::from_process()));
     let mut reader = tokio::spawn(rpc::serve(tokio::io::stdin(), ctx.clone()));
     log!("Main", "linux-helper {} started", env!("CARGO_PKG_VERSION"));
+    // Connect the X11 backend now, so that the first request finds it ready.
+    let backends = ctx.clone();
+    tokio::spawn(async move { backends.x11().await });
 
-    let (reason, stdout_closed) = tokio::select! {
+    let (reason, stdout_closed, code) = tokio::select! {
         result = &mut reader => match result {
-            Ok(Ok(())) => ("stdin closed", false),
+            Ok(Ok(())) => ("stdin closed", false, EXIT_OK),
             Ok(Err(error)) => {
                 log!("Main", "stdin read failed: {error}");
-                ("stdin read failed", false)
+                ("stdin read failed", false, EXIT_OK)
             }
             Err(error) => return task_failed("reader", error),
         },
-        name = signals.recv() => (name, false),
+        name = signals.recv() => (name, false, EXIT_OK),
         result = &mut writer => match result {
-            Ok(Ok(())) => ("stdout closed", true),
+            Ok(Ok(())) => ("stdout closed", true, EXIT_OK),
             Ok(Err(error)) => {
                 log!("Main", "stdout write failed: {}", error.kind());
-                ("stdout closed", true)
+                ("stdout closed", true, EXIT_OK)
             }
             Err(error) => return task_failed("writer", error),
         },
+        () = ctx.x11_lost() => ("X connection closed", false, EXIT_X_CONNECTION_LOST),
     };
-    shutdown(reason).await;
+    shutdown(&ctx, reason).await;
 
     if !stdout_closed {
         // The writer ends when the last handle to it is dropped: ours, the
-        // reader's, and one per request in flight. A backend that keeps a
-        // handle to send events must drop it in shutdown(), or this wait runs
-        // to the grace limit.
+        // reader's, and one per request in flight. Backend threads hold
+        // weak handles, which do not keep it alive.
         reader.abort();
         drop(ctx);
         match tokio::time::timeout(SHUTDOWN_GRACE, writer).await {
@@ -102,13 +110,14 @@ async fn run() -> i32 {
             Err(_) => log!("Main", "requests still in flight after {SHUTDOWN_GRACE:?}"),
         }
     }
-    EXIT_OK
+    code
 }
 
 /// Runs once before every orderly exit. A backend that changes system state
 /// (audio mute, key grabs, portal sessions) undoes the change here.
-async fn shutdown(reason: &str) {
+async fn shutdown(ctx: &Ctx, reason: &str) {
     log!("Main", "shutting down: {reason}");
+    ctx.shutdown();
 }
 
 fn task_failed(task: &str, error: JoinError) -> i32 {
