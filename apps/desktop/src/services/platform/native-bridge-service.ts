@@ -5,7 +5,11 @@ import { app as electronApp } from "electron";
 import split2 from "split2";
 import { v4 as uuid } from "uuid";
 import type { ZodType } from "zod";
-import { getNativeHelperName, getNativeHelperDir } from "../../utils/platform";
+import {
+  getNativeHelperName,
+  getNativeHelperDir,
+  LINUX_APP_ID,
+} from "../../utils/platform";
 import { extractHostnameFromBrowserUrl } from "../../utils/url";
 
 import { EventEmitter } from "events";
@@ -63,6 +67,9 @@ import {
   StopEditWatchParams,
   StopEditWatchResult,
   StopEditWatchResultSchema,
+  GetHelperCapabilitiesParams,
+  GetHelperCapabilitiesResult,
+  GetHelperCapabilitiesResultSchema,
   AppContext,
 } from "@amical/types";
 
@@ -128,6 +135,11 @@ interface RPCMethods {
     params: StopEditWatchParams;
     result: StopEditWatchResult;
   };
+  // Linux helper only.
+  getHelperCapabilities: {
+    params: GetHelperCapabilitiesParams;
+    result: GetHelperCapabilitiesResult;
+  };
 }
 
 // Edit-watch answers carry the text of a watched field. Neither their result
@@ -168,6 +180,7 @@ const RPC_RESULT_SCHEMAS: Record<keyof RPCMethods, ZodType> = {
   startEditWatch: StartEditWatchResultSchema,
   readEditWatch: ReadEditWatchResultSchema,
   stopEditWatch: StopEditWatchResultSchema,
+  getHelperCapabilities: GetHelperCapabilitiesResultSchema,
 };
 
 function resolveNativeHelperPath(): string {
@@ -292,6 +305,7 @@ export class NativeBridge extends EventEmitter {
   private helperPath: string;
   private logger = createScopedLogger("native-bridge");
   private accessibilityContext: AppContext | null = null;
+  private helperCapabilities: GetHelperCapabilitiesResult | null = null;
   private accessibilityContextRefreshId = 0;
 
   // Auto-restart configuration
@@ -996,6 +1010,38 @@ export class NativeBridge extends EventEmitter {
    * When these shortcuts are pressed, the native helper will consume the key events
    * to prevent default behavior (e.g., cursor movement for arrow keys).
    */
+  /**
+   * Linux only: ask the helper what it can do in this session and keep the
+   * answer. Call it first after each helper start; on failure the last answer
+   * is cleared, so callers treat the helper as able to do nothing.
+   */
+  async refreshHelperCapabilities(): Promise<GetHelperCapabilitiesResult | null> {
+    try {
+      this.helperCapabilities = await this.call(
+        "getHelperCapabilities",
+        { appId: LINUX_APP_ID },
+        3000,
+      );
+      this.logger.info("Helper capabilities", {
+        keyInputMode: this.helperCapabilities.keyInputMode,
+        injectionAvailable: this.helperCapabilities.injectionAvailable,
+        sessionType: this.helperCapabilities.sessionType,
+        desktop: this.helperCapabilities.desktop,
+      });
+    } catch (error) {
+      this.helperCapabilities = null;
+      this.logger.error("Failed to get helper capabilities", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return this.helperCapabilities;
+  }
+
+  /** The last answer of refreshHelperCapabilities, or null. */
+  getHelperCapabilities(): GetHelperCapabilitiesResult | null {
+    return this.helperCapabilities;
+  }
+
   async setShortcuts(shortcuts: SetShortcutsParams): Promise<boolean> {
     try {
       const result = await this.call("setShortcuts", shortcuts);

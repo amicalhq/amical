@@ -38,6 +38,9 @@ export function DictationTestScreen({
   const { isRecording } = useOnboardingDictation();
   const { data: shortcuts } = api.settings.getShortcuts.useQuery();
   const configured = shortcuts?.pushToTalk[0] ?? [];
+  // Without global shortcuts (Linux for now) the take starts from the widget.
+  const { data: shortcutSupport } = api.settings.getShortcutSupport.useQuery();
+  const useWidget = shortcutSupport?.available === false;
   const screen = {
     email: OnboardingScreen.DictationEmail,
     notes: OnboardingScreen.DictationNotes,
@@ -95,7 +98,11 @@ export function DictationTestScreen({
     <SplitScreen
       screen={screen}
       title={t(`${ns}.title`)}
-      subtitle={t(`${ns}.subtitle`)}
+      subtitle={t(
+        useWidget
+          ? "onboarding.dictationTest.widget.subtitle"
+          : `${ns}.subtitle`,
+      )}
       hint={
         <>
           <Lightbulb size={15} />
@@ -151,9 +158,11 @@ export function DictationTestScreen({
           </div>
         </div>
         <CoachBubble
-          ctaKey={`${ns}.cta`}
+          ctaKey={
+            useWidget ? "onboarding.dictationTest.widget.cta" : `${ns}.cta`
+          }
           recording={isRecording}
-          shortcut={configured}
+          shortcut={useWidget ? [] : configured}
         />
       </div>
     </SplitScreen>

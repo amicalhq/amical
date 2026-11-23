@@ -92,6 +92,9 @@ export interface RecordingLifecycleDeps {
   onOtherPaste?: () => void;
   /** Writes text to the system clipboard; the paste fallback uses it. */
   writeClipboard?: (text: string) => void;
+  /** Types text into a focused text field of an Amical window; false when
+   * no such field has focus. The paste fallback tries it first. */
+  insertIntoFocusedAppWindow?: (text: string) => Promise<boolean>;
   audioFilePathFor: (session: SessionId) => string;
   tuning: LifecycleTuning;
   timers?: ShellTimerHost;
@@ -270,9 +273,12 @@ export function createRecordingLifecycle(
         onSessionPasteConfirmed: deps.onSessionPasteConfirmed,
         onOtherPaste: deps.onOtherPaste,
         onPasteUnavailable: (transcript) => {
-          if (!deps.writeClipboard) return;
-          deps.writeClipboard(transcript);
-          notify({ type: "copied_to_clipboard" });
+          void (async () => {
+            if (await deps.insertIntoFocusedAppWindow?.(transcript)) return;
+            if (!deps.writeClipboard) return;
+            deps.writeClipboard(transcript);
+            notify({ type: "copied_to_clipboard" });
+          })();
         },
       });
 

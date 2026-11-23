@@ -78,6 +78,7 @@ export function App() {
   // tRPC queries
   const featureFlagsQuery = api.onboarding.getFeatureFlags.useQuery();
   const skippedScreensQuery = api.onboarding.getSkippedScreens.useQuery();
+  const shortcutSupportQuery = api.settings.getShortcutSupport.useQuery();
 
   // A signed-in user who picks Local skips the telemetry step.
   const [signedIn, setSignedIn] = useState(false);
@@ -105,8 +106,14 @@ export function App() {
         flags: featureFlagsQuery.data,
         skipped: (skippedScreensQuery.data as OnboardingScreen[]) || [],
         signedIn,
+        shortcutsAvailable: shortcutSupportQuery.data?.available,
       }),
-    [featureFlagsQuery.data, skippedScreensQuery.data, signedIn],
+    [
+      featureFlagsQuery.data,
+      skippedScreensQuery.data,
+      signedIn,
+      shortcutSupportQuery.data?.available,
+    ],
   );
 
   // Get active screens. The cloud-only dictation steps are inserted only when

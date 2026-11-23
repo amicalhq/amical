@@ -240,6 +240,10 @@
         "cta": "Hold {{keys}} and speak",
         "mockHeader": "Notes",
         "ghost": "Pick up water, milk, bread, and toast on the way home."
+      },
+      "widget": {
+        "subtitle": "Click the widget at the bottom of your screen to start, then click ✓ when you're done.",
+        "cta": "Click the widget to start"
       }
     },
     "draft": {
@@ -287,6 +291,7 @@
     "completion": {
       "title": "You're all set",
       "subtitle": "Hold your shortcut anywhere to start. You can change any of this in Settings.",
+      "widgetSubtitle": "Click the widget to start dictating. You can change any of this in Settings.",
       "start": "Start using Amical",
       "summary": {
         "speechModel": "Speech model",

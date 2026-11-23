@@ -243,6 +243,10 @@
         "cta": "按住 {{keys}} 說話",
         "mockHeader": "筆記",
         "ghost": "回家路上買水、牛奶、麵包和吐司。"
+      },
+      "widget": {
+        "subtitle": "點按螢幕底部的小工具開始，說完後點按 ✓。",
+        "cta": "點按小工具開始"
       }
     },
     "draft": {
@@ -290,6 +294,7 @@
     "completion": {
       "title": "一切就緒",
       "subtitle": "在任何地方按住快捷鍵即可開始。這些都可以在設定中更改。",
+      "widgetSubtitle": "點按小工具即可開始聽寫。這些都可以在設定中更改。",
       "start": "開始使用 Amical",
       "summary": {
         "speechModel": "語音模型",

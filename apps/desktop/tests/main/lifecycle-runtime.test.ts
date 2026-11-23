@@ -68,9 +68,13 @@ function makeHarness(options?: {
   sessionWork?: SessionWork;
   /** Helper verdict for pasteText; refusals resolve { success: false }. */
   pasteConfirms?: boolean;
+  /** Linux helper: false when it could not set the clipboard. */
+  clipboardSet?: boolean;
+  insertIntoFocusedAppWindow?: (text: string) => Promise<boolean>;
 }) {
   const timers = new FakeTimers();
   const pastes: string[] = [];
+  const clipboard: string[] = [];
   const notifications: LifecycleNotification[] = [];
   const terminalCallbacks = new Map<string, (error: Error) => void>();
   const ambianceEnds: unknown[] = [];
@@ -113,11 +117,16 @@ function makeHarness(options?: {
     bridge: {
       pasteText: async ({ transcript }) => {
         pastes.push(transcript);
-        return { success: options?.pasteConfirms ?? true };
+        return {
+          success: options?.pasteConfirms ?? true,
+          clipboardSet: options?.clipboardSet,
+        };
       },
       setDraftEnterCapture: async () => undefined,
     },
     getPreserveClipboard: async () => false,
+    writeClipboard: (text) => clipboard.push(text),
+    insertIntoFocusedAppWindow: options?.insertIntoFocusedAppWindow,
     hasSpeechModelSelected:
       options?.hasSpeechModelSelected ??
       (async () => options?.hasModel ?? true),
@@ -142,6 +151,7 @@ function makeHarness(options?: {
     lifecycle,
     timers,
     pastes,
+    clipboard,
     notifications,
     service,
     terminalCallbacks,
@@ -213,6 +223,32 @@ describe("recording lifecycle runtime", () => {
     expect(h.timers.armedDurations()).toEqual([]);
     expect(h.notifications).toEqual([]);
   });
+
+  it.each([
+    [false, ["hello world"], ["copied_to_clipboard"]],
+    [true, [], []],
+  ])(
+    "a helper without a clipboard: an Amical window takes the text first (inserted: %s)",
+    async (inserted, clipboard, notificationTypes) => {
+      const insert = vi.fn(async () => inserted);
+      const h = makeHarness({
+        pasteConfirms: false,
+        clipboardSet: false,
+        insertIntoFocusedAppWindow: insert,
+      });
+      const session = await h.startToRecording();
+      h.timers.fire(TUNING.pressWindowMs);
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), false);
+      h.lifecycle.setPttLevel(false);
+      await settle();
+      await h.lifecycle.handleAudioChunk(session, h.frames(0.5), true);
+      await settle();
+
+      expect(insert).toHaveBeenCalledWith("hello world");
+      expect(h.clipboard).toEqual(clipboard);
+      expect(h.notifications.map((n) => n.type)).toEqual(notificationTypes);
+    },
+  );
 
   it("one delivered session flushes one dictation trace with its phases", async () => {
     const flushedTraces: Array<Record<string, unknown>> = [];

@@ -261,6 +261,13 @@ export const settingsRouter = createRouter({
     }
     return await settingsService.getShortcuts();
   }),
+  // Whether global shortcuts can work in this session (false on Linux until
+  // the helper has a key input backend)
+  getShortcutSupport: procedure.query(({ ctx }) => {
+    return {
+      available: ctx.services.shortcutManager?.shortcutsAvailable() ?? false,
+    };
+  }),
   // Replace one action's shortcut bindings
   setShortcutBindings: procedure
     .input(SetShortcutBindingsSchema)

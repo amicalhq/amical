@@ -5,6 +5,7 @@ import { NativeBridge } from "@/services/platform/native-bridge-service";
 import { KeyEventPayload, HelperEvent } from "@amical/types";
 import { logger } from "@/main/logger";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
+import { isLinux } from "@/utils/platform";
 import {
   validateShortcutBindings,
   type ShortcutBindings,
@@ -103,6 +104,17 @@ export class ShortcutManager extends EventEmitter {
     this.nativeBridge = nativeBridge;
   }
 
+  /**
+   * Whether global shortcuts can work. macOS and Windows always have them.
+   * Linux needs a helper that reports a key input mode.
+   */
+  shortcutsAvailable(): boolean {
+    if (!this.nativeBridge) return false;
+    if (!isLinux()) return true;
+    const capabilities = this.nativeBridge.getHelperCapabilities();
+    return !!capabilities && capabilities.keyInputMode !== "none";
+  }
+
   setCommandsSuppressed(suppressed: boolean) {
     this.commandsSuppressed = suppressed;
   }
@@ -161,8 +173,7 @@ export class ShortcutManager extends EventEmitter {
       log.warn("No native helper: global shortcuts are unavailable");
       return;
     }
-    this.syncShortcutsToNative(); // fire-and-forget
-    this.syncAllowInjectedKeysToNative(); // fire-and-forget
+    void this.resyncNativeHelper(this.nativeBridge);
     this.setupEventListeners(this.nativeBridge);
     this.startPeriodicRecheck();
   }
@@ -584,6 +595,8 @@ export class ShortcutManager extends EventEmitter {
    */
   private async resyncNativeHelper(nativeBridge: NativeBridge) {
     log.info("Native helper started, re-syncing helper state");
+    // The Linux helper reports what this session allows; ask first.
+    if (isLinux()) await nativeBridge.refreshHelperCapabilities();
     await this.syncShortcutsToNative();
     await this.syncAllowInjectedKeysToNative();
     if (this.draftActive) {

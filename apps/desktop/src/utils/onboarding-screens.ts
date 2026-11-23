@@ -48,6 +48,16 @@ const CLOUD_ONLY = new Set<OnboardingScreen>([
   OnboardingScreen.DraftSelection,
 ]);
 
+// Screens that need a working global shortcut: choosing it, and Draft, which
+// is driven by holding one.
+const NEEDS_SHORTCUTS = new Set<OnboardingScreen>([
+  OnboardingScreen.Shortcut,
+  OnboardingScreen.DraftIntro,
+  OnboardingScreen.DraftShortcut,
+  OnboardingScreen.DraftCompose,
+  OnboardingScreen.DraftSelection,
+]);
+
 const LOCAL_ONLY = new Set<OnboardingScreen>([
   OnboardingScreen.Telemetry,
   OnboardingScreen.Download,
@@ -119,6 +129,9 @@ export function getActiveOnboardingScreens(opts: {
   /** A sign-in turns telemetry on with no opt-out, so the telemetry step is
    *  only for users who are not signed in. */
   signedIn?: boolean;
+  /** False when global shortcuts cannot work (Linux without a key input
+   *  backend); dictation then starts from the widget. */
+  shortcutsAvailable?: boolean;
 }): OnboardingScreen[] {
   const skipped = new Set(opts.skipped);
   const isCloud = opts.modelType === ModelType.Cloud;
@@ -129,6 +142,8 @@ export function getActiveOnboardingScreens(opts: {
     if (CLOUD_ONLY.has(screen) && !isCloud) return false;
     if (LOCAL_ONLY.has(screen) && !isLocal) return false;
     if (screen === OnboardingScreen.Telemetry && opts.signedIn) return false;
+    if (NEEDS_SHORTCUTS.has(screen) && opts.shortcutsAvailable === false)
+      return false;
 
     if (opts.flags) {
       if (screen === OnboardingScreen.Welcome && opts.flags.skipWelcome)

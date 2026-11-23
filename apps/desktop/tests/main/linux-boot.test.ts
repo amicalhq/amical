@@ -95,6 +95,7 @@ describe("Linux boot", () => {
 
     const manager = Context.get(ctx, ShortcutManagerTag);
     expect(bindShortcutManager).toHaveBeenCalledWith(manager);
+    expect(manager.shortcutsAvailable()).toBe(false);
 
     const result = await manager.setShortcutBindings("toggleRecording", [
       [63, 49],
@@ -105,6 +106,24 @@ describe("Linux boot", () => {
       toggleRecording: [[63, 49]],
     });
   });
+
+  it.each([
+    [null, false],
+    ["none", false],
+    ["per-key", true],
+  ] as const)(
+    "reports shortcuts from the helper's key input mode (%s)",
+    (keyInputMode, available) => {
+      const bridge = {
+        getHelperCapabilities: () => (keyInputMode ? { keyInputMode } : null),
+      };
+      const manager = ShortcutManager.createForTests(
+        {} as never,
+        bridge as never,
+      );
+      expect(manager.shortcutsAvailable()).toBe(available);
+    },
+  );
 
   it("passes the microphone check although Electron has no permission API", () => {
     // Electron defines getMediaAccessStatus only on macOS and Windows.

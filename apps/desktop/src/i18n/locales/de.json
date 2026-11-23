@@ -243,6 +243,10 @@
         "cta": "Halte {{keys}} und sprich",
         "mockHeader": "Notizen",
         "ghost": "Auf dem Heimweg Wasser, Milch, Brot und Toast besorgen."
+      },
+      "widget": {
+        "subtitle": "Klicke auf das Widget unten auf dem Bildschirm, um zu starten, und klicke auf ✓, wenn du fertig bist.",
+        "cta": "Klicke zum Starten auf das Widget"
       }
     },
     "draft": {
@@ -290,6 +294,7 @@
     "completion": {
       "title": "Alles bereit",
       "subtitle": "Halte dein Tastenkürzel in jeder App gedrückt, um loszulegen. Alles davon kannst du in den Einstellungen ändern.",
+      "widgetSubtitle": "Klicke auf das Widget, um mit dem Diktieren zu beginnen. Alles davon kannst du in den Einstellungen ändern.",
       "start": "Amical jetzt verwenden",
       "summary": {
         "speechModel": "Spracherkennungsmodell",

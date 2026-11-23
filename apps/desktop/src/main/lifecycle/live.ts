@@ -3,13 +3,14 @@ import {
   flushAllDictationTraces,
   tracePhase,
 } from "../telemetry/dictation-trace";
-import { ipcMain, clipboard } from "electron";
+import { BrowserWindow, ipcMain, clipboard } from "electron";
 import * as path from "node:path";
 import { Deferred, Effect, Layer } from "effect";
 import { v4 as uuid } from "uuid";
 import type { GetAccessibilityContextResult } from "@amical/types";
 import { logger } from "../logger";
 import { ensureAudioDir } from "../../utils/audio-dir";
+import { normalizeTranscriptionBoundaries } from "../../utils/boundary-spacing";
 import { ServiceInitFailed } from "../../types/errors";
 import { addRelease, up } from "../runtime/layer-helpers";
 import {
@@ -38,6 +39,51 @@ import { REAL_TIMER_HOST, type ShellTimerHost } from "./shell";
 import { runLifecycleRecovery } from "./startup-recovery";
 import { DEFAULT_LIFECYCLE_TUNING } from "./tuning";
 import { AudioCaptureInfoSchema } from "../../types/audio-capture";
+
+// Reads the focused element of an Amical window: null when it is not an
+// editable text field, else the text just before and after the caret
+// (null for a rich-text field, whose text this does not read).
+const READ_FOCUSED_TEXT_FIELD = `(() => {
+  const element = document.activeElement;
+  if (!element) return null;
+  if (element.isContentEditable) return { before: null, after: null };
+  const isTextInput =
+    element instanceof HTMLTextAreaElement ||
+    (element instanceof HTMLInputElement &&
+      ["text", "search", "email", "url", "tel"].includes(element.type));
+  if (!isTextInput || element.readOnly || element.disabled) return null;
+  const start = element.selectionStart ?? element.value.length;
+  const end = element.selectionEnd ?? start;
+  return {
+    before: element.value.slice(Math.max(0, start - 50), start),
+    after: element.value.slice(end, end + 50),
+  };
+})()`;
+
+/**
+ * Paste fallback for Amical's own windows (Linux without a helper that can
+ * type): insert the text into the focused text field, spaced for the text
+ * around the caret. False when no Amical window has a focused text field.
+ */
+async function insertIntoFocusedAppWindow(text: string): Promise<boolean> {
+  const window = BrowserWindow.getFocusedWindow();
+  if (!window || window.isDestroyed()) return false;
+  try {
+    const field = (await window.webContents.executeJavaScript(
+      READ_FOCUSED_TEXT_FIELD,
+    )) as { before: string | null; after: string | null } | null;
+    if (!field) return false;
+    window.webContents.insertText(
+      normalizeTranscriptionBoundaries(text, field.before, field.after),
+    );
+    return true;
+  } catch (error) {
+    logger.main.warn("Could not insert text into the focused window", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
 
 /**
  * Desktop binding of the recording lifecycle: real ambiance (native start/
@@ -184,6 +230,7 @@ export function createDesktopRecordingLifecycle(deps: {
     getPreserveClipboard: async () =>
       (await settingsService.getPreferences()).preserveClipboard,
     writeClipboard: (text) => clipboard.writeText(text),
+    insertIntoFocusedAppWindow,
     isUpdateRequired: deps.isUpdateRequired,
     onUpdateRequired: deps.onUpdateRequired,
     hasSpeechModelSelected: async () =>

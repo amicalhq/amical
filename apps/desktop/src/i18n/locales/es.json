@@ -243,6 +243,10 @@
         "cta": "Mantén presionado {{keys}} y habla",
         "mockHeader": "Notas",
         "ghost": "Comprar agua, leche, pan y tostadas de camino a casa."
+      },
+      "widget": {
+        "subtitle": "Haz clic en el widget de la parte inferior de la pantalla para empezar y haz clic en ✓ al terminar.",
+        "cta": "Haz clic en el widget para empezar"
       }
     },
     "draft": {
@@ -290,6 +294,7 @@
     "completion": {
       "title": "Todo listo",
       "subtitle": "Mantén presionado tu atajo en cualquier lugar para empezar. Puedes cambiar todo esto en Configuración.",
+      "widgetSubtitle": "Haz clic en el widget para empezar a dictar. Puedes cambiar todo esto en Configuración.",
       "start": "Comenzar a usar Amical",
       "summary": {
         "speechModel": "Modelo de voz",

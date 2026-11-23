@@ -28,6 +28,9 @@ export function CompletionScreen({
 }: CompletionScreenProps) {
   const { t } = useTranslation();
   const { data: shortcuts } = api.settings.getShortcuts.useQuery();
+  // Without global shortcuts (Linux for now) dictation starts from the widget.
+  const { data: shortcutSupport } = api.settings.getShortcutSupport.useQuery();
+  const useWidget = shortcutSupport?.available === false;
 
   const isLocal = modelType === ModelType.Local;
   // Name the model that's actually installed rather than assuming the
@@ -63,11 +66,15 @@ export function CompletionScreen({
       label: t("onboarding.completion.summary.speechModel"),
       value: speechValue,
     },
-    {
-      icon: Keyboard,
-      label: t("onboarding.completion.summary.shortcut"),
-      value: shortcutValue,
-    },
+    ...(useWidget
+      ? []
+      : [
+          {
+            icon: Keyboard,
+            label: t("onboarding.completion.summary.shortcut"),
+            value: shortcutValue,
+          },
+        ]),
     {
       icon: Mic,
       label: t("onboarding.completion.summary.microphone"),
@@ -84,7 +91,11 @@ export function CompletionScreen({
       }
       screen={OnboardingScreen.Completion}
       title={t("onboarding.completion.title")}
-      subtitle={t("onboarding.completion.subtitle")}
+      subtitle={t(
+        useWidget
+          ? "onboarding.completion.widgetSubtitle"
+          : "onboarding.completion.subtitle",
+      )}
       footer={
         <NavigationButtons
           onBack={onBack}

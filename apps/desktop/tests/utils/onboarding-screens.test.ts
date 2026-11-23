@@ -171,3 +171,17 @@ describe("phasesForScreens", () => {
     ]);
   });
 });
+
+describe("getActiveOnboardingScreens without global shortcuts", () => {
+  it("drops the shortcut step and the Draft chapter", () => {
+    const screens = getActiveOnboardingScreens({
+      modelType: ModelType.Cloud,
+      flags,
+      skipped: [],
+      shortcutsAvailable: false,
+    });
+    expect(screens).not.toContain(OnboardingScreen.Shortcut);
+    expect(phasesForScreens(screens)).not.toContain("draft");
+    expect(screens).toContain(OnboardingScreen.DictationEmail);
+  });
+});
