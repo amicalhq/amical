@@ -61,7 +61,8 @@
     "dev": "pnpm start",
     "download-node": "tsx scripts/download-node-binaries.ts",
     "download-node:all": "tsx scripts/download-node-binaries.ts --all",
-    "verify:windows-package": "tsx scripts/verify-windows-package-architecture.ts"
+    "verify:windows-package": "tsx scripts/verify-windows-package-architecture.ts",
+    "verify:linux-package": "tsx scripts/verify-linux-package.ts"
   },
   "keywords": [],
   "license": "MIT",
