@@ -93,6 +93,10 @@ pub struct Helper {
 }
 
 impl Helper {
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
     /// `bus`: the address of a private bus, or None for no bus. `env`: more
     /// variables, for example the session type.
     pub fn spawn(bus: Option<&str>, env: &[(&str, &str)]) -> Self {

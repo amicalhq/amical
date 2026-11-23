@@ -2,19 +2,19 @@
 //! passive key grabs that consume shortcut keys and Enter for Draft, the
 //! server key state for recheckPressedKeys, and the active-window trigger.
 //!
-//! The grabs are XInput 2 passive grabs in sync mode: when one fires, the
-//! server freezes the keyboard until the key thread answers with
-//! XIAllowEvents. The answer comes from in-memory state only (see `gate`):
-//! AsyncDevice keeps the key from the focused app, ReplayDevice gives it
-//! back as if there were no grab. So a key is consumed only when its chord
-//! is exactly held, left and right modifiers included, which a modifier
-//! mask alone cannot express.
+//! The grabs are XInput 2 passive grabs in async mode: when one fires, the
+//! server keeps the key from the focused app and never waits for this
+//! helper. (A sync grab would freeze the whole keyboard while the helper is
+//! stopped or stalled; X11 has no timeout for that.) The server matches the
+//! chord's modifier mask, not the keys: the chord with the other Ctrl, Alt,
+//! Shift or Super, or with an extra regular key held, is consumed too,
+//! although the desktop does not act on it. A chord with two regular keys
+//! is not grabbed: one of them alone would be consumed.
 //!
 //! The grab mask includes the raw key events: while a client holds a grab,
 //! the server sends that client raw events only through the grab, so a core
 //! grab would hide every key release until the grab ends. The grabs are
-//! placed on each master keyboard: a replay does not reach the focused app
-//! for a grab placed with XIAllMasterDevices (Xorg 21.1).
+//! placed on each master keyboard and move when the masters change.
 //!
 //! Key codes are never logged.
 
@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyError;
 use x11rb::protocol::xinput::{
-    self, ConnectionExt as _, DeviceType, EventMode, GrabMode22, GrabOwner, GrabType, ModifierMask,
+    self, ConnectionExt as _, DeviceType, GrabMode22, GrabOwner, GrabType, ModifierMask,
     XIEventMask,
 };
 use x11rb::protocol::xproto::{
@@ -37,7 +37,7 @@ use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 use x11rb::{CURRENT_TIME, NONE};
 
-use super::gate::{self, Decision, Gate, KeyEvent, Source, ENTER_CODES};
+use super::gate::{self, Gate, KeyEvent, Source, ENTER_CODES};
 use super::keymap::Keymap;
 use super::{active_window, connection_lost, lock, Atoms, Error};
 use crate::log::{iso8601_now, log};
@@ -119,7 +119,7 @@ pub struct KeyInput {
     grabs: Mutex<Grabs>,
     echo: Mutex<EchoQueue>,
     xtest_devices: Mutex<HashSet<u16>>,
-    /// The master keyboard of the latest consuming grab.
+    /// The master keyboard of the latest active grab.
     grab_device: AtomicU16,
     events: WeakOut,
     lost: Arc<Notify>,
@@ -272,9 +272,9 @@ impl KeyInput {
     }
 
     /// The grabs that the chords and the Draft-Enter mask need, and who
-    /// needs each grabbed key (for logs). Each chord grabs its keys that are
-    /// not modifiers, with the chord's modifier mask; modifier-only chords
-    /// are never consumed.
+    /// needs each grabbed key (for logs). A chord with one regular key
+    /// grabs it with the chord's modifier mask. Modifier-only chords and
+    /// chords with two or more regular keys are never consumed.
     fn wanted_grabs(&self, ids: &[String]) -> (Vec<GrabKey>, BTreeMap<u8, BTreeSet<String>>) {
         let keymap = self.keymap();
         let gate = lock(&self.gate);
@@ -287,16 +287,20 @@ impl KeyInput {
                 .unwrap_or_else(|| format!("chord {index}"));
             let (modifiers, keys): (Vec<u16>, Vec<u16>) =
                 chord.iter().partition(|&&code| gate::is_modifier(code));
+            let [key] = keys[..] else {
+                continue;
+            };
+            let Some(keycode) = x_keycode(key) else {
+                continue;
+            };
             let mask = modifiers
                 .into_iter()
                 .filter_map(x_keycode)
                 .fold(0, |mask, keycode| mask | keymap.mask_of(keycode));
-            for keycode in keys.into_iter().filter_map(x_keycode) {
-                for variant in keymap.lock_variants(mask) {
-                    grabs.push((keycode, variant));
-                }
-                owners.entry(keycode).or_default().insert(name.clone());
+            for variant in keymap.lock_variants(mask) {
+                grabs.push((keycode, variant));
             }
+            owners.entry(keycode).or_default().insert(name);
         }
         if gate.draft_armed() {
             // Enter is consumed with any modifiers, as on macOS and Windows.
@@ -357,7 +361,7 @@ impl KeyInput {
                     u32::from(keycode),
                     device,
                     GrabType::KEYCODE,
-                    GrabMode22::SYNC,
+                    GrabMode22::ASYNC,
                     GrabMode::ASYNC,
                     GrabOwner::NO_OWNER,
                     &[u32::from(events)],
@@ -453,8 +457,7 @@ impl KeyInput {
             match event {
                 Event::XinputRawKeyPress(raw) => self.on_raw(raw.detail, true, raw.sourceid),
                 Event::XinputRawKeyRelease(raw) => self.on_raw(raw.detail, false, raw.sourceid),
-                // A grab fired (the keyboard is frozen), or a key arrived
-                // during a consuming grab (XIAllowEvents is then a no-op).
+                // A grab fired, or a key arrived during an active grab.
                 Event::XinputKeyPress(press) => self.on_grabbed_press(press.detail, press.deviceid),
                 Event::XinputHierarchy(_) => self.refresh_devices(),
                 Event::MappingNotify(notify) if notify.request != Mapping::POINTER => {
@@ -496,20 +499,12 @@ impl KeyInput {
     }
 
     fn on_grabbed_press(&self, detail: u32, device: u16) {
-        // An impossible keycode still thaws the keyboard.
-        let decision =
-            evdev_code(detail).map_or(Decision::Replay, |code| lock(&self.gate).decide(code));
-        let mode = match decision {
-            Decision::Consume => {
-                self.grab_device.store(device, Ordering::Relaxed);
-                EventMode::ASYNC_DEVICE
-            }
-            Decision::Replay => EventMode::REPLAY_DEVICE,
+        let Some(code) = evdev_code(detail) else {
+            return;
         };
-        let _ = self
-            .conn
-            .xinput_xi_allow_events(CURRENT_TIME, device, mode, 0, NONE);
-        let _ = self.conn.flush();
+        if lock(&self.gate).grabbed(code) {
+            self.grab_device.store(device, Ordering::Relaxed);
+        }
     }
 
     fn on_mapping_change(&self) {

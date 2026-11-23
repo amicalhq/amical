@@ -14,6 +14,7 @@
 mod support;
 
 use std::collections::HashMap;
+use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::sleep;
@@ -643,7 +644,7 @@ fn both_key_edges_stream_with_evdev_codes() {
 }
 
 #[test]
-fn a_chord_key_is_consumed_only_when_the_chord_is_exactly_held() {
+fn a_chord_key_is_consumed_while_the_chord_modifiers_are_held() {
     let _serial = serial();
     let app = App::start();
     let mut helper = helper();
@@ -676,12 +677,16 @@ fn a_chord_key_is_consumed_only_when_the_chord_is_exactly_held() {
         ])
     );
 
-    // Not exactly held: the other Ctrl, a partial chord, an extra modifier.
-    for keys in [
-        &[RCTRL, LALT, SPACE][..],
-        &[LCTRL, SPACE],
-        &[LCTRL, LALT, LSHIFT, SPACE],
-    ] {
+    // The grab matches the modifier mask, so the other Ctrl counts too.
+    app.chord(&[RCTRL, LALT, SPACE]);
+    assert_eq!(
+        app.take_keys(),
+        [(RCTRL, true), (LALT, true), (LALT, false), (RCTRL, false)]
+    );
+    key_events(&mut helper);
+
+    // Other modifiers: a partial chord, an extra modifier.
+    for keys in [&[LCTRL, SPACE][..], &[LCTRL, LALT, LSHIFT, SPACE]] {
         app.chord(keys);
         let reached: Vec<u8> = app
             .take_keys()
@@ -693,14 +698,15 @@ fn a_chord_key_is_consumed_only_when_the_chord_is_exactly_held() {
         key_events(&mut helper);
     }
 
-    // Injected keys that are not allowed never complete a chord.
+    // Injected keys that are not allowed are consumed by the grab too, but
+    // the desktop never hears of them.
     result(
         &mut helper,
         "setAllowInjectedKeys",
         json!({ "enabled": false }),
     );
     app.chord(&[LCTRL, LALT, SPACE]);
-    assert!(app.take_keys().contains(&(SPACE, true)));
+    assert!(!app.take_keys().contains(&(SPACE, true)));
     assert_eq!(key_events(&mut helper), []);
 
     // An empty shortcut list removes the grab.
@@ -716,6 +722,44 @@ fn a_chord_key_is_consumed_only_when_the_chord_is_exactly_held() {
     );
     app.chord(&[LCTRL, LALT, SPACE]);
     assert!(app.take_keys().contains(&(SPACE, true)));
+
+    // A chord with two regular keys is not grabbed: Ctrl+Space alone would
+    // be consumed.
+    result(
+        &mut helper,
+        "setShortcuts",
+        json!({ "subsetChords": [[29, 30, 57]], "exactChords": [] }),
+    );
+    app.chord(&[LCTRL, SPACE]);
+    assert!(app.take_keys().contains(&(SPACE, true)));
+}
+
+#[test]
+fn a_stopped_helper_does_not_freeze_the_keyboard() {
+    let _serial = serial();
+    let app = App::start();
+    let mut helper = helper();
+    result(
+        &mut helper,
+        "setShortcuts",
+        json!({ "subsetChords": [[29, 56, 57]], "exactChords": [] }),
+    );
+    let pid = helper.pid().to_string();
+    let signal = |name: &str| {
+        assert!(Command::new("kill")
+            .args([name, &pid])
+            .status()
+            .unwrap()
+            .success());
+    };
+
+    signal("-STOP");
+    app.chord(&[LCTRL, LALT, SPACE]);
+    app.chord(&[KEY_A]);
+    let keys = app.take_keys();
+    signal("-CONT");
+    assert!(keys.contains(&(KEY_A, true)), "{keys:?}");
+    assert!(!keys.contains(&(SPACE, true)), "{keys:?}");
 }
 
 #[test]

@@ -1,10 +1,11 @@
-//! The shortcut consume gate and the Draft-Enter mask (contract §4.2, §4.3),
-//! driven by raw key events. This module makes no X calls: the key thread
-//! applies its decisions with grabs and AllowEvents.
+//! Key state for the X11 backend (contract §3, §4.3): the held keys and the
+//! events for the desktop, the Draft-Enter mask, and the key that started
+//! the active grab. This module makes no X calls: the X server consumes the
+//! keys through the passive grabs (see `keys`).
 //!
 //! Key codes here are evdev codes (X keycode − 8).
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 
 /// The keys that the desktop treats as modifiers: left/right Ctrl, Shift,
 /// Alt and Super.
@@ -50,14 +51,6 @@ pub struct RawOutcome {
     pub draft_disarmed: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Decision {
-    /// Keep the key from the focused app.
-    Consume,
-    /// Give the key to the focused app.
-    Replay,
-}
-
 #[derive(Debug, Default)]
 pub struct Gate {
     /// Keys held, from devices and from allowed injection.
@@ -66,10 +59,7 @@ pub struct Gate {
     allow_injected: bool,
     draft_armed: bool,
     draft_consuming: bool,
-    /// Keys whose last press was not tracked (this helper's own injection or
-    /// filtered injection). A grab activation for such a press replays.
-    untracked: HashSet<u16>,
-    /// The key whose press activated a consuming grab, while it is held.
+    /// The key whose press started the active grab, while it is held.
     consumed: Option<u16>,
 }
 
@@ -116,14 +106,8 @@ impl Gate {
             self.consumed = None;
         }
         if !tracked {
-            if down {
-                self.untracked.insert(code);
-            } else {
-                self.untracked.remove(&code);
-            }
             return RawOutcome::default();
         }
-        self.untracked.remove(&code);
 
         let mut outcome = RawOutcome::default();
         if down {
@@ -151,29 +135,18 @@ impl Gate {
         outcome
     }
 
-    /// Decides a grab activation for a key press. A chord key is consumed
-    /// only when its chord is exactly held, counting this key; Enter is
-    /// consumed while the Draft-Enter mask is armed or a press is in flight.
-    pub fn decide(&mut self, code: u16) -> Decision {
-        if self.untracked.contains(&code) {
-            return Decision::Replay;
-        }
-        let consume = if is_enter(code) && (self.draft_armed || self.draft_consuming) {
+    /// Records a key press that a grab took from the focused app. Returns
+    /// true when the press started the grab, which lasts until that key is
+    /// released; later presses arrive through the same grab.
+    pub fn grabbed(&mut self, code: u16) -> bool {
+        if is_enter(code) && self.draft_armed {
             self.draft_consuming = true;
-            true
-        } else {
-            let mut active = self.pressed.clone();
-            active.insert(code);
-            self.chords
-                .iter()
-                .any(|chord| !chord.is_empty() && *chord == active)
-        };
-        if !consume {
-            return Decision::Replay;
         }
-        // The grab ends when the key that started it is released.
-        self.consumed.get_or_insert(code);
-        Decision::Consume
+        if self.consumed.is_some() {
+            return false;
+        }
+        self.consumed = Some(code);
+        true
     }
 
     fn event(&self, code: u16, down: bool) -> KeyEvent {
@@ -194,23 +167,9 @@ mod tests {
     use super::*;
 
     const LCTRL: u16 = 29;
-    const RCTRL: u16 = 97;
-    const LALT: u16 = 56;
-    const LSHIFT: u16 = 42;
     const SPACE: u16 = 57;
     const A: u16 = 30;
     const ENTER: u16 = 28;
-
-    fn gate_with(chords: &[&[u16]]) -> Gate {
-        let mut gate = Gate::default();
-        gate.set_chords(
-            chords
-                .iter()
-                .map(|chord| chord.iter().copied().collect())
-                .collect(),
-        );
-        gate
-    }
 
     fn press(gate: &mut Gate, codes: &[u16], source: Source) {
         for &code in codes {
@@ -218,77 +177,46 @@ mod tests {
         }
     }
 
-    fn release_all(gate: &mut Gate, codes: &[u16]) {
-        for &code in codes {
-            gate.raw(code, false, Source::Device);
-        }
-    }
-
     #[test]
-    fn a_chord_key_is_consumed_only_when_the_chord_is_exactly_held() {
-        // held before the key, the key, the expected decision
-        #[rustfmt::skip]
-        let rows: [(&[u16], u16, Decision); 6] = [
-            (&[LCTRL, LALT], SPACE, Decision::Consume),
-            // Partial chord: Ctrl+Space stays typeable.
-            (&[LCTRL], SPACE, Decision::Replay),
-            // Right Ctrl is a different key from the chord's left Ctrl.
-            (&[RCTRL, LALT], SPACE, Decision::Replay),
-            // An extra modifier or regular key held.
-            (&[LCTRL, LALT, LSHIFT], SPACE, Decision::Replay),
-            (&[LCTRL, LALT, A], SPACE, Decision::Replay),
-            // The key itself already counts as held (raw event first).
-            (&[LCTRL, LALT, SPACE], SPACE, Decision::Consume),
-        ];
-        for (held, key, expected) in rows {
-            let mut gate = gate_with(&[&[LCTRL, LALT, SPACE]]);
-            press(&mut gate, held, Source::Device);
-            assert_eq!(gate.decide(key), expected, "held {held:?}");
-        }
-    }
-
-    #[test]
-    fn injected_keys_drive_the_gate_only_when_allowed() {
-        let mut gate = gate_with(&[&[LCTRL, LALT, SPACE]]);
-        press(&mut gate, &[LCTRL, LALT, SPACE], Source::Injected);
-        assert_eq!(gate.decide(SPACE), Decision::Replay);
-        release_all(&mut gate, &[SPACE, LALT, LCTRL]);
-
+    fn injected_keys_are_reported_only_when_allowed() {
+        let mut gate = Gate::default();
+        assert_eq!(gate.raw(A, true, Source::Injected).event, None);
         gate.set_allow_injected(true);
-        press(&mut gate, &[LCTRL, LALT, SPACE], Source::Injected);
-        assert_eq!(gate.decide(SPACE), Decision::Consume);
-        release_all(&mut gate, &[SPACE, LALT, LCTRL]);
-
-        // The helper's own injection never drives it.
-        press(&mut gate, &[LCTRL, LALT, SPACE], Source::Own);
-        assert_eq!(gate.decide(SPACE), Decision::Replay);
+        assert!(gate.raw(A, true, Source::Injected).event.is_some());
+        // The helper's own injection never is.
+        assert_eq!(gate.raw(SPACE, true, Source::Own).event, None);
     }
 
     #[test]
-    fn a_consumed_press_is_held_until_its_key_up() {
-        let mut gate = gate_with(&[&[LCTRL, SPACE]]);
+    fn a_grab_lasts_until_the_key_that_started_it_is_released() {
+        let mut gate = Gate::default();
         press(&mut gate, &[LCTRL, SPACE], Source::Device);
-        assert_eq!(gate.decide(SPACE), Decision::Consume);
+        assert!(gate.grabbed(SPACE));
+        // A key pressed during the grab arrives through it.
+        assert!(!gate.grabbed(A));
         gate.raw(LCTRL, false, Source::Device);
         assert!(gate.consumed_key_held());
         gate.raw(SPACE, false, Source::Device);
         assert!(!gate.consumed_key_held());
+
+        // A press that is not tracked (own injection) ends its grab too.
+        gate.raw(SPACE, true, Source::Own);
+        assert!(gate.grabbed(SPACE));
+        gate.raw(SPACE, false, Source::Own);
+        assert!(!gate.consumed_key_held());
     }
 
     #[test]
-    fn the_draft_enter_mask_swallows_one_press_and_disarms_itself() {
+    fn the_draft_enter_mask_disarms_itself_after_one_press() {
         let mut gate = Gate::default();
         gate.set_draft_armed(true);
         gate.raw(ENTER, true, Source::Device);
-        assert_eq!(gate.decide(ENTER), Decision::Consume);
-        // Auto-repeat of the same press.
-        assert_eq!(gate.decide(ENTER), Decision::Consume);
+        gate.grabbed(ENTER);
         let up = gate.raw(ENTER, false, Source::Device);
         assert!(up.draft_disarmed);
         assert!(!gate.draft_armed());
 
         gate.raw(ENTER, true, Source::Device);
-        assert_eq!(gate.decide(ENTER), Decision::Replay);
         assert!(!gate.raw(ENTER, false, Source::Device).draft_disarmed);
     }
 
@@ -297,9 +225,8 @@ mod tests {
         let mut gate = Gate::default();
         gate.set_draft_armed(true);
         gate.raw(ENTER, true, Source::Device);
-        assert_eq!(gate.decide(ENTER), Decision::Consume);
+        gate.grabbed(ENTER);
         gate.set_draft_armed(false);
-        assert_eq!(gate.decide(ENTER), Decision::Consume);
         assert!(gate.raw(ENTER, false, Source::Device).draft_disarmed);
     }
 
