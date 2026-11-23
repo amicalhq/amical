@@ -138,6 +138,11 @@ jobs:
           - os: windows
             arch: arm64
             runner: windows-11-vs2026-arm
+          # Ubuntu 22.04 (glibc 2.35) is the oldest supported Linux, so what
+          # builds here runs on every supported distribution.
+          - os: linux
+            arch: x64
+            runner: ubuntu-22.04
 
     steps:
       - name: Checkout
@@ -158,6 +163,16 @@ jobs:
         uses: pnpm/action-setup@v6
         with:
           cache: true
+
+      - name: Install Linux packaging tools
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fakeroot rpm
+
+      - name: Install Rust (Linux helper)
+        if: matrix.os == 'linux'
+        # The version and components come from rust-toolchain.toml.
+        working-directory: packages/native-helpers/linux-helper
+        run: rustup toolchain install
 
       - name: Install Vulkan SDK
         if: matrix.os == 'windows' && matrix.arch == 'x64'
@@ -216,6 +231,7 @@ jobs:
         run: pnpm download-node
 
       - name: Package desktop app (no signing)
+        if: matrix.os != 'linux'
         working-directory: apps/desktop
         env:
           NODE_OPTIONS: --max-old-space-size=6144
@@ -240,5 +256,38 @@ jobs:
         run: pnpm verify:windows-package ${{ matrix.arch }}
 
       - name: Test packaged desktop app
+        if: matrix.os != 'linux'
         working-directory: apps/desktop
         run: pnpm test:e2e
+
+      - name: Make deb and rpm (no signing)
+        if: matrix.os == 'linux'
+        working-directory: apps/desktop
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          TELEMETRY_ENABLED: "false"
+          POSTHOG_HOST: https://app.posthog.com
+          POSTHOG_API_KEY: ""
+          FEEDBACK_SURVEY_ID: ""
+          AUTH_CLIENT_ID: ""
+          AUTHORIZATION_ENDPOINT: ""
+          AUTH_TOKEN_ENDPOINT: ""
+          API_ENDPOINT: ""
+          AUTH_REDIRECT_URI: ""
+          CORE_API_URL: ""
+        run: pnpm make
+
+      - name: Verify Linux package
+        if: matrix.os == 'linux'
+        working-directory: apps/desktop
+        run: pnpm verify:linux-package
+
+      - name: Upload Linux packages
+        if: matrix.os == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: amical-linux-x64
+          path: |
+            apps/desktop/out/make/deb/x64/*.deb
+            apps/desktop/out/make/rpm/x64/*.rpm
+          retention-days: 14
