@@ -25,6 +25,8 @@ pub struct Ctx {
 struct Probe {
     capabilities: Capabilities,
     _portal: PortalProbe,
+    /// The app id the portal registration ran with, if any.
+    app_id: Option<String>,
 }
 
 impl Ctx {
@@ -52,9 +54,18 @@ impl Ctx {
                 Probe {
                     capabilities,
                     _portal: portal,
+                    app_id: app_id.map(str::to_owned),
                 }
             })
             .await;
+        // The probe runs once. The desktop sends getHelperCapabilities with
+        // its app id first; a later id cannot register any more.
+        if app_id.is_some() && probe.app_id.is_none() {
+            log!(
+                "Caps",
+                "app id arrived after the probe ran; portal registration skipped"
+            );
+        }
         probe.capabilities.clone()
     }
 }

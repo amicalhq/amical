@@ -3,7 +3,9 @@
   "extends": ["//"],
   "tasks": {
     "build:native": {
-      "inputs": ["src/**", "scripts/**", "Cargo.*"],
+      "inputs": ["src/**", "scripts/**", "Cargo.*", "rust-toolchain.toml"],
+      "env": ["RUSTUP_TOOLCHAIN", "RUSTFLAGS"],
+      "passThroughEnv": ["CARGO_HOME", "RUSTUP_HOME", "CARGO_TARGET_DIR"],
       "outputs": ["bin/linux-helper"],
       "cache": true
     }

@@ -139,6 +139,9 @@ try {
     stdio: "inherit",
   });
 } catch (error) {
+  if (error.code === "ENOENT") {
+    fail("cargo not found. Install Rust with rustup: https://rustup.rs");
+  }
   fail(`cargo build failed: ${error.message}`);
 }
 fs.mkdirSync(path.dirname(stagedBinary), { recursive: true });

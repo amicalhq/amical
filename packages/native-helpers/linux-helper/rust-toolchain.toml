@@ -1,0 +1,6 @@
+# One compiler for CI, release builds and local builds, so a new stable
+# release cannot add clippy lints that fail CI without a code change.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
