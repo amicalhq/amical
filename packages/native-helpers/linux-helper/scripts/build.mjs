@@ -3,7 +3,8 @@
 // After the build, the staged binary must pass three checks:
 // - size: at most MAX_SIZE_BYTES;
 // - glibc: no symbol version above GLIBC 2.35 (Ubuntu 22.04), compared as
-//   numbers, so that the package runs on every supported distribution;
+//   numbers, so that the package runs on every supported distribution
+//   (an error in CI, a warning on a local build);
 // - self-check: the binary answers getHelperCapabilities over stdin/stdout.
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -61,10 +62,13 @@ function checkGlibc() {
     compareVersions(a, b) >= 0 ? a : b,
   );
   if (compareVersions(highest, MAX_GLIBC) > 0) {
-    fail(
+    const message =
       `binary needs GLIBC ${highest.join(".")}; the limit is ${MAX_GLIBC.join(".")}. ` +
-        "Build release binaries on Ubuntu 22.04 (or a ubuntu:22.04 container).",
-    );
+      "Build release binaries on Ubuntu 22.04 (or a ubuntu:22.04 container).";
+    // A local build on a newer distribution runs on that machine, so only CI,
+    // where release binaries are built, treats this as an error.
+    if (process.env.CI) fail(message);
+    console.warn(`linux-helper build: warning: ${message}`);
   }
   return highest.join(".");
 }
