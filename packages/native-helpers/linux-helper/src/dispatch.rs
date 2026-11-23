@@ -12,6 +12,7 @@ use serde_json::Value;
 use tokio::sync::{Notify, OnceCell};
 
 use crate::caps::{self, Backends, SessionEnv};
+use crate::data_control::DataControl;
 use crate::log::{log, Redacted};
 use crate::models::*;
 use crate::portal::{self, PortalProbe};
@@ -200,6 +201,8 @@ impl Ctx {
                 };
                 let clipboard = if caps::desktop_is(&self.env, "GNOME") {
                     self.xwayland_clipboard().await
+                } else if caps::desktop_is(&self.env, "KDE") {
+                    self.data_control_clipboard().await
                 } else {
                     None
                 };
@@ -231,6 +234,36 @@ impl Ctx {
                 log!(
                     "X11",
                     "no Xwayland connection within {X11_CONNECT_TIMEOUT:?}"
+                );
+                None
+            }
+        }
+    }
+
+    /// The data-control clipboard (KDE reads Wayland selections only
+    /// through it; its Xwayland bridge passes them to X clients only while
+    /// an X window is active).
+    async fn data_control_clipboard(&self) -> Option<(Arc<dyn PasteRoute>, ClipboardBackend)> {
+        let display = self.env.display.clone()?;
+        let lost = self.x11_lost.clone();
+        let connect = tokio::task::spawn_blocking(move || {
+            let selection = DataControl::connect(lost)?;
+            WaylandClipboard::with_selection(Some(&display), selection)
+        });
+        match tokio::time::timeout(X11_CONNECT_TIMEOUT, connect).await {
+            Ok(Ok(Ok(clipboard))) => Some((Arc::new(clipboard), ClipboardBackend::WlDataControl)),
+            Ok(Ok(Err(error))) => {
+                log!("Clipboard", "no data-control clipboard: {error}");
+                None
+            }
+            Ok(Err(error)) => {
+                log!("Clipboard", "the data-control setup stopped: {error}");
+                None
+            }
+            Err(_) => {
+                log!(
+                    "Clipboard",
+                    "no data-control clipboard within {X11_CONNECT_TIMEOUT:?}"
                 );
                 None
             }

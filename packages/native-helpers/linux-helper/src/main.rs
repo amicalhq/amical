@@ -11,6 +11,7 @@
 #![deny(clippy::print_stdout)]
 
 mod caps;
+mod data_control;
 mod dispatch;
 mod log;
 mod models;
@@ -95,7 +96,7 @@ async fn run() -> i32 {
             }
             Err(error) => return task_failed("writer", error),
         },
-        () = ctx.x11_lost() => ("X connection closed", false, EXIT_X_CONNECTION_LOST),
+        () = ctx.x11_lost() => ("display connection closed", false, EXIT_X_CONNECTION_LOST),
     };
     shutdown(&ctx, reason).await;
 

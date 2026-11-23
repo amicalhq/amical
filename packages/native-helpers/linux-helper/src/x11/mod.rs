@@ -365,6 +365,25 @@ impl<S: Selection + Send> PasteRoute for WaylandClipboard<S> {
     }
 }
 
+impl<S> WaylandClipboard<S> {
+    /// `selection`, with an Xwayland connection for the keymap and the
+    /// focused X window.
+    pub fn with_selection(display: Option<&str>, selection: S) -> Result<Self, Error> {
+        let (conn, screen) = RustConnection::connect(display)?;
+        let root = conn.setup().roots[screen].root;
+        let atoms = Atoms::new(&conn)?.reply()?;
+        Ok(Self {
+            transaction: Transaction {
+                conn: Arc::new(conn),
+                root,
+                atoms,
+                xtest: false,
+            },
+            selection: Mutex::new(selection),
+        })
+    }
+}
+
 impl WaylandClipboard<XSelection> {
     /// Xwayland's CLIPBOARD, on a compositor that bridges X selections both
     /// ways (GNOME). `lost` is notified when a connection closes.
