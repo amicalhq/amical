@@ -25,6 +25,7 @@ vi.mock("@/trpc/react", () => ({
 
 vi.mock("@/renderer/widget/pass-through", () => ({
   setPassThroughReason: vi.fn(),
+  reportWidgetHitArea: vi.fn(() => () => undefined),
 }));
 
 vi.mock("react-i18next", () => ({

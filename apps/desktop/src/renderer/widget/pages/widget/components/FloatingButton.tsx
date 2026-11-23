@@ -5,7 +5,10 @@ import type { RecordingStatus } from "@/hooks/useRecording";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { api } from "@/trpc/react";
 import { NOTE_WINDOW_FEATURE_FLAG } from "@/utils/feature-flags";
-import { setPassThroughReason } from "../../../pass-through";
+import {
+  reportWidgetHitArea,
+  setPassThroughReason,
+} from "../../../pass-through";
 import { useTranslation } from "react-i18next";
 
 const DEBOUNCE_DELAY = 100; // milliseconds
@@ -87,6 +90,12 @@ export const FloatingButton: React.FC<FloatingButtonProps> = ({
 
   const openNotesWindow = api.widget.openNotesWindow.useMutation();
   const noteWindowFeatureFlag = useFeatureFlag(NOTE_WINDOW_FEATURE_FLAG);
+
+  const pillRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pillRef.current) return;
+    return reportWidgetHitArea(pillRef.current);
+  }, []);
 
   // Release the hover pass-through reason if the FAB unmounts mid-hover (e.g.
   // a draft review takes over the widget), so it can't pin the window
@@ -266,6 +275,7 @@ export const FloatingButton: React.FC<FloatingButtonProps> = ({
 
   return (
     <div
+      ref={pillRef}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={`

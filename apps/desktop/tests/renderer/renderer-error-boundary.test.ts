@@ -15,6 +15,7 @@ vi.mock("@/renderer/lib/posthog", () => ({
 
 vi.mock("@/renderer/widget/pass-through", () => ({
   setPassThroughReason: vi.fn(),
+  reportWidgetHitArea: vi.fn(() => () => undefined),
 }));
 
 vi.mock("react-i18next", () => ({

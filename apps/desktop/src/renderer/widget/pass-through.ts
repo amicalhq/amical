@@ -17,6 +17,36 @@ const activeReasons = new Set<PassThroughReason>();
 // renderer's intent on each reason change keeps it authoritative instead of
 // drifting from a stale cache. These events are user-paced, so the redundant
 // IPCs are negligible.
+/**
+ * Linux only: while the widget ignores the mouse, main clips the widget window
+ * to this element (the pill), so clicks elsewhere reach the window below.
+ * Reports the element's rectangle now and on every size change.
+ */
+export const reportWidgetHitArea = (element: HTMLElement): (() => void) => {
+  if (window.electronAPI?.platform !== "linux") return () => undefined;
+  const report = () => {
+    const rect = element.getBoundingClientRect();
+    trpcClient.widget.setHitArea
+      .mutate({
+        x: Math.floor(rect.x),
+        y: Math.floor(rect.y),
+        width: Math.ceil(rect.width),
+        height: Math.ceil(rect.height),
+      })
+      .catch((error) => {
+        console.error("Failed to report the widget hit area", error);
+      });
+  };
+  const observer = new ResizeObserver(report);
+  observer.observe(element);
+  window.addEventListener("resize", report);
+  report();
+  return () => {
+    observer.disconnect();
+    window.removeEventListener("resize", report);
+  };
+};
+
 export const setPassThroughReason = (
   reason: PassThroughReason,
   active: boolean,

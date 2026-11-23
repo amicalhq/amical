@@ -32,6 +32,22 @@ export const widgetRouter = createRouter({
       return true;
     }),
 
+  // Linux only: the pill's rectangle in the widget window (see
+  // reportWidgetHitArea in the widget renderer).
+  setHitArea: procedure
+    .input(
+      z.object({
+        x: z.number(),
+        y: z.number(),
+        width: z.number().nonnegative(),
+        height: z.number().nonnegative(),
+      }),
+    )
+    .mutation(({ ctx, input }) => {
+      ctx.services.windowManager.setWidgetHitArea(input);
+      return true;
+    }),
+
   openNotesWindow: procedure
     .input(
       z

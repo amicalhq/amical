@@ -29,6 +29,17 @@ interface WindowManagerEvents {
   "window-closing": (window: BrowserWindow) => void;
 }
 
+// The widget shape is an X11 feature. A native Wayland run keeps the full
+// window. Electron's default ("auto") uses Wayland on a Wayland session.
+function linuxWidgetUsesX11(): boolean {
+  const ozone = app.commandLine.getSwitchValue("ozone-platform");
+  if (ozone === "x11") return true;
+  if (ozone === "wayland") return false;
+  return !(
+    process.env.XDG_SESSION_TYPE === "wayland" && process.env.WAYLAND_DISPLAY
+  );
+}
+
 export class WindowManager extends EventEmitter {
   private static readonly WIDGET_MAX_WIDTH = 640 as const;
   private static readonly WIDGET_MAX_HEIGHT = 320 as const;
@@ -37,6 +48,10 @@ export class WindowManager extends EventEmitter {
   private notesWindowController: NotesWindowController;
   private onboardingWindow: BrowserWindow | null = null;
   private widgetDisplayId: number | null = null;
+  // Linux: the last pass-through state the widget renderer asked for, and the
+  // pill's rectangle in the widget window (see applyLinuxWidgetShape).
+  private widgetIgnoresMouse = false;
+  private widgetHitArea: Electron.Rectangle | null = null;
   private cursorPollingInterval: NodeJS.Timeout | null = null;
   private themeListenerSetup: boolean = false;
 
@@ -735,13 +750,48 @@ export class WindowManager extends EventEmitter {
       return;
     }
     // Linux does not forward mouse moves to a window that ignores the mouse,
-    // so the widget could never turn clickable again. It stays interactive
-    // there until the widget gets an input shape.
+    // so the pill could never see the pointer again. The widget is clipped to
+    // the pill instead.
     if (process.platform === "linux") {
+      this.widgetIgnoresMouse = ignore;
+      this.applyLinuxWidgetShape();
       return;
     }
 
     this.widgetWindow.setIgnoreMouseEvents(ignore, { forward: true });
+  }
+
+  /** Linux only: the pill's rectangle in the widget window. */
+  setWidgetHitArea(area: Electron.Rectangle): void {
+    this.widgetHitArea = area;
+    this.applyLinuxWidgetShape();
+  }
+
+  /**
+   * Linux X11: while the widget ignores the mouse, shape the window to the
+   * pill and its shadow. Clicks outside the shape reach the window below, and
+   * the pill still gets the pointer, so its hover gives back the full window.
+   * The shape also clips drawing, so any other visible content (toasts, draft
+   * review) comes with a pass-through reason that removes the shape.
+   */
+  private applyLinuxWidgetShape(): void {
+    const widget = this.widgetWindow;
+    if (!widget || widget.isDestroyed() || !linuxWidgetUsesX11()) return;
+    const area = this.widgetIgnoresMouse ? this.widgetHitArea : null;
+    const margin = 16;
+    // On X11 an empty list gives an empty shape (an invisible window), not
+    // the full window, so the full window is one rectangle.
+    const { width, height } = widget.getBounds();
+    widget.setShape([
+      area
+        ? {
+            x: Math.max(0, area.x - margin),
+            y: Math.max(0, area.y - margin),
+            width: area.width + 2 * margin,
+            height: area.height + 2 * margin,
+          }
+        : { x: 0, y: 0, width, height },
+    ]);
   }
 
   isNotesWindowVisible(): boolean {
