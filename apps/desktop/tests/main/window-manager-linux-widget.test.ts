@@ -49,10 +49,21 @@ describe("WindowManager widget shape on Linux X11", () => {
   it("clips the idle widget to the pill and gives back the full window for a pass-through reason", async () => {
     const { manager, setShape, widget } = await buildWidget();
 
-    manager.setWidgetHitArea({ x: 280, y: 270, width: 80, height: 40 });
+    const pill = { x: 280, y: 270, width: 80, height: 40 };
+    manager.setWidgetHitAreas([pill]);
     manager.setWidgetIgnoreMouseEvents(true);
     expect(setShape).toHaveBeenLastCalledWith([
       { x: 264, y: 254, width: 112, height: 72 },
+    ]);
+
+    // A notification card is visible without a pass-through reason.
+    manager.setWidgetHitAreas([
+      pill,
+      { x: 160, y: 180, width: 320, height: 60 },
+    ]);
+    expect(setShape).toHaveBeenLastCalledWith([
+      { x: 264, y: 254, width: 112, height: 72 },
+      { x: 144, y: 164, width: 352, height: 92 },
     ]);
 
     // Not an empty list: on X11 that hides the whole window.

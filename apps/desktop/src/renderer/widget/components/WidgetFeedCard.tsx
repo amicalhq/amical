@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { WidgetFeedButton, WidgetFeedItem } from "@/types/widget-feed";
-import { setPassThroughReason } from "../pass-through";
+import { reportWidgetHitArea, setPassThroughReason } from "../pass-through";
 
 const BUTTON_CLASS =
   "max-w-full truncate rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors";
@@ -49,8 +49,15 @@ export const WidgetFeedCard: React.FC<WidgetFeedCardProps> = ({
   };
   useEffect(() => () => setPassThroughReason("feed", false), []);
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!cardRef.current) return;
+    return reportWidgetHitArea(cardRef.current);
+  }, []);
+
   return (
     <div
+      ref={cardRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={link ? () => onButton(link) : undefined}

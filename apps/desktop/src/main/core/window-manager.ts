@@ -49,9 +49,10 @@ export class WindowManager extends EventEmitter {
   private onboardingWindow: BrowserWindow | null = null;
   private widgetDisplayId: number | null = null;
   // Linux: the last pass-through state the widget renderer asked for, and the
-  // pill's rectangle in the widget window (see applyLinuxWidgetShape).
+  // rectangles of the pill and any notification card in the widget window (see
+  // applyLinuxWidgetShape).
   private widgetIgnoresMouse = false;
-  private widgetHitArea: Electron.Rectangle | null = null;
+  private widgetHitAreas: Electron.Rectangle[] = [];
   private cursorPollingInterval: NodeJS.Timeout | null = null;
   private themeListenerSetup: boolean = false;
 
@@ -762,36 +763,37 @@ export class WindowManager extends EventEmitter {
   }
 
   /** Linux only: the pill's rectangle in the widget window. */
-  setWidgetHitArea(area: Electron.Rectangle): void {
-    this.widgetHitArea = area;
+  setWidgetHitAreas(areas: Electron.Rectangle[]): void {
+    this.widgetHitAreas = areas;
     this.applyLinuxWidgetShape();
   }
 
   /**
    * Linux X11: while the widget ignores the mouse, shape the window to the
-   * pill and its shadow. Clicks outside the shape reach the window below, and
-   * the pill still gets the pointer, so its hover gives back the full window.
-   * The shape also clips drawing, so any other visible content (toasts, draft
-   * review) comes with a pass-through reason that removes the shape.
+   * pill and any notification card, each with its shadow. Clicks outside the
+   * shape reach the window below, and the pill and the card still get the
+   * pointer, so their hover gives back the full window. The shape also clips
+   * drawing, so any other visible content (toasts, draft review) comes with a
+   * pass-through reason that removes the shape.
    */
   private applyLinuxWidgetShape(): void {
     const widget = this.widgetWindow;
     if (!widget || widget.isDestroyed() || !linuxWidgetUsesX11()) return;
-    const area = this.widgetIgnoresMouse ? this.widgetHitArea : null;
+    const areas = this.widgetIgnoresMouse ? this.widgetHitAreas : [];
     const margin = 16;
     // On X11 an empty list gives an empty shape (an invisible window), not
     // the full window, so the full window is one rectangle.
     const { width, height } = widget.getBounds();
-    widget.setShape([
-      area
-        ? {
+    widget.setShape(
+      areas.length > 0
+        ? areas.map((area) => ({
             x: Math.max(0, area.x - margin),
             y: Math.max(0, area.y - margin),
             width: area.width + 2 * margin,
             height: area.height + 2 * margin,
-          }
-        : { x: 0, y: 0, width, height },
-    ]);
+          }))
+        : [{ x: 0, y: 0, width, height }],
+    );
   }
 
   isNotesWindowVisible(): boolean {

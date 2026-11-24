@@ -34,19 +34,21 @@ export const widgetRouter = createRouter({
       return true;
     }),
 
-  // Linux only: the pill's rectangle in the widget window (see
-  // reportWidgetHitArea in the widget renderer).
-  setHitArea: procedure
+  // Linux only: the rectangles of the pill and any notification card in the
+  // widget window (see reportWidgetHitArea in the widget renderer).
+  setHitAreas: procedure
     .input(
-      z.object({
-        x: z.number(),
-        y: z.number(),
-        width: z.number().nonnegative(),
-        height: z.number().nonnegative(),
-      }),
+      z.array(
+        z.object({
+          x: z.number(),
+          y: z.number(),
+          width: z.number().nonnegative(),
+          height: z.number().nonnegative(),
+        }),
+      ),
     )
     .mutation(({ ctx, input }) => {
-      ctx.services.windowManager.setWidgetHitArea(input);
+      ctx.services.windowManager.setWidgetHitAreas(input);
       return true;
     }),
 
