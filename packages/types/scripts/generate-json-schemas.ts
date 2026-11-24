@@ -66,6 +66,7 @@ import {
   ShortcutActivatedEventSchema,
   ShortcutDeactivatedEventSchema,
   ShortcutsBoundEventSchema,
+  CapabilitiesChangedEventSchema,
 } from "../src/schemas/events/helper-events.js";
 import {
   GetHelperCapabilitiesParamsSchema,
@@ -287,6 +288,11 @@ const schemasToGenerate = [
   {
     zod: ShortcutsBoundEventSchema,
     name: "ShortcutsBoundEvent",
+    category: "events",
+  },
+  {
+    zod: CapabilitiesChangedEventSchema,
+    name: "CapabilitiesChangedEvent",
     category: "events",
   },
 ];

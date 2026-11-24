@@ -59,6 +59,7 @@ const schemaNames = [
   "events/shortcut-activated-event",
   "events/shortcut-deactivated-event",
   "events/shortcuts-bound-event",
+  "events/capabilities-changed-event",
 ];
 const schemaFiles = schemaNames.map(
   (name) => `${schemaDir}/${name}.schema.json`,

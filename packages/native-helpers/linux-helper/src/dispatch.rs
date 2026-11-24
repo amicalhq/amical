@@ -4,16 +4,17 @@
 //! desktop turns every error answer into a telemetry exception, so a method
 //! that it can call never answers with an error for valid params.
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value;
-use tokio::sync::{Notify, OnceCell};
+use tokio::sync::{watch, Notify, OnceCell};
 
 use crate::caps::{self, Backends, SessionEnv};
 use crate::data_control::DataControl;
-use crate::log::{log, Redacted};
+use crate::log::{iso8601_now, log, Redacted};
 use crate::models::*;
 use crate::portal::{self, PortalProbe};
 use crate::remote_desktop::{self, Consent, Policy, RemoteDesktop};
@@ -32,11 +33,24 @@ const SESSION_WAIT: Duration = Duration::from_secs(1);
 /// How long prepareInjection waits for the user to answer the dialog. The
 /// desktop gives this call a longer timeout than this.
 const PREPARE_WAIT: Duration = Duration::from_secs(110);
+/// How long getHelperCapabilities waits for the portal probe on a Wayland
+/// session. The desktop's timeout for it is 3 s. A probe that ends later
+/// sends capabilitiesChanged.
+const CAPS_PROBE_WAIT: Duration = Duration::from_millis(2500);
+/// How long prepareInjection waits for the portal probe.
+const PREPARE_PROBE_WAIT: Duration = Duration::from_secs(30);
 
 pub struct Ctx {
     pub out: Out,
     env: SessionEnv,
-    probe: OnceCell<Probe>,
+    /// The portal probe runs once, in its own task, so that a slow portal
+    /// start never cancels it. Set when the probe ends.
+    probe: Arc<OnceLock<Probe>>,
+    probe_started: AtomicBool,
+    probe_done: Arc<watch::Sender<bool>>,
+    /// True when a capabilities answer went out before the probe ended.
+    /// The probe task sets `probe` under this lock.
+    answered_early: Arc<Mutex<bool>>,
     x11: OnceCell<Option<Arc<X11Backend>>>,
     wayland: OnceCell<Wayland>,
     /// Notified when an X connection closes.
@@ -83,7 +97,10 @@ impl Ctx {
         Self {
             out,
             env,
-            probe: OnceCell::new(),
+            probe: Arc::new(OnceLock::new()),
+            probe_started: AtomicBool::new(false),
+            probe_done: Arc::new(watch::channel(false).0),
+            answered_early: Arc::new(Mutex::new(false)),
             x11: OnceCell::new(),
             wayland: OnceCell::new(),
             x11_lost: Arc::new(Notify::new()),
@@ -143,26 +160,51 @@ impl Ctx {
         }
     }
 
-    /// The portal probe, run once. Registration needs the app id, so the
+    /// Starts the portal probe once. Registration needs the app id, so the
     /// first call should carry it.
-    async fn probe(&self, app_id: Option<&str>) -> &Probe {
-        let probe = self
-            .probe
-            .get_or_init(|| async {
-                let (portal, _) = tokio::join!(portal::probe(app_id), self.x11());
+    fn start_probe(&self, app_id: Option<&str>) {
+        if self.probe_started.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let app_id = app_id.map(str::to_owned);
+        let session = format!(
+            "session={:?} desktop={}",
+            caps::session_type(&self.env),
+            self.env.xdg_current_desktop.as_deref().unwrap_or("unset")
+        );
+        let (cell, done) = (self.probe.clone(), self.probe_done.clone());
+        let (early, events) = (self.answered_early.clone(), self.out.downgrade());
+        tokio::spawn(async move {
+            let portal = portal::probe(app_id.as_deref()).await;
+            log!("Caps", "{session} portal={}", portal.summary());
+            let early = {
+                let early = lock(&early);
+                let _ = cell.set(Probe { portal, app_id });
+                *early
+            };
+            done.send_replace(true);
+            if early {
                 log!(
                     "Caps",
-                    "session={:?} desktop={} portal={}",
-                    caps::session_type(&self.env),
-                    self.env.xdg_current_desktop.as_deref().unwrap_or("unset"),
-                    portal.summary()
+                    "the portal answered after the capabilities: capabilitiesChanged"
                 );
-                Probe {
-                    portal,
-                    app_id: app_id.map(str::to_owned),
-                }
-            })
-            .await;
+                events.send(&CapabilitiesChangedEvent {
+                    timestamp: Some(iso8601_now()),
+                    capabilities_changed_event_schema_type:
+                        CapabilitiesChangedEventType::CapabilitiesChanged,
+                });
+            }
+        });
+    }
+
+    /// The portal probe, waiting at most `wait` for it to end.
+    async fn probe(&self, app_id: Option<&str>, wait: Duration) -> Option<&Probe> {
+        self.start_probe(app_id);
+        if self.probe.get().is_none() {
+            let mut done = self.probe_done.subscribe();
+            let _ = tokio::time::timeout(wait, done.wait_for(|done| *done)).await;
+        }
+        let probe = self.probe.get()?;
         // The desktop sends getHelperCapabilities with its app id first; a
         // later id cannot register any more.
         if app_id.is_some() && probe.app_id.is_none() {
@@ -171,17 +213,20 @@ impl Ctx {
                 "app id arrived after the probe ran; portal registration skipped"
             );
         }
-        probe
+        Some(probe)
     }
 
-    /// The Wayland backends on a Wayland session, set up at the first call.
-    async fn wayland(&self) -> &Wayland {
-        self.wayland
+    /// The Wayland backends on a Wayland session, set up once the portal
+    /// probe has ended. None on other sessions, or while the probe runs
+    /// after `wait`.
+    async fn wayland(&self, wait: Duration) -> Option<&Wayland> {
+        if caps::session_type(&self.env) != SessionType::Wayland {
+            return None;
+        }
+        let portal = &self.probe(None, wait).await?.portal;
+        let wayland = self
+            .wayland
             .get_or_init(|| async {
-                if caps::session_type(&self.env) != SessionType::Wayland {
-                    return Wayland::default();
-                }
-                let portal = &self.probe(None).await.portal;
                 let injector = match (portal.connection(), portal.versions()) {
                     (Some(connection), Some(versions)) if versions.remote_desktop >= 1 => {
                         // KDE shows a notification each time a restored
@@ -211,7 +256,8 @@ impl Ctx {
                     clipboard,
                 }
             })
-            .await
+            .await;
+        Some(wayland)
     }
 
     /// Xwayland's CLIPBOARD, which GNOME bridges both ways.
@@ -283,7 +329,9 @@ impl Ctx {
                 clipboard: features.clipboard.then_some(ClipboardBackend::X11),
             };
         }
-        let wayland = self.wayland().await;
+        let Some(wayland) = self.wayland(Duration::ZERO).await else {
+            return Backends::default();
+        };
         Backends {
             xi2: false,
             injection: wayland.injector.as_ref().map(|injector| {
@@ -302,19 +350,36 @@ impl Ctx {
     }
 
     async fn capabilities(&self, app_id: Option<&str>) -> Capabilities {
-        self.probe(app_id).await;
+        // Only the Wayland backends need the portal.
+        let wait = if caps::session_type(&self.env) == SessionType::Wayland {
+            CAPS_PROBE_WAIT
+        } else {
+            Duration::ZERO
+        };
+        if self.probe(app_id, wait).await.is_none() && wait > Duration::ZERO {
+            let mut early = lock(&self.answered_early);
+            if self.probe.get().is_none() {
+                *early = true;
+            }
+        }
         caps::select(&self.env, self.backends().await)
     }
 
     /// The Wayland paste route: the portal sends the keys, Xwayland holds
     /// the clipboard. None when the session has no such route.
     async fn wayland_routes(&self) -> Option<(Arc<RemoteDesktop>, Arc<dyn PasteRoute>)> {
-        let wayland = self.wayland().await;
+        let wayland = self.wayland(SESSION_WAIT).await?;
         Some((
             wayland.injector.clone()?,
             wayland.clipboard.as_ref()?.0.clone(),
         ))
     }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// The method enum generated from the request schema, or None for a name
@@ -529,7 +594,11 @@ pub async fn handle(
                     message: None,
                 });
             }
-            if let Some(injector) = ctx.wayland().await.injector.clone() {
+            let injector = ctx
+                .wayland(PREPARE_PROBE_WAIT)
+                .await
+                .and_then(|wayland| wayland.injector.clone());
+            if let Some(injector) = injector {
                 // Shows the portal dialog when there is no saved consent,
                 // also after an earlier refusal.
                 let result = injector.session(PREPARE_WAIT, true).await;

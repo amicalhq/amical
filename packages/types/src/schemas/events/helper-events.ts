@@ -122,6 +122,17 @@ export const ShortcutsBoundEventSchema = z.object({
 });
 export type ShortcutsBoundEvent = z.infer<typeof ShortcutsBoundEventSchema>;
 
+// Linux only. The helper's capabilities changed after the desktop read
+// them, for example because the desktop portal started late or a consent
+// changed. The desktop reads them again with getHelperCapabilities.
+export const CapabilitiesChangedEventSchema = z.object({
+  type: z.literal("capabilitiesChanged"),
+  timestamp: z.string().datetime({ offset: true }).optional(),
+});
+export type CapabilitiesChangedEvent = z.infer<
+  typeof CapabilitiesChangedEventSchema
+>;
+
 // Events that the macOS and Windows helpers send. The Swift and C# models are
 // generated from this union, so Linux-only events stay out of it.
 export const MacWindowsHelperEventSchema = z.discriminatedUnion("type", [
@@ -137,6 +148,7 @@ export const HelperEventSchema = z.discriminatedUnion("type", [
   ShortcutActivatedEventSchema,
   ShortcutDeactivatedEventSchema,
   ShortcutsBoundEventSchema,
+  CapabilitiesChangedEventSchema,
 ]);
 export type HelperEvent = z.infer<typeof HelperEventSchema>;
 

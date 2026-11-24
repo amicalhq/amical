@@ -290,8 +290,25 @@ async fn portal_registration_comes_first_and_is_optional() {
         .await
         .unwrap();
 
-    let with_portal = capabilities_on(&bus).await;
-    // No backend uses the portal yet, so the answer is the same.
+    // The probe runs in the background: keep the helper until the portal
+    // has seen it.
+    let address = bus.address.clone();
+    let seen = calls.clone();
+    let with_portal = tokio::task::spawn_blocking(move || {
+        let mut helper = Helper::spawn(Some(&address), &[]);
+        let answer = helper.call(
+            "getHelperCapabilities",
+            json!({ "appId": "com.example.Test" }),
+        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while seen.lock().unwrap().len() < 2 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        answer
+    })
+    .await
+    .unwrap();
+    // No backend of this session uses the portal, so the answer is the same.
     assert_eq!(with_portal["result"], without_portal["result"]);
     // The registry takes an app id only before any other portal call.
     assert_eq!(
@@ -558,4 +575,59 @@ async fn a_refused_remote_desktop_dialog_counts_until_asked_again() {
         .path()
         .join("amical-desktop/helper/remote-desktop.token")
         .exists());
+}
+
+/// A portal service that takes 4 s to register an app, like one that the
+/// session bus starts on demand on a busy machine.
+struct SlowRegistry;
+
+#[zbus::interface(name = "org.freedesktop.host.portal.Registry")]
+impl SlowRegistry {
+    async fn register(&self, _app_id: String, _options: HashMap<String, OwnedValue>) {
+        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_portal_sends_capabilities_changed_when_it_answers() {
+    let bus = PrivateBus::start();
+    let calls = Calls::default();
+    let _portal = zbus::connection::Builder::address(bus.address.as_str())
+        .unwrap()
+        .name("org.freedesktop.portal.Desktop")
+        .unwrap()
+        .serve_at("/org/freedesktop/portal/desktop", SlowRegistry)
+        .unwrap()
+        .serve_at(
+            "/org/freedesktop/portal/desktop",
+            FakeRemoteDesktop {
+                calls: calls.clone(),
+                start_code: 0,
+            },
+        )
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+    let state = TempDir::new("state");
+
+    let (first, event, second) = on_wayland(&bus, &state, |helper| {
+        let first = helper.call(
+            "getHelperCapabilities",
+            json!({ "appId": "com.example.Test" }),
+        );
+        let event = helper.next_line_within(std::time::Duration::from_secs(10));
+        let second = helper.call("getHelperCapabilities", json!({}));
+        (first, event, second)
+    })
+    .await;
+    // The first answer comes within the desktop's 3 s, without the portal.
+    assert_eq!(first["result"]["injectionBackend"], Value::Null);
+    let event: Value = serde_json::from_str(&event.expect("no capabilitiesChanged")).unwrap();
+    assert_valid("events/capabilities-changed-event.schema.json", &event);
+    assert_eq!(event["type"], "capabilitiesChanged");
+    assert_eq!(
+        second["result"]["injectionBackend"],
+        "portal-remote-desktop"
+    );
 }

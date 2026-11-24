@@ -15,9 +15,10 @@ pub const PORTAL_SERVICE: &str = "org.freedesktop.portal.Desktop";
 pub const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 const REGISTRY_INTERFACE: &str = "org.freedesktop.host.portal.Registry";
 const PROPERTIES_INTERFACE: &str = "org.freedesktop.DBus.Properties";
-/// Covers bus connection, registration and version reads. The desktop's
-/// call timeout is 7 s.
-const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+/// Covers bus connection, registration and version reads. The portal
+/// service starts on demand and can take seconds, so the probe runs in its
+/// own task and nothing waits for it this long.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// 0 means that the portal does not have the interface.
 pub struct PortalVersions {
