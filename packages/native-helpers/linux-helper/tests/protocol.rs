@@ -897,9 +897,10 @@ async fn portal_shortcuts_bind_the_full_list_and_report_one_edge_per_press() {
 
     // A new list closes the old session before it binds again.
     let second = shortcuts(44);
-    let rebound = tokio::task::spawn_blocking(move || {
+    let (mut helper, rebound) = tokio::task::spawn_blocking(move || {
         helper.call("setShortcuts", second);
-        next_event(&mut helper, "shortcutsBound")
+        let event = next_event(&mut helper, "shortcutsBound");
+        (helper, event)
     })
     .await
     .unwrap();
@@ -917,6 +918,18 @@ async fn portal_shortcuts_bind_the_full_list_and_report_one_edge_per_press() {
             "BindShortcuts pushToTalk:0=CTRL+ALT+space toggleRecording:0=CTRL+ALT+z",
         ]
     );
+
+    // A list that leaves nothing to bind (here the same list, with its
+    // shortcut that has no system trigger) still gets an answer.
+    let again = shortcuts(44);
+    let answer = tokio::task::spawn_blocking(move || {
+        helper.call("setShortcuts", again);
+        next_event(&mut helper, "shortcutsBound")
+    })
+    .await
+    .unwrap();
+    assert_eq!(answer["payload"], rebound["payload"]);
+    assert_eq!(calls.lock().unwrap().len(), 6);
 }
 
 #[test]

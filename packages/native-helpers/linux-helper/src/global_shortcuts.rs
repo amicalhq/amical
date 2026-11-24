@@ -80,8 +80,9 @@ struct State {
     /// The newest list from setShortcuts, and the ids it could not use.
     wanted: Vec<Descriptor>,
     unsupported: Vec<Failed>,
-    /// What the current session has bound.
+    /// What the current session has bound, and the latest report of it.
     bound: Option<Vec<Descriptor>>,
+    reported: Vec<Bound>,
     session: Option<OwnedObjectPath>,
     /// A bind task runs (it may wait for the dialog).
     binding: bool,
@@ -312,17 +313,26 @@ impl GlobalShortcuts {
         }
     }
 
-    /// Binds until the bound list is the wanted one.
+    /// Binds until the bound list is the wanted one. Every setShortcuts
+    /// gets a shortcutsBound, also one that leaves nothing to bind (for
+    /// example, an added shortcut that has no system trigger).
     async fn bind_loop(self: Arc<Self>) {
+        let mut first = true;
         loop {
             let wanted = {
                 let mut state = lock(&self.state);
                 if state.session.is_some() && state.bound.as_ref() == Some(&state.wanted) {
                     state.binding = false;
+                    if first {
+                        let (bound, failures) = (state.reported.clone(), state.unsupported.clone());
+                        drop(state);
+                        self.send_bound(bound, failures, false);
+                    }
                     return;
                 }
                 state.wanted.clone()
             };
+            first = false;
             let payload = match self.bind(&wanted).await {
                 Ok(payload) => payload,
                 Err(error) => {
@@ -345,11 +355,7 @@ impl GlobalShortcuts {
                     return;
                 }
             };
-            self.events.send(&ShortcutsBoundEvent {
-                payload,
-                timestamp: Some(iso8601_now()),
-                shortcuts_bound_event_schema_type: ShortcutsBoundEventType::ShortcutsBound,
-            });
+            self.send_bound(payload.bound, payload.failed, false);
         }
     }
 
@@ -504,6 +510,9 @@ impl GlobalShortcuts {
     }
 
     fn send_bound(&self, bound: Vec<Bound>, failures: Vec<Failed>, pending: bool) {
+        if !pending {
+            lock(&self.state).reported = bound.clone();
+        }
         self.events.send(&ShortcutsBoundEvent {
             payload: ShortcutsBoundEventPayload {
                 bound,
