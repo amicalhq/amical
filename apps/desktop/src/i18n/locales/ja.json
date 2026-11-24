@@ -910,7 +910,7 @@
         "pasteLastTranscriptUpdated": "最新の文字起こしを貼り付けるショートカットを更新しました",
         "newNoteUpdated": "新規ノートのショートカットを更新しました",
         "draftModeUpdated": "下書きのショートカットを更新しました",
-        "systemDialogClosed": "ショートカットは変更されませんでした。システムのダイアログが閉じられました",
+        "systemDialogClosed": "システムのダイアログが閉じられたため、ショートカットは変更されませんでした",
         "systemShortcutFailed": "システムがこのショートカットを受け付けませんでした。別のキーをお試しください"
       },
       "pushToTalk": {
@@ -948,7 +948,7 @@
         "addModifier": "{{mod1}}、{{mod2}}、{{mod3}}などの修飾キーを追加してください",
         "duplicateModifierPairs": "左右の{{modifier}}を同時に使用できません",
         "overlapsWithPushToTalk": "プッシュトゥトークのショートカットと重複しており、問題が発生する可能性があります",
-        "systemShortcutShape": "このデスクトップでは、ショートカットに Ctrl、Alt、Shift、Super 以外のキーが 1 つ必要です（例: Ctrl+Alt+Space）"
+        "systemShortcutShape": "このデスクトップ環境では、ショートカットに Ctrl、Alt、Shift、Super 以外のキーを1つだけ含める必要があります（例：F9、Ctrl+Alt+Space）"
       },
       "input": {
         "pressKeys": "キーを押してください...",
@@ -959,8 +959,8 @@
         "add": "ショートカットを追加"
       },
       "systemHold": {
-        "modifierChord": "このデスクトップでは、Ctrl、Alt、Shift、Super を含むショートカットは 1 回押すと開始し、もう 1 回押すと停止します。押している間だけ話すには、F9 などのキーを 1 つだけ使用してください。",
-        "tapOnly": "このデスクトップでは、このショートカットは 1 回押すと開始し、もう 1 回押すと停止します。"
+        "modifierChord": "このデスクトップ環境では、Ctrl、Alt、Shift、Super を含むショートカットは一度押すと開始し、もう一度押すと停止します。押している間だけ話すには、F9 などのキーを1つだけ使用してください。",
+        "tapOnly": "このデスクトップ環境では、このショートカットは一度押すと開始し、もう一度押すと停止します。"
       }
     },
     "notes": {

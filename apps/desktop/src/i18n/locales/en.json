@@ -908,7 +908,7 @@
         "newNoteUpdated": "New note shortcut updated",
         "draftModeUpdated": "Draft shortcut updated",
         "systemDialogClosed": "Shortcut not changed: the system dialog was closed",
-        "systemShortcutFailed": "The system did not accept this shortcut. Try other keys"
+        "systemShortcutFailed": "The system did not accept this shortcut - try other keys"
       },
       "pushToTalk": {
         "label": "Push to talk",
@@ -945,7 +945,7 @@
         "addModifier": "Add a modifier key like {{mod1}}, {{mod2}}, or {{mod3}}",
         "duplicateModifierPairs": "Can't use both left and right {{modifier}} together",
         "overlapsWithPushToTalk": "This overlaps with your Push-to-talk shortcut and may cause issues",
-        "systemShortcutShape": "On this desktop, a shortcut needs one key that is not Ctrl, Alt, Shift or Super, for example Ctrl+Alt+Space"
+        "systemShortcutShape": "On this desktop, a shortcut needs exactly one key that is not Ctrl, Alt, Shift or Super, for example F9 or Ctrl+Alt+Space"
       },
       "input": {
         "pressKeys": "Press keys...",
