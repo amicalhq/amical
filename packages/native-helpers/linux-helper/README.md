@@ -37,9 +37,9 @@ The X11 tests need an X server with XTEST (packages `xvfb`, `xauth`):
 xvfb-run -a cargo test --features it-x11 --test x11
 ```
 
-`pnpm build:native` fails when the binary is larger than 6 MiB or needs a
-glibc newer than 2.35. Build release binaries on Ubuntu 22.04 or in an
-`ubuntu:22.04` container.
+`pnpm build:native` fails when the binary is larger than 6 MiB. A binary that
+needs a glibc newer than 2.35 fails in CI and gives a warning on a local build.
+Build release binaries on Ubuntu 22.04 or in an `ubuntu:22.04` container.
 
 ## What the helper touches
 

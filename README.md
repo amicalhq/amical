@@ -130,13 +130,14 @@ You can also use a hosted provider, such as OpenRouter, with your own API key.
 - ⚛️ [React](https://react.dev/), [TailwindCSS](https://tailwindcss.com/), and [shadcn/ui](https://ui.shadcn.com/)
 - 🧩 [Effect](https://effect.website/), [tRPC](https://trpc.io/), and [Zod](https://zod.dev/)
 - 🗄️ [Drizzle ORM](https://orm.drizzle.team/) with SQLite
-- 🍎 Swift native helper for macOS, 🪟 C# (.NET) native helper for Windows
+- 🍎 Swift native helper for macOS, 🪟 C# (.NET) native helper for Windows, 🐧 Rust native helper for Linux
 - 🐞 [Vitest](https://vitest.dev/) and 🌀 [Turborepo](https://turbo.build/)
 
 ## Local Development
 
-These steps run the desktop app, which currently supports macOS and Windows.
-Linux is not supported because the app does not yet have a Linux native helper.
+These steps run the desktop app on macOS, Windows, and Linux (x64, with GNOME or
+KDE). Linux support is in development, and there is no Linux release yet. On ARM
+Linux the app starts, but local speech models do not work.
 
 ### Prerequisites
 
@@ -149,6 +150,10 @@ Linux is not supported because the app does not yet have a Linux native helper.
 - **Windows:** Visual Studio 2022 Build Tools with the **Desktop development with
   C++** workload, plus the .NET 8 SDK. Git Bash is recommended because some
   development scripts use POSIX utilities.
+- **Linux:** [rustup](https://rustup.rs/) for the native helper (the toolchain
+  version comes from `packages/native-helpers/linux-helper/rust-toolchain.toml`),
+  a C++ compiler, Git, and curl. On Ubuntu and Debian:
+  `sudo apt install build-essential cmake git curl`.
 
 ### Set up the repository
 
@@ -190,6 +195,53 @@ pnpm turbo run dev --filter=@amical/desktop
 When finished, quit the development app from its tray menu and then press
 <kbd>Ctrl</kbd>+<kbd>C</kbd>. Stopping the terminal command alone may leave the
 Electron app running.
+
+<details>
+<summary><b>Linux notes</b></summary>
+
+**Wayland sessions.** Start the app under X11 (through XWayland), as the packaged
+app does. A native Wayland window cannot place the widget or keep it on top:
+
+```bash
+cd apps/desktop
+pnpm start -- --ozone-platform=x11
+```
+
+Shortcuts and pasting go through the desktop portals, which know an app by its
+launcher file. The file name is the app id, `ai.amical.amical`, plus the
+extension `.desktop`. The deb and rpm install this file. If Amical is not
+installed, create it once, or GNOME refuses the shortcuts:
+
+```bash
+mkdir -p ~/.local/share/applications
+cat > ~/.local/share/applications/ai.amical.amical.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Amical
+Exec=/bin/true
+NoDisplay=true
+EOF
+```
+
+Delete it before you install a package: it hides the installed launcher.
+
+**Sandbox.** If Electron stops with "The SUID sandbox helper binary was found, but
+is not configured correctly" (for example on Ubuntu 24.04), give the helper the
+owner and mode that Electron asks for. Do it again after Electron is reinstalled:
+
+```bash
+sudo chown root:root node_modules/electron/dist/chrome-sandbox
+sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+```
+
+**Packages.** `pnpm make` in `apps/desktop` builds the deb and the rpm. It needs
+`fakeroot` and `rpm`. Check the result with `pnpm verify:linux-package`. It accepts
+only binaries that run on glibc 2.35, so build release packages on Ubuntu 22.04.
+
+The [helper's README](packages/native-helpers/linux-helper/README.md) covers its
+build, its tests, and what it touches on the system.
+
+</details>
 
 No `.env` file is required for local transcription. The first-run onboarding
 downloads a local model and requests the required microphone and OS
