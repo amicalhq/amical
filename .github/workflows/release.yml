@@ -509,6 +509,8 @@ jobs:
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
           CORE_API_URL: ${{ secrets.CORE_API_URL }}
+          SEQUENZY_PUBLIC_KEY: ${{ secrets.SEQUENZY_PUBLIC_KEY }}
+          SEQUENZY_COMPANY_ID: ${{ secrets.SEQUENZY_COMPANY_ID }}
         run: |
           echo "Building Linux ${{ matrix.arch }} deb and rpm"
           pnpm make
