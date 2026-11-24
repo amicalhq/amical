@@ -63,6 +63,8 @@ pub struct Backends {
     pub xi2: bool,
     /// Portal chord shortcuts (Wayland sessions), with their hold support.
     pub chord: Option<(HoldSupport, Chord)>,
+    /// Recording sounds or output mute.
+    pub ambiance: bool,
     pub injection: Option<(InjectionBackend, InjectionConsent)>,
     pub clipboard: Option<ClipboardBackend>,
 }
@@ -88,7 +90,7 @@ pub fn select(env: &SessionEnv, backends: Backends) -> Capabilities {
         ),
         (backends.clipboard.is_some(), "clipboard"),
         (false, "accessibility"),
-        (false, "sound"),
+        (backends.ambiance, "sound"),
     ] {
         if !available {
             missing.push(name);
@@ -136,7 +138,7 @@ pub fn select(env: &SessionEnv, backends: Backends) -> Capabilities {
         clipboard_backend: backends.clipboard,
         clipboard_steals_focus: false,
         accessibility_context_available: false,
-        ambiance_available: false,
+        ambiance_available: backends.ambiance,
         session_type: session_type(env),
         // XDG_CURRENT_DESKTOP as read, for example "ubuntu:GNOME".
         desktop: env.xdg_current_desktop.clone(),
@@ -191,6 +193,7 @@ mod tests {
         let full = Backends {
             xi2: true,
             chord: None,
+            ambiance: false,
             injection: Some((InjectionBackend::Xtest, InjectionConsent::None)),
             clipboard: Some(ClipboardBackend::X11),
         };

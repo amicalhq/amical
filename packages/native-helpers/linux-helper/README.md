@@ -7,10 +7,15 @@ the same protocol as the macOS and Windows helpers. The schemas are in
 
 On an X11 session the helper streams keys, consumes shortcut chords, masks
 Enter for Draft, answers `recheckPressedKeys`, and pastes and copies through
-the X clipboard and XTest (`src/x11`). It has no accessibility or sound
-backend yet. On other sessions it answers every method with a valid "not
-available" result, and `getHelperCapabilities` reports that nothing is
-available.
+the X clipboard and XTest (`src/x11`).
+
+On a GNOME or KDE Wayland session it binds the shortcuts through the
+GlobalShortcuts portal and reports them by id (chord mode), and pastes with
+the RemoteDesktop portal: the clipboard is Xwayland's on GNOME (GNOME bridges
+it both ways) and data-control on KDE.
+
+On every session it plays the recording sounds and mutes the output when
+asked. It has no accessibility backend yet.
 
 ## Build and test
 
@@ -39,11 +44,12 @@ glibc newer than 2.35. Build release binaries on Ubuntu 22.04 or in an
 ## What the helper touches
 
 - stdin, stdout and stderr.
-- The session bus, once, at the first capability request: it registers the
+- The session bus: at the first capability request it registers the
   request's `appId` (if any) with the portal host registry
   (`org.freedesktop.host.portal.Registry`), then reads the `version` property
-  of the GlobalShortcuts, RemoteDesktop and Clipboard portal interfaces.
-- On an X11 session only, the X server (`DISPLAY`), with three connections:
+  of the GlobalShortcuts, RemoteDesktop and Clipboard portal interfaces. On a
+  Wayland session it then uses those portals on the same connection.
+- On an X11 session, the X server (`DISPLAY`), with three connections:
   - XInput 2 raw key events on the root window, and passive key grabs for the
     configured shortcut keys and, while Draft review is open, for Enter;
   - the CLIPBOARD selection: a snapshot of every target before a paste, the
@@ -52,6 +58,17 @@ glibc newer than 2.35. Build release binaries on Ubuntu 22.04 or in an
     or Ctrl+Shift+V and Ctrl+Shift+C in a terminal). xterm and urxvt have
     no key for the clipboard, so they get no chord: the paste answers that
     the clipboard is not set, and the desktop puts the text there.
+- On a GNOME Wayland session, Xwayland's CLIPBOARD; on a KDE Wayland session,
+  the compositor (`WAYLAND_DISPLAY`) for ext-data-control.
+- The audio tools in PATH: `pw-play` or `paplay` for the sounds, `wpctl` or
+  `pactl` for the output mute.
 
-It writes no files. If an X connection closes on an X11 session, the helper
-exits with code 3, and the desktop starts it again.
+Files it writes:
+- `$XDG_STATE_HOME/amical-desktop/helper/remote-desktop.token`: the portal's
+  restore token, so that the paste consent is asked once.
+- `$XDG_RUNTIME_DIR/amical-helper/`: the two recording sounds, and a marker
+  while the helper has muted the output, so that a restarted helper still
+  unmutes it.
+
+If an X or Wayland connection closes, the helper exits with code 3, and the
+desktop starts it again.

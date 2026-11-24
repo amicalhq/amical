@@ -94,6 +94,8 @@ fn every_method_answers_with_a_schema_valid_result() {
         &[
             ("WAYLAND_DISPLAY", "wayland-0"),
             ("XDG_CURRENT_DESKTOP", "ubuntu:GNOME"),
+            // No sound or mixer tools, whatever this machine has.
+            ("PATH", "/nonexistent"),
         ],
     );
     // Lines that are not requests get no answer.
@@ -157,7 +159,10 @@ fn every_method_answers_with_a_schema_valid_result() {
     assert_eq!(results["pasteText"]["success"], false);
     assert_eq!(results["pasteText"]["clipboardSet"], false);
     assert_eq!(results["startRecording"]["success"], false);
-    assert_eq!(results["stopRecording"], json!({ "success": true }));
+    assert_eq!(
+        results["stopRecording"],
+        json!({ "success": true, "message": "Recording stopped" })
+    );
     assert_eq!(
         results["recheckPressedKeys"],
         json!({ "staleKeyCodes": [] })
@@ -912,4 +917,69 @@ async fn portal_shortcuts_bind_the_full_list_and_report_one_edge_per_press() {
             "BindShortcuts pushToTalk:0=CTRL+ALT+space toggleRecording:0=CTRL+ALT+z",
         ]
     );
+}
+
+#[test]
+fn recording_plays_before_it_mutes_and_restores_before_it_plays() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let tools = TempDir::new("tools");
+    let dir = tools.path().display().to_string();
+    let calls = tools.path().join("calls.log");
+    let tool = |name: &str, body: &str| {
+        let file = tools.path().join(name);
+        std::fs::write(&file, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    tool(
+        "pw-play",
+        &format!("echo \"play $(basename \"$1\")\" >> {dir}/calls.log"),
+    );
+    tool(
+        "wpctl",
+        &format!(
+            "case \"$1\" in\n\
+             get-volume) if [ -f {dir}/user-muted ]; then echo 'Volume: 0.40 [MUTED]'; else echo 'Volume: 0.40'; fi ;;\n\
+             set-mute) echo \"mute $3\" >> {dir}/calls.log ;;\n\
+             esac"
+        ),
+    );
+    let path = format!("{dir}:/usr/bin:/bin");
+    let mut helper = Helper::spawn(None, &[("PATH", &path)]);
+    let logged = || {
+        std::fs::read_to_string(&calls)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+
+    let started = helper.call("startRecording", json!({ "muteSystemAudio": true }));
+    assert_eq!(
+        started["result"],
+        json!({ "success": true, "message": "Recording started" })
+    );
+    let stopped = helper.call("stopRecording", json!({ "wasMuted": true }));
+    assert_eq!(stopped["result"]["success"], true);
+    assert_eq!(
+        logged(),
+        [
+            "play rec-start.wav",
+            "mute 1",
+            "mute 0",
+            "play rec-stop.wav"
+        ]
+    );
+
+    // No sounds when muted; an output the user muted stays muted.
+    std::fs::write(tools.path().join("user-muted"), "").unwrap();
+    helper.call(
+        "startRecording",
+        json!({ "muteSystemAudio": true, "muteSounds": true }),
+    );
+    let stopped = helper.call(
+        "stopRecording",
+        json!({ "wasMuted": true, "muteSounds": true }),
+    );
+    assert_eq!(stopped["result"]["success"], true);
+    assert_eq!(logged().len(), 4);
 }

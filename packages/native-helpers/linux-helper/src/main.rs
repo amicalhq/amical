@@ -10,6 +10,7 @@
 
 #![deny(clippy::print_stdout)]
 
+mod ambiance;
 mod caps;
 mod data_control;
 mod dispatch;

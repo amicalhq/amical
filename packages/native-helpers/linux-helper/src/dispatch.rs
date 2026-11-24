@@ -12,6 +12,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::{watch, Notify, OnceCell};
 
+use crate::ambiance::Ambiance;
 use crate::caps::{self, Backends, SessionEnv};
 use crate::data_control::DataControl;
 use crate::global_shortcuts::{self, GlobalShortcuts};
@@ -54,6 +55,8 @@ pub struct Ctx {
     answered_early: Arc<Mutex<bool>>,
     x11: OnceCell<Option<Arc<X11Backend>>>,
     wayland: OnceCell<Wayland>,
+    /// Recording sounds and output mute (any session).
+    ambiance: Ambiance,
     /// Notified when an X connection closes.
     x11_lost: Arc<Notify>,
 }
@@ -106,6 +109,7 @@ impl Ctx {
             answered_early: Arc::new(Mutex::new(false)),
             x11: OnceCell::new(),
             wayland: OnceCell::new(),
+            ambiance: Ambiance::new(),
             x11_lost: Arc::new(Notify::new()),
         }
     }
@@ -151,6 +155,7 @@ impl Ctx {
 
     /// Undoes what the backends changed (key grabs).
     pub async fn shutdown(&self) {
+        self.ambiance.shutdown().await;
         if let Some(Some(backend)) = self.x11.get() {
             backend.shutdown();
         }
@@ -365,6 +370,7 @@ impl Ctx {
             return Backends {
                 xi2: true,
                 chord: None,
+                ambiance: self.ambiance.available(),
                 injection: features
                     .injection
                     .then_some((InjectionBackend::Xtest, InjectionConsent::None)),
@@ -372,10 +378,14 @@ impl Ctx {
             };
         }
         let Some(wayland) = self.wayland(Duration::ZERO).await else {
-            return Backends::default();
+            return Backends {
+                ambiance: self.ambiance.available(),
+                ..Backends::default()
+            };
         };
         Backends {
             xi2: false,
+            ambiance: self.ambiance.available(),
             chord: wayland
                 .shortcuts
                 .as_ref()
@@ -509,21 +519,35 @@ pub async fn handle(
         }
         Method::StartRecording => {
             let params: StartRecordingParams = required(name, params)?;
-            // No sound to play and no mute: success only if no mute was asked.
+            let success = ctx
+                .ambiance
+                .start(
+                    params.mute_system_audio,
+                    params.mute_sounds.unwrap_or(false),
+                )
+                .await;
             to_value(StartRecordingResult {
-                success: !params.mute_system_audio,
-                message: params
-                    .mute_system_audio
-                    .then(|| "This helper build cannot mute system audio".to_owned()),
+                success,
+                message: Some(if success {
+                    "Recording started".to_owned()
+                } else {
+                    "Failed to mute system audio".to_owned()
+                }),
             })
         }
         Method::StopRecording => {
             let params: StopRecordingParams = required(name, params)?;
+            let success = ctx
+                .ambiance
+                .stop(params.was_muted, params.mute_sounds.unwrap_or(false))
+                .await;
             to_value(StopRecordingResult {
-                success: !params.was_muted,
-                message: params
-                    .was_muted
-                    .then(|| "This helper build cannot restore system audio".to_owned()),
+                success,
+                message: Some(if success {
+                    "Recording stopped".to_owned()
+                } else {
+                    "Failed to restore system audio".to_owned()
+                }),
             })
         }
         Method::SetShortcuts => {
