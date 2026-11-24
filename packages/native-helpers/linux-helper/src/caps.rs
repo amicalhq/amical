@@ -14,7 +14,7 @@
 //! Xwayland clipboard (GNOME).
 
 use crate::models::{
-    Capabilities, ChordConsume, ClipboardBackend, Evdev, EvdevReason, HoldSupport,
+    Capabilities, Chord, ChordConsume, ClipboardBackend, Evdev, EvdevReason, HoldSupport,
     InjectionBackend, InjectionConsent, KeyInputBackend, KeyInputMode, SessionType,
 };
 
@@ -61,6 +61,8 @@ pub fn session_type(env: &SessionEnv) -> SessionType {
 pub struct Backends {
     /// XInput 2 key input and consumption (X11 sessions).
     pub xi2: bool,
+    /// Portal chord shortcuts (Wayland sessions), with their hold support.
+    pub chord: Option<(HoldSupport, Chord)>,
     pub injection: Option<(InjectionBackend, InjectionConsent)>,
     pub clipboard: Option<ClipboardBackend>,
 }
@@ -76,7 +78,7 @@ pub fn desktop_is(env: &SessionEnv, name: &str) -> bool {
 }
 
 pub fn select(env: &SessionEnv, backends: Backends) -> Capabilities {
-    let key_input = backends.xi2;
+    let key_input = backends.xi2 || backends.chord.is_some();
     let mut missing = Vec::new();
     for (available, name) in [
         (key_input, "key input"),
@@ -92,28 +94,40 @@ pub fn select(env: &SessionEnv, backends: Backends) -> Capabilities {
             missing.push(name);
         }
     }
+    let (key_input_mode, key_input_backend, hold_support, chord, chord_consume) =
+        match backends.chord {
+            Some((hold_support, chord)) => (
+                KeyInputMode::Chord,
+                Some(KeyInputBackend::PortalGlobalShortcuts),
+                hold_support,
+                Some(chord),
+                ChordConsume::Compositor,
+            ),
+            None if backends.xi2 => (
+                KeyInputMode::PerKey,
+                Some(KeyInputBackend::Xi2),
+                HoldSupport::Any,
+                None,
+                ChordConsume::Helper,
+            ),
+            None => (
+                KeyInputMode::None,
+                None,
+                HoldSupport::TapOnly,
+                None,
+                ChordConsume::None,
+            ),
+        };
     Capabilities {
-        key_input_mode: if key_input {
-            KeyInputMode::PerKey
-        } else {
-            KeyInputMode::None
-        },
-        key_input_backend: key_input.then_some(KeyInputBackend::Xi2),
-        hold_support: if key_input {
-            HoldSupport::Any
-        } else {
-            HoldSupport::TapOnly
-        },
-        chord: None,
+        key_input_mode,
+        key_input_backend,
+        hold_support,
+        chord,
         evdev: Evdev {
             available: false,
             reason: Some(EvdevReason::NotBuilt),
         },
-        chord_consume: if key_input {
-            ChordConsume::Helper
-        } else {
-            ChordConsume::None
-        },
+        chord_consume,
         injection_available: backends.injection.is_some(),
         injection_backend: backends.injection.clone().map(|(backend, _)| backend),
         injection_consent: backends
@@ -176,6 +190,7 @@ mod tests {
     fn a_connected_x11_backend_gives_its_capabilities() {
         let full = Backends {
             xi2: true,
+            chord: None,
             injection: Some((InjectionBackend::Xtest, InjectionConsent::None)),
             clipboard: Some(ClipboardBackend::X11),
         };

@@ -631,3 +631,265 @@ async fn a_slow_portal_sends_capabilities_changed_when_it_answers() {
         "portal-remote-desktop"
     );
 }
+
+/// A GlobalShortcuts portal: CreateSession and BindShortcuts answer at
+/// once, BindShortcuts reports "Press <preferred trigger>" per id, and the
+/// test sends Activated and Deactivated itself.
+struct FakeGlobalShortcutsPortal {
+    calls: Calls,
+}
+
+const GS_SESSION: &str = "/org/freedesktop/portal/desktop/session/test/gs";
+
+#[zbus::interface(name = "org.freedesktop.portal.GlobalShortcuts")]
+impl FakeGlobalShortcutsPortal {
+    #[zbus(property, name = "version")]
+    fn version(&self) -> u32 {
+        2
+    }
+
+    async fn create_session(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        options: HashMap<String, OwnedValue>,
+    ) -> OwnedObjectPath {
+        self.calls.lock().unwrap().push("CreateSession".to_owned());
+        let handle = request_handle(&header, &options);
+        respond(
+            connection,
+            &handle,
+            0,
+            HashMap::from([("session_handle", Variant::from(GS_SESSION))]),
+        )
+        .await;
+        handle
+    }
+
+    async fn bind_shortcuts(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        _session: OwnedObjectPath,
+        shortcuts: Vec<(String, HashMap<String, OwnedValue>)>,
+        _parent_window: String,
+        options: HashMap<String, OwnedValue>,
+    ) -> OwnedObjectPath {
+        let trigger = |properties: &HashMap<String, OwnedValue>| {
+            String::try_from(properties["preferred_trigger"].try_clone().unwrap()).unwrap()
+        };
+        let listed: Vec<String> = shortcuts
+            .iter()
+            .map(|(id, properties)| format!("{id}={}", trigger(properties)))
+            .collect();
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("BindShortcuts {}", listed.join(" ")));
+        let answer: Vec<(String, HashMap<&str, Variant<'_>>)> = shortcuts
+            .iter()
+            .map(|(id, properties)| {
+                let shown = format!("Press {}", trigger(properties));
+                (
+                    id.clone(),
+                    HashMap::from([("trigger_description", Variant::from(shown))]),
+                )
+            })
+            .collect();
+        let handle = request_handle(&header, &options);
+        respond(
+            connection,
+            &handle,
+            0,
+            HashMap::from([("shortcuts", Variant::from(answer))]),
+        )
+        .await;
+        handle
+    }
+}
+
+struct FakeSession(Calls);
+
+#[zbus::interface(name = "org.freedesktop.portal.Session")]
+impl FakeSession {
+    fn close(&self) {
+        self.0.lock().unwrap().push("Session.Close".to_owned());
+    }
+}
+
+/// The next shortcutsBound or shortcut edge event, skipping others.
+fn next_event(helper: &mut Helper, kind: &str) -> Value {
+    loop {
+        let line = helper
+            .next_line_within(std::time::Duration::from_secs(5))
+            .unwrap_or_else(|| panic!("no {kind} event"));
+        let event: Value = serde_json::from_str(&line).unwrap();
+        if event["type"] == kind {
+            return event;
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn portal_shortcuts_bind_the_full_list_and_report_one_edge_per_press() {
+    let bus = PrivateBus::start();
+    let calls = Calls::default();
+    let portal = zbus::connection::Builder::address(bus.address.as_str())
+        .unwrap()
+        .name("org.freedesktop.portal.Desktop")
+        .unwrap()
+        .serve_at(
+            "/org/freedesktop/portal/desktop",
+            FakeRegistry(calls.clone()),
+        )
+        .unwrap()
+        .serve_at(
+            "/org/freedesktop/portal/desktop",
+            FakeGlobalShortcutsPortal {
+                calls: calls.clone(),
+            },
+        )
+        .unwrap()
+        .serve_at(GS_SESSION, FakeSession(calls.clone()))
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+    let state = TempDir::new("state");
+    let address = bus.address.clone();
+    let state_path = state.path().to_str().unwrap().to_owned();
+    let shortcuts = |toggle_key: i64| {
+        json!({
+            "subsetChords": [[29, 56, 57]],
+            "exactChords": [[29, 56, toggle_key], [29, 56]],
+            "shortcuts": [
+                { "id": "pushToTalk:0", "keyCodes": [29, 56, 57], "label": "Push to talk", "kind": "hold" },
+                { "id": "toggleRecording:0", "keyCodes": [29, 56, toggle_key], "label": "Toggle", "kind": "tap" },
+                { "id": "newNote:0", "keyCodes": [29, 56], "label": "New note", "kind": "tap" }
+            ]
+        })
+    };
+    let (mut helper, capabilities, bound) = {
+        let first = shortcuts(35);
+        tokio::task::spawn_blocking(move || {
+            let mut helper = Helper::spawn(
+                Some(&address),
+                &[
+                    ("XDG_SESSION_TYPE", "wayland"),
+                    ("WAYLAND_DISPLAY", "wayland-test"),
+                    ("XDG_CURRENT_DESKTOP", "KDE"),
+                    ("XDG_STATE_HOME", &state_path),
+                ],
+            );
+            let capabilities = helper.call(
+                "getHelperCapabilities",
+                json!({ "appId": "com.example.Test" }),
+            );
+            helper.call("setShortcuts", first);
+            let bound = next_event(&mut helper, "shortcutsBound");
+            (helper, capabilities, bound)
+        })
+        .await
+        .unwrap()
+    };
+    let capabilities = &capabilities["result"];
+    assert_eq!(capabilities["keyInputMode"], "chord");
+    assert_eq!(capabilities["keyInputBackend"], "portal-global-shortcuts");
+    assert_eq!(capabilities["holdSupport"], "modifier-plus-key");
+    assert_eq!(capabilities["chordConsume"], "compositor");
+    assert_eq!(capabilities["chord"]["backend"], "kde");
+    assert_valid("events/shortcuts-bound-event.schema.json", &bound);
+    assert_eq!(
+        bound["payload"],
+        json!({
+            "bound": [
+                { "id": "pushToTalk:0", "trigger": "Press CTRL+ALT+space", "holdReliable": true },
+                { "id": "toggleRecording:0", "trigger": "Press CTRL+ALT+h", "holdReliable": true }
+            ],
+            "failed": [{
+                "id": "newNote:0",
+                "reason": "unsupported-shape",
+                "message": "A system shortcut needs exactly one key that is not a modifier"
+            }],
+            "pending": false
+        })
+    );
+
+    // A held key repeats Activated (GNOME); a release can come twice (KDE).
+    let edge = |name: &str| {
+        let portal = portal.clone();
+        let name = name.to_owned();
+        async move {
+            let options: HashMap<&str, Variant<'_>> = HashMap::new();
+            portal
+                .emit_signal(
+                    None::<&str>,
+                    "/org/freedesktop/portal/desktop",
+                    "org.freedesktop.portal.GlobalShortcuts",
+                    name.as_str(),
+                    &(
+                        OwnedObjectPath::try_from(GS_SESSION).unwrap(),
+                        "pushToTalk:0",
+                        0u64,
+                        options,
+                    ),
+                )
+                .await
+                .unwrap();
+        }
+    };
+    for name in [
+        "Activated",
+        "Activated",
+        "Activated",
+        "Deactivated",
+        "Deactivated",
+    ] {
+        edge(name).await;
+    }
+    let (helper_back, edges) = tokio::task::spawn_blocking(move || {
+        let mut edges = Vec::new();
+        while let Some(line) = helper.next_line_within(std::time::Duration::from_millis(500)) {
+            let event: Value = serde_json::from_str(&line).unwrap();
+            edges.push(format!(
+                "{} {}",
+                event["type"].as_str().unwrap(),
+                event["payload"]["id"].as_str().unwrap()
+            ));
+        }
+        (helper, edges)
+    })
+    .await
+    .unwrap();
+    helper = helper_back;
+    assert_eq!(
+        edges,
+        [
+            "shortcutActivated pushToTalk:0",
+            "shortcutDeactivated pushToTalk:0"
+        ]
+    );
+
+    // A new list closes the old session before it binds again.
+    let second = shortcuts(44);
+    let rebound = tokio::task::spawn_blocking(move || {
+        helper.call("setShortcuts", second);
+        next_event(&mut helper, "shortcutsBound")
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        rebound["payload"]["bound"][1]["trigger"],
+        "Press CTRL+ALT+z"
+    );
+    assert_eq!(
+        calls.lock().unwrap()[1..],
+        [
+            "CreateSession",
+            "BindShortcuts pushToTalk:0=CTRL+ALT+space toggleRecording:0=CTRL+ALT+h",
+            "Session.Close",
+            "CreateSession",
+            "BindShortcuts pushToTalk:0=CTRL+ALT+space toggleRecording:0=CTRL+ALT+z",
+        ]
+    );
+}

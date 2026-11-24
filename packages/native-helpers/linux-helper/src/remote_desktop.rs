@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::io::Write as _;
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -27,14 +27,15 @@ use futures_util::StreamExt as _;
 use tokio::sync::watch;
 use tokio::task::AbortHandle;
 use zbus::proxy::{Builder as ProxyBuilder, CacheProperties};
-use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
+use zbus::zvariant::{OwnedObjectPath, Value};
 use zbus::{Connection, Proxy};
 
 use crate::log::log;
-use crate::portal::{error_name, PORTAL_PATH, PORTAL_SERVICE};
+use crate::portal::{
+    self, error_name, Error, PORTAL_PATH, PORTAL_SERVICE, RESPONSE_CANCELLED, RESPONSE_SUCCESS,
+};
 
 const REMOTE_DESKTOP: &str = "org.freedesktop.portal.RemoteDesktop";
-const REQUEST: &str = "org.freedesktop.portal.Request";
 const SESSION: &str = "org.freedesktop.portal.Session";
 /// SelectDevices `types`: keyboard only.
 const KEYBOARD: u32 = 1;
@@ -48,11 +49,6 @@ const KEY_GAP: Duration = Duration::from_millis(25);
 /// How long a session start may wait for the user to answer the dialog
 /// before it counts as failed.
 const START_LIMIT: Duration = Duration::from_secs(300);
-/// Request.Response codes.
-const RESPONSE_SUCCESS: u32 = 0;
-const RESPONSE_CANCELLED: u32 = 1;
-
-pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// The user's answer to the portal dialog, as far as the helper knows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -114,7 +110,6 @@ pub struct RemoteDesktop {
     policy: Policy,
     token_file: Option<PathBuf>,
     state: Mutex<State>,
-    next_token: AtomicU32,
 }
 
 fn lock(state: &Mutex<State>) -> MutexGuard<'_, State> {
@@ -133,14 +128,6 @@ pub fn default_token_file() -> Option<PathBuf> {
             std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
         })?;
     Some(state_home.join("amical-desktop/helper/remote-desktop.token"))
-}
-
-/// The object path of the Request that a call with `token` creates (the
-/// portal spec's rule): the sender's unique name without the leading ':'
-/// and with '.' as '_'.
-fn request_path(unique_name: &str, token: &str) -> String {
-    let sender = unique_name.trim_start_matches(':').replace('.', "_");
-    format!("{PORTAL_PATH}/request/{sender}/{token}")
 }
 
 fn read_token(file: &Path) -> Option<String> {
@@ -187,7 +174,6 @@ impl RemoteDesktop {
                 starting: None,
                 idle_close: None,
             }),
-            next_token: AtomicU32::new(0),
         })
     }
 
@@ -275,12 +261,17 @@ impl RemoteDesktop {
     /// CreateSession, SelectDevices (keyboard, persistent, with the saved
     /// token) and Start. None when the user refused.
     async fn start(self: &Arc<Self>) -> Result<Option<Arc<Session>>, Error> {
-        let session_token = self.token();
         let mut options = Options::new();
-        options.insert("session_handle_token", Value::from(session_token));
-        let (code, results) = self
-            .request("CreateSession", |handle| (with_handle(&options, handle),))
-            .await?;
+        options.insert("session_handle_token", Value::from(portal::token()));
+        let token = portal::token();
+        let (code, results) = portal::request(
+            &self.conn,
+            REMOTE_DESKTOP,
+            "CreateSession",
+            &token,
+            &(with_handle(&options, &token),),
+        )
+        .await?;
         if code != RESPONSE_SUCCESS {
             return Err(format!("CreateSession answered {code}").into());
         }
@@ -305,22 +296,29 @@ impl RemoteDesktop {
             options.insert("restore_token", Value::from(token.clone()));
         }
         let path = session.handle.as_ref();
-        let (code, _) = self
-            .request("SelectDevices", |handle| {
-                (path.clone(), with_handle(&options, handle))
-            })
-            .await?;
+        let token = portal::token();
+        let (code, _) = portal::request(
+            &self.conn,
+            REMOTE_DESKTOP,
+            "SelectDevices",
+            &token,
+            &(path.clone(), with_handle(&options, &token)),
+        )
+        .await?;
         if code != RESPONSE_SUCCESS {
             self.close(&session).await;
             return Err(format!("SelectDevices answered {code}").into());
         }
 
-        let options = Options::new();
-        let (code, results) = self
-            .request("Start", |handle| {
-                (path.clone(), "", with_handle(&options, handle))
-            })
-            .await?;
+        let token = portal::token();
+        let (code, results) = portal::request(
+            &self.conn,
+            REMOTE_DESKTOP,
+            "Start",
+            &token,
+            &(path.clone(), "", with_handle(&Options::new(), &token)),
+        )
+        .await?;
         if code == RESPONSE_CANCELLED {
             self.close(&session).await;
             return Ok(None);
@@ -348,56 +346,6 @@ impl RemoteDesktop {
             }
         }
         Ok(Some(session))
-    }
-
-    /// Calls a RemoteDesktop method that answers through a Request, and
-    /// waits for the answer. The Response subscription exists before the
-    /// call, so a quick answer is never missed.
-    async fn request<B, F>(
-        &self,
-        method: &str,
-        body: F,
-    ) -> Result<(u32, HashMap<String, OwnedValue>), Error>
-    where
-        F: FnOnce(&str) -> B,
-        B: serde::Serialize + zbus::zvariant::DynamicType,
-    {
-        let token = self.token();
-        let unique_name = self
-            .conn
-            .unique_name()
-            .ok_or("the bus connection has no unique name")?;
-        let request: Proxy<'_> = ProxyBuilder::new(&self.conn)
-            .destination(PORTAL_SERVICE)?
-            .path(request_path(unique_name.as_str(), &token))?
-            .interface(REQUEST)?
-            .cache_properties(CacheProperties::No)
-            .build()
-            .await?;
-        let mut responses = request.receive_signal("Response").await?;
-        self.conn
-            .call_method(
-                Some(PORTAL_SERVICE),
-                PORTAL_PATH,
-                Some(REMOTE_DESKTOP),
-                method,
-                &body(&token),
-            )
-            .await
-            .map_err(|error| format!("{method}: {}", error_name(&error)))?;
-        let response = responses
-            .next()
-            .await
-            .ok_or_else(|| format!("{method}: no Response"))?;
-        Ok(response.body().deserialize()?)
-    }
-
-    fn token(&self) -> String {
-        format!(
-            "amical{}_{}",
-            std::process::id(),
-            self.next_token.fetch_add(1, Ordering::Relaxed)
-        )
     }
 
     /// Marks the session closed when the portal closes it.
@@ -565,14 +513,6 @@ fn with_handle(options: &Options, handle: &str) -> Options {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn request_paths_follow_the_portal_rule() {
-        assert_eq!(
-            request_path(":1.42", "amical7_0"),
-            "/org/freedesktop/portal/desktop/request/1_42/amical7_0"
-        );
-    }
 
     #[test]
     fn the_token_file_is_private_and_replaced_whole() {

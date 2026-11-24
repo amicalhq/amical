@@ -28,7 +28,7 @@ rustix = { version = "1", default-features = false, features = ["std", "event", 
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 # Signal streams for the portal clients; zbus already depends on it.
-futures-util = { version = "0.3", default-features = false }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 
 [features]
 # Integration tests against a real X server (run under xvfb-run).

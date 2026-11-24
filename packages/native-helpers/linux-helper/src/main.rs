@@ -13,6 +13,7 @@
 mod caps;
 mod data_control;
 mod dispatch;
+mod global_shortcuts;
 mod log;
 mod models;
 mod portal;

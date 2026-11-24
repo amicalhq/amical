@@ -14,6 +14,7 @@ use tokio::sync::{watch, Notify, OnceCell};
 
 use crate::caps::{self, Backends, SessionEnv};
 use crate::data_control::DataControl;
+use crate::global_shortcuts::{self, GlobalShortcuts};
 use crate::log::{iso8601_now, log, Redacted};
 use crate::models::*;
 use crate::portal::{self, PortalProbe};
@@ -71,6 +72,8 @@ struct Wayland {
     injector: Option<Arc<RemoteDesktop>>,
     /// The clipboard of the paste route, and its kind.
     clipboard: Option<(Arc<dyn PasteRoute>, ClipboardBackend)>,
+    /// The GlobalShortcuts portal (GNOME 48+, KDE).
+    shortcuts: Option<Arc<GlobalShortcuts>>,
 }
 
 /// Sends chords through the RemoteDesktop portal from a blocking thread.
@@ -151,12 +154,13 @@ impl Ctx {
         if let Some(Some(backend)) = self.x11.get() {
             backend.shutdown();
         }
-        if let Some(injector) = self
-            .wayland
-            .get()
-            .and_then(|wayland| wayland.injector.as_ref())
-        {
-            injector.shutdown().await;
+        if let Some(wayland) = self.wayland.get() {
+            if let Some(shortcuts) = &wayland.shortcuts {
+                shortcuts.shutdown().await;
+            }
+            if let Some(injector) = &wayland.injector {
+                injector.shutdown().await;
+            }
         }
     }
 
@@ -223,7 +227,8 @@ impl Ctx {
         if caps::session_type(&self.env) != SessionType::Wayland {
             return None;
         }
-        let portal = &self.probe(None, wait).await?.portal;
+        let probe = self.probe(None, wait).await?;
+        let portal = &probe.portal;
         let wayland = self
             .wayland
             .get_or_init(|| async {
@@ -251,13 +256,49 @@ impl Ctx {
                 } else {
                     None
                 };
+                let shortcuts = self.global_shortcuts(probe).await;
                 Wayland {
                     injector,
                     clipboard,
+                    shortcuts,
                 }
             })
             .await;
         Some(wayland)
+    }
+
+    /// The GlobalShortcuts client, on GNOME and KDE when the portal has the
+    /// interface and the app id is registered (the portal refuses sessions
+    /// without one).
+    async fn global_shortcuts(&self, probe: &Probe) -> Option<Arc<GlobalShortcuts>> {
+        let desktop = if caps::desktop_is(&self.env, "GNOME") {
+            global_shortcuts::Desktop::Gnome
+        } else if caps::desktop_is(&self.env, "KDE") {
+            global_shortcuts::Desktop::Kde
+        } else {
+            return None;
+        };
+        let connection = probe.portal.connection()?;
+        let version = probe.portal.versions()?.global_shortcuts;
+        let app_id = probe.app_id.clone()?;
+        if version == 0 {
+            return None;
+        }
+        match GlobalShortcuts::start(
+            connection.clone(),
+            app_id,
+            desktop,
+            version,
+            self.out.downgrade(),
+        )
+        .await
+        {
+            Ok(shortcuts) => Some(shortcuts),
+            Err(error) => {
+                log!("Shortcuts", "no GlobalShortcuts client: {error}");
+                None
+            }
+        }
     }
 
     /// Xwayland's CLIPBOARD, which GNOME bridges both ways.
@@ -323,6 +364,7 @@ impl Ctx {
             let features = backend.features();
             return Backends {
                 xi2: true,
+                chord: None,
                 injection: features
                     .injection
                     .then_some((InjectionBackend::Xtest, InjectionConsent::None)),
@@ -334,6 +376,10 @@ impl Ctx {
         };
         Backends {
             xi2: false,
+            chord: wayland
+                .shortcuts
+                .as_ref()
+                .map(|shortcuts| (shortcuts.hold_support(), shortcuts.chord())),
             injection: wayland.injector.as_ref().map(|injector| {
                 let consent = match injector.consent() {
                     Consent::Granted => InjectionConsent::Granted,
@@ -485,6 +531,15 @@ pub async fn handle(
             if let Some(backend) = ctx.x11().await {
                 let (chords, ids) = chords_with_ids(params);
                 blocking(move || backend.set_shortcuts(chords, ids)).await?;
+                return to_value(SetShortcutsResult { success: true });
+            }
+            let shortcuts = ctx
+                .wayland(SESSION_WAIT)
+                .await
+                .and_then(|wayland| wayland.shortcuts.clone());
+            if let Some(shortcuts) = shortcuts {
+                // The compositor binds them; shortcutsBound tells the result.
+                shortcuts.set_shortcuts(params.shortcuts.unwrap_or_default());
                 return to_value(SetShortcutsResult { success: true });
             }
             log!(

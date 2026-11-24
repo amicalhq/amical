@@ -4,10 +4,13 @@
 //! none is fatal.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use zbus::zvariant::{OwnedValue, Value};
-use zbus::Connection;
+use futures_util::StreamExt as _;
+use zbus::proxy::{Builder as ProxyBuilder, CacheProperties};
+use zbus::zvariant::{DynamicType, OwnedValue, Value};
+use zbus::{Connection, Proxy};
 
 use crate::log::log;
 
@@ -15,6 +18,14 @@ pub const PORTAL_SERVICE: &str = "org.freedesktop.portal.Desktop";
 pub const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 const REGISTRY_INTERFACE: &str = "org.freedesktop.host.portal.Registry";
 const PROPERTIES_INTERFACE: &str = "org.freedesktop.DBus.Properties";
+const REQUEST_INTERFACE: &str = "org.freedesktop.portal.Request";
+
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+/// The results of a Request.Response.
+pub type Results = HashMap<String, OwnedValue>;
+/// Request.Response codes.
+pub const RESPONSE_SUCCESS: u32 = 0;
+pub const RESPONSE_CANCELLED: u32 = 1;
 /// Covers bus connection, registration and version reads. The portal
 /// service starts on demand and can take seconds, so the probe runs in its
 /// own task and nothing waits for it this long.
@@ -89,7 +100,7 @@ async fn probe_bus(app_id: Option<&str>) -> zbus::Result<PortalProbe> {
     })
 }
 
-async fn register(connection: &Connection, app_id: &str) {
+pub async fn register(connection: &Connection, app_id: &str) {
     let options: HashMap<&str, Value<'_>> = HashMap::new();
     let reply = connection
         .call_method(
@@ -153,10 +164,98 @@ fn portal_is_missing(error: &zbus::Error) -> bool {
     )
 }
 
+/// A handle token, unique in this process.
+pub fn token() -> String {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    format!(
+        "amical{}_{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+/// The object path of the Request that a call with `token` creates (the
+/// portal spec's rule): the sender's unique name without the leading ':'
+/// and with '.' as '_'.
+pub fn request_path(unique_name: &str, token: &str) -> String {
+    let sender = unique_name.trim_start_matches(':').replace('.', "_");
+    format!("{PORTAL_PATH}/request/{sender}/{token}")
+}
+
+/// Calls `interface.method` on the portal with `body`, whose options carry
+/// `token` as handle_token, and waits for the Request's Response. The
+/// subscription exists before the call, so a quick answer is never missed.
+pub async fn request<B>(
+    conn: &Connection,
+    interface: &str,
+    method: &str,
+    token: &str,
+    body: &B,
+) -> Result<(u32, Results), Error>
+where
+    B: serde::Serialize + DynamicType,
+{
+    let unique_name = conn
+        .unique_name()
+        .ok_or("the bus connection has no unique name")?;
+    let request: Proxy<'_> = ProxyBuilder::new(conn)
+        .destination(PORTAL_SERVICE)?
+        .path(request_path(unique_name.as_str(), token))?
+        .interface(REQUEST_INTERFACE)?
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await?;
+    let mut responses = request.receive_signal("Response").await?;
+    conn.call_method(
+        Some(PORTAL_SERVICE),
+        PORTAL_PATH,
+        Some(interface),
+        method,
+        body,
+    )
+    .await
+    .map_err(|error| format!("{method}: {}", error_name(&error)))?;
+    let response = responses
+        .next()
+        .await
+        .ok_or_else(|| format!("{method}: no Response"))?;
+    Ok(response.body().deserialize()?)
+}
+
+/// Closes a Request that is still waiting (its dialog may stay open).
+pub async fn close_request(conn: &Connection, token: &str) {
+    let Some(unique_name) = conn.unique_name() else {
+        return;
+    };
+    let path = request_path(unique_name.as_str(), token);
+    let _ = conn
+        .call_method(
+            Some(PORTAL_SERVICE),
+            path.as_str(),
+            Some(REQUEST_INTERFACE),
+            "Close",
+            &(),
+        )
+        .await;
+}
+
 /// For a D-Bus error, its name only: never the message text.
 pub fn error_name(error: &zbus::Error) -> String {
     match error {
         zbus::Error::MethodError(name, _, _) => name.to_string(),
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_paths_follow_the_portal_rule() {
+        assert_eq!(
+            request_path(":1.42", "amical7_0"),
+            "/org/freedesktop/portal/desktop/request/1_42/amical7_0"
+        );
     }
 }
