@@ -2,7 +2,14 @@ import { EventEmitter } from "events";
 import { globalShortcut } from "electron";
 import { SettingsService } from "@/services/settings-service";
 import { NativeBridge } from "@/services/platform/native-bridge-service";
-import { KeyEventPayload, HelperEvent } from "@amical/types";
+import {
+  KeyEventPayload,
+  HelperEvent,
+  ShortcutDescriptor,
+  ShortcutsBoundEvent,
+} from "@amical/types";
+import { getApplicationLocale } from "@/i18n/application-locale";
+import { initMainI18n } from "@/i18n/main";
 import { logger } from "@/main/logger";
 import { getKeyFromKeycode } from "@/utils/keycode-map";
 import { isLinux } from "@/utils/platform";
@@ -25,6 +32,31 @@ import { addRelease, step, up } from "../runtime/layer-helpers";
 
 const log = logger.main;
 const PRESSED_KEYS_RECHECK_INTERVAL_MS = 10000;
+// Chord mode: a hold shortcut with a reliable release stops after this long
+// without one, in case the compositor lost it.
+const CHORD_HOLD_LIMIT_MS = 60_000;
+
+// The shortcuts sent to a portal backend, with the label that the system
+// dialog shows and how each one is used.
+const CHORD_SHORTCUTS = [
+  {
+    type: "pushToTalk",
+    label: "settings.shortcuts.pushToTalk.label",
+    kind: "hold",
+  },
+  { type: "draftMode", label: "settings.shortcuts.draft.label", kind: "hold" },
+  {
+    type: "toggleRecording",
+    label: "settings.shortcuts.handsFree.label",
+    kind: "tap",
+  },
+  {
+    type: "pasteLastTranscript",
+    label: "settings.shortcuts.pasteLastTranscript.label",
+    kind: "tap",
+  },
+  { type: "newNote", label: "settings.shortcuts.newNote.label", kind: "tap" },
+] as const;
 
 interface KeyInfo {
   keyCode: number;
@@ -77,6 +109,12 @@ export class ShortcutManager extends EventEmitter {
   // as draft even if the base key lands a tick before the rest. recording-manager
   // reads this (latched per session) to send the instruct preset.
   private pttDraftActive = false;
+
+  // Chord mode (Linux portal shortcuts): the latest bind says which hold
+  // shortcuts get a reliable release. The hold that engaged PTT, if any.
+  private chordHoldReliable = new Map<string, boolean>();
+  private chordHold: { id: string; reliable: boolean } | null = null;
+  private chordHoldTimer: NodeJS.Timeout | null = null;
 
   // Generic command kill-switch (the onboarding wizard sets it: on while the
   // wizard is open, off while a dictation try-it step is on screen). While
@@ -211,11 +249,38 @@ export class ShortcutManager extends EventEmitter {
         ...this.shortcuts.pasteLastTranscript,
         ...this.shortcuts.newNote,
       ].filter((chord) => chord.length > 0);
-      await this.nativeBridge.setShortcuts({ subsetChords, exactChords });
+      await this.nativeBridge.setShortcuts({
+        subsetChords,
+        exactChords,
+        // A portal backend binds each shortcut by id with the compositor.
+        ...(isLinux() && { shortcuts: await this.shortcutDescriptors() }),
+      });
       log.info("Shortcuts synced to native helper");
     } catch (error) {
       log.error("Failed to sync shortcuts to native helper", { error });
     }
+  }
+
+  /** One descriptor per configured chord, id `${type}:${index}`. */
+  private async shortcutDescriptors(): Promise<ShortcutDescriptor[]> {
+    const i18n = await initMainI18n(getApplicationLocale());
+    return CHORD_SHORTCUTS.flatMap(({ type, label, kind }) =>
+      this.shortcuts[type].flatMap((keyCodes, index) =>
+        keyCodes.length === 0
+          ? []
+          : [
+              {
+                id: `${type}:${index}`,
+                keyCodes,
+                label:
+                  index === 0
+                    ? i18n.t(label)
+                    : `${i18n.t(label)} (${index + 1})`,
+                kind,
+              },
+            ],
+      ),
+    );
   }
 
   async reloadShortcuts() {
@@ -579,6 +644,15 @@ export class ShortcutManager extends EventEmitter {
         case "keyUp":
           this.handleKeyUp(event.payload);
           break;
+        case "shortcutActivated":
+          this.handleChordEdge(event.payload.id, true);
+          break;
+        case "shortcutDeactivated":
+          this.handleChordEdge(event.payload.id, false);
+          break;
+        case "shortcutsBound":
+          this.handleShortcutsBound(event.payload);
+          break;
         case "capabilitiesChanged":
           // The Linux helper learned more after its first answer (for
           // example, the desktop portal started late).
@@ -598,10 +672,7 @@ export class ShortcutManager extends EventEmitter {
    * Push all helper state to a new helper process. Each push logs its own
    * failure.
    */
-  private async resyncNativeHelper(
-    nativeBridge: NativeBridge,
-    reason: string,
-  ) {
+  private async resyncNativeHelper(nativeBridge: NativeBridge, reason: string) {
     log.info("Re-syncing native helper state", { reason });
     // The Linux helper reports what this session allows; ask first.
     if (isLinux()) await nativeBridge.refreshHelperCapabilities();
@@ -610,6 +681,72 @@ export class ShortcutManager extends EventEmitter {
     if (this.draftActive) {
       await nativeBridge.setDraftEnterCapture(true);
     }
+  }
+
+  private handleShortcutsBound(payload: ShortcutsBoundEvent["payload"]) {
+    if (payload.pending) {
+      log.info("Waiting for the system shortcut dialog");
+      return;
+    }
+    this.chordHoldReliable = new Map(
+      payload.bound.map(({ id, holdReliable }) => [id, holdReliable]),
+    );
+    log.info("System shortcuts bound", {
+      bound: payload.bound.map(({ id }) => id),
+      failed: payload.failed.map(({ id, reason }) => ({ id, reason })),
+    });
+  }
+
+  // Chord mode: the compositor reports bound shortcuts by id.
+  private handleChordEdge(id: string, down: boolean) {
+    if (this.isRecordingShortcut) return;
+    const type = id.slice(0, id.indexOf(":"));
+    if (type === "pushToTalk" || type === "draftMode") {
+      this.handleChordHold(id, type === "draftMode", down);
+      return;
+    }
+    if (!down || this.commandsSuppressed) return;
+    if (type === "toggleRecording") this.emit("toggle-recording-triggered");
+    if (type === "pasteLastTranscript") {
+      this.emit("paste-last-transcript-triggered");
+    }
+    if (type === "newNote") this.emit("open-notes-window-triggered");
+  }
+
+  // A hold shortcut with a reliable release is push to talk; without one it
+  // toggles. A press while one is engaged stops it: the second tap, or a
+  // press after a release that the compositor lost.
+  private handleChordHold(id: string, draft: boolean, down: boolean) {
+    if (!down) {
+      if (this.chordHold?.id === id && this.chordHold.reliable) {
+        this.endChordHold();
+      }
+      return;
+    }
+    if (this.chordHold) {
+      this.endChordHold();
+      return;
+    }
+    const reliable = this.chordHoldReliable.get(id) === true;
+    this.chordHold = { id, reliable };
+    this.pttActive = true;
+    this.pttDraftActive = draft;
+    this.emit("ptt-state-changed", !this.commandsSuppressed);
+    if (reliable) {
+      this.chordHoldTimer = setTimeout(() => {
+        log.warn("No release for a held system shortcut; stopping", { id });
+        this.endChordHold();
+      }, CHORD_HOLD_LIMIT_MS);
+    }
+  }
+
+  private endChordHold() {
+    if (this.chordHoldTimer) clearTimeout(this.chordHoldTimer);
+    this.chordHoldTimer = null;
+    this.chordHold = null;
+    this.pttActive = false;
+    this.pttDraftActive = false;
+    this.emit("ptt-state-changed", false);
   }
 
   private startPeriodicRecheck() {
@@ -896,6 +1033,7 @@ export class ShortcutManager extends EventEmitter {
   cleanup() {
     this.unregisterAllShortcuts();
     this.stopPeriodicRecheck();
+    if (this.chordHoldTimer) clearTimeout(this.chordHoldTimer);
     this.removeAllListeners();
     this.activeKeys.clear();
   }
