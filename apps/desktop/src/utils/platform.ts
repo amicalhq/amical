@@ -46,10 +46,12 @@ export function matchPlatform<T>(
 }
 
 /**
- * Desktop-file id of the Linux package: the reverse-DNS id of the macOS
- * bundle. The portals, the URL handler and the package names use it.
+ * Desktop-file id of the Linux package. The portals, the URL handler and the
+ * package names use it. It is not the macOS bundle id: KDE treats a
+ * shortcut owner whose id ends in ".desktop" as a launcher, so its global
+ * shortcuts never fire; and deb package names must be lowercase.
  */
-export const LINUX_APP_ID = "ai.amical.desktop";
+export const LINUX_APP_ID = "ai.amical.amical";
 
 /**
  * Get the native helper name for the current platform

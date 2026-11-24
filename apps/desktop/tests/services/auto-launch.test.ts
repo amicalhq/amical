@@ -16,7 +16,7 @@ vi.mock("node:fs", async (importOriginal) => ({
 vi.mock("../../src/utils/platform", () => ({
   isWindows: vi.fn(),
   isLinux: vi.fn(),
-  LINUX_APP_ID: "ai.amical.desktop",
+  LINUX_APP_ID: "ai.amical.amical",
 }));
 vi.mock("../../src/db/app-settings", () => ({
   getSettingsSection: vi.fn(),
@@ -114,7 +114,7 @@ describe("Linux login launch", () => {
     configHome = mkdtempSync(path.join(os.tmpdir(), "amical-autostart-"));
     vi.spyOn(app, "getPath").mockReturnValue(configHome);
     Object.defineProperty(process, "resourcesPath", {
-      value: "/usr/lib/ai.amical.desktop/resources",
+      value: "/usr/lib/ai.amical.amical/resources",
       configurable: true,
     });
   });
@@ -127,7 +127,7 @@ describe("Linux login launch", () => {
   });
 
   const entry = () =>
-    path.join(configHome, "autostart", "ai.amical.desktop.desktop");
+    path.join(configHome, "autostart", "ai.amical.amical.desktop");
   // existsSync is mocked in this file; read the file for real.
   const entryExists = () => {
     try {
@@ -141,7 +141,7 @@ describe("Linux login launch", () => {
   it("writes an autostart entry that starts the launcher silently, and removes it", async () => {
     await sync(true);
     expect(readFileSync(entry(), "utf8")).toContain(
-      'Exec="/usr/lib/ai.amical.desktop/resources/amical-launcher" --silent-start',
+      'Exec="/usr/lib/ai.amical.amical/resources/amical-launcher" --silent-start',
     );
     expect(app.setLoginItemSettings).not.toHaveBeenCalled();
 
