@@ -15,6 +15,7 @@ import {
 import type { RecordingLifecycle } from "../lifecycle/runtime";
 import type { RecordingState } from "../../types/recording";
 import { computeUpdatePrompt, type UpdatePrompt } from "./update-prompt";
+import { isLinux } from "../../utils/platform";
 import { Effect, Layer } from "effect";
 import {
   AutoUpdaterServiceTag,
@@ -43,6 +44,8 @@ export type UpdateState =
   | "checking"
   | "available"
   | "downloaded"
+  // Linux: a newer version is on the download page.
+  | "download-available"
   | "error";
 
 // Internal lifecycle phase. The public UpdateState is derived from this plus
@@ -209,27 +212,24 @@ export class AutoUpdaterService extends EventEmitter {
       return;
     }
 
-    // Electron cannot install updates on Linux, and the update server has no
-    // Linux builds yet. The update check is off until a notice-only mode exists.
-    if (process.platform === "linux") {
-      logger.updater.info("Skipping auto-updater: not available on Linux");
-      return;
-    }
-
     this.settingsService = settingsService;
     this.telemetryService = telemetryService;
     this.remoteConfigService = remoteConfigService;
     this.recordingLifecycle = recordingLifecycle;
-    this.unsubscribeRecording = recordingLifecycle.onSnapshot((snapshot) =>
-      this.handleRecordingStateChanged(snapshot.projection.publicState),
-    );
-    this.handleRecordingStateChanged(
-      recordingLifecycle.getSnapshot().projection.publicState,
-    );
+    // Download-only (Linux) never stages an install, so it needs neither the
+    // idle-install watch nor the native updater.
+    if (!this.downloadOnly) {
+      this.unsubscribeRecording = recordingLifecycle.onSnapshot((snapshot) =>
+        this.handleRecordingStateChanged(snapshot.projection.publicState),
+      );
+      this.handleRecordingStateChanged(
+        recordingLifecycle.getSnapshot().projection.publicState,
+      );
+      this.registerEventHandlers();
+    }
     this.currentChannel = await settingsService.getUpdateChannel();
 
     this.setFeedURL(this.currentChannel);
-    this.registerEventHandlers();
 
     // Listen for channel changes
     settingsService.on(
@@ -251,6 +251,7 @@ export class AutoUpdaterService extends EventEmitter {
   }
 
   private setFeedURL(channel: "stable" | "beta", targetVersion?: string): void {
+    if (this.downloadOnly) return;
     const platform = process.platform;
     const arch = process.arch;
     const runningVersion = encodeURIComponent(app.getVersion());
@@ -334,6 +335,12 @@ export class AutoUpdaterService extends EventEmitter {
     );
   }
 
+  // Electron's updater does nothing on Linux: there the app only reads the
+  // update metadata and sends the user to the download page.
+  get downloadOnly(): boolean {
+    return isLinux();
+  }
+
   // A check/download cycle is in flight ("available"/downloading included).
   // Reads `phase` only, so resetting the public/UI state elsewhere (e.g. on a
   // channel change) can never clear it.
@@ -347,7 +354,13 @@ export class AutoUpdaterService extends EventEmitter {
     if (this.phase === "checking") return "checking";
     if (this.phase === "downloading") return "available";
     if (this.phase === "error") return "error";
-    return this.staged ? "downloaded" : "not-available";
+    if (this.staged) return "downloaded";
+    const offered =
+      this.lastMetadata?.version !== undefined &&
+      this.lastMetadata.action !== "none";
+    return this.downloadOnly && offered
+      ? "download-available"
+      : "not-available";
   }
 
   // Single writer for the public state: recompute from (phase, staged) and emit
@@ -547,10 +560,12 @@ export class AutoUpdaterService extends EventEmitter {
     return this.publicState;
   }
 
+  // Download-only has nothing to download first: a "prompt" or "force"
+  // policy shows its dialog at once; "silent" shows only the sidebar entry.
   getUpdatePrompt(): UpdatePrompt | null {
     return computeUpdatePrompt(
       this.lastMetadata,
-      this.staged,
+      this.staged || this.downloadOnly,
       this.dismissedVersion,
     );
   }
@@ -658,11 +673,6 @@ export class AutoUpdaterService extends EventEmitter {
       logger.updater.info("Skipping update check: app is not packaged");
       return;
     }
-    if (process.platform === "linux") {
-      logger.updater.info("Skipping update check: not available on Linux");
-      return;
-    }
-
     if (this.isCheckingOrDownloading) {
       logger.updater.info("Update check already in progress, skipping");
       return;
@@ -703,6 +713,10 @@ export class AutoUpdaterService extends EventEmitter {
           this.emit("update-not-available");
           return;
         }
+      }
+      if (this.downloadOnly) {
+        this.setPhase("idle");
+        return;
       }
 
       // Pin this native check to the version selected by metadata. Rewriting

@@ -6,6 +6,7 @@ export function useUpdateRequirement() {
   const [state, setState] = useState<{
     requirement: UpdateRequirement | null;
     recordingActive: boolean;
+    downloadOnly: boolean;
   } | null>(null);
   api.updater.updateRequirement.useSubscription(undefined, {
     onData: setState,

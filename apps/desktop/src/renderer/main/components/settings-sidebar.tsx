@@ -107,8 +107,10 @@ export function SettingsSidebar({
       }
     : null;
 
+  // Linux cannot install in the app: its update is a download.
+  const updateDownload = updateState === "download-available";
   const updateReadyButton =
-    updateState === "downloaded" ? (
+    updateState === "downloaded" || updateDownload ? (
       <SidebarMenuItem>
         <SidebarMenuButton
           asChild
@@ -117,10 +119,20 @@ export function SettingsSidebar({
           <Link
             to="/settings/about"
             search={{ focusUpdate: true }}
-            aria-label={t("settings.about.update.ready")}
+            aria-label={t(
+              updateDownload
+                ? "updater.updateAvailable"
+                : "settings.about.update.ready",
+            )}
           >
             <IconDownload />
-            <span>{t("settings.about.update.sidebarCta")}</span>
+            <span>
+              {t(
+                updateDownload
+                  ? "updater.updateAvailable"
+                  : "settings.about.update.sidebarCta",
+              )}
+            </span>
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>

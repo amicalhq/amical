@@ -28,27 +28,50 @@ export function RequiredUpdateGate({ children }: { children: ReactNode }) {
   const install = api.updater.quitAndInstall.useMutation();
   const download = api.updater.openDownloadPage.useMutation();
   const quit = api.updater.quit.useMutation();
+  // Linux: the main button opens the download page.
+  const byDownload = access?.downloadOnly ?? false;
   const required = access?.recordingActive ? null : access?.requirement;
-  const busy =
+  const nativeBusy =
     check.isPending ||
     install.isPending ||
     state === "checking" ||
     state === "available";
-  const failed =
+  const nativeFailed =
     state === "error" ||
     install.isError ||
     (state !== "downloaded" && check.isError);
-  const buttonLabel = install.isPending
-    ? t("updater.restarting")
-    : state === "available"
-      ? t("updater.downloading")
-      : busy
-        ? t("updater.checking")
-        : failed
-          ? t("updater.tryAgain")
-          : state === "downloaded"
-            ? t("updater.restartAndUpdate")
-            : t("updater.updateNow");
+  const {
+    busy,
+    failed,
+    label: buttonLabel,
+    run,
+  } = byDownload
+    ? {
+        busy: download.isPending,
+        // A failed download-page open has its own message below.
+        failed: false,
+        label: t("updater.downloadUpdate"),
+        run: () => download.mutate(),
+      }
+    : {
+        busy: nativeBusy,
+        failed: nativeFailed,
+        label: install.isPending
+          ? t("updater.restarting")
+          : state === "available"
+            ? t("updater.downloading")
+            : nativeBusy
+              ? t("updater.checking")
+              : nativeFailed
+                ? t("updater.tryAgain")
+                : state === "downloaded"
+                  ? t("updater.restartAndUpdate")
+                  : t("updater.updateNow"),
+        run: () =>
+          state === "downloaded"
+            ? install.mutate()
+            : check.mutate({ userInitiated: true }),
+      };
 
   // Resolve the main-process policy before mounting pages that can start work.
   if (!access) return null;
@@ -102,11 +125,7 @@ export function RequiredUpdateGate({ children }: { children: ReactNode }) {
               className="disabled:opacity-100"
               disabled={busy}
               aria-busy={busy}
-              onClick={() =>
-                state === "downloaded"
-                  ? install.mutate()
-                  : check.mutate({ userInitiated: true })
-              }
+              onClick={run}
             >
               {busy && (
                 <Loader2
@@ -118,15 +137,17 @@ export function RequiredUpdateGate({ children }: { children: ReactNode }) {
             </Button>
           </div>
           <div className="grid gap-1 text-center">
-            <Button
-              variant="link"
-              size="sm"
-              className="justify-self-center text-muted-foreground"
-              disabled={download.isPending}
-              onClick={() => download.mutate()}
-            >
-              {t("updater.manualDownload")}
-            </Button>
+            {!byDownload && (
+              <Button
+                variant="link"
+                size="sm"
+                className="justify-self-center text-muted-foreground"
+                disabled={download.isPending}
+                onClick={() => download.mutate()}
+              >
+                {t("updater.manualDownload")}
+              </Button>
+            )}
             {download.isError && (
               <p role="alert" className="text-sm text-destructive-foreground">
                 {t("updater.manualDownloadFailed")}

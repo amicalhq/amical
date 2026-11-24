@@ -212,4 +212,21 @@ describe("required update screen", () => {
     render(gate());
     expect(screen.queryByText("Normal action")).toBeNull();
   });
+
+  it("opens the download page from the main button on Linux", () => {
+    mocks.access = {
+      requirement: { required: true, evaluatedVersion: "1.0.0" },
+      recordingActive: false,
+      downloadOnly: true,
+    };
+    render(gate());
+    fireEvent.click(
+      screen.getByRole("button", { name: "updater.downloadUpdate" }),
+    );
+    expect(mocks.download).toHaveBeenCalledOnce();
+    expect(mocks.check).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "updater.manualDownload" }),
+    ).toBeNull();
+  });
 });

@@ -49,6 +49,12 @@ const UPDATE_STATUS: Record<
     textClassName: "text-foreground",
     labelKey: "settings.about.update.ready",
   },
+  "download-available": {
+    Icon: Download,
+    iconClassName: "w-3.5 h-3.5",
+    textClassName: "text-foreground",
+    labelKey: "settings.about.update.downloadAvailable",
+  },
   error: {
     Icon: AlertCircle,
     iconClassName: "w-3.5 h-3.5",
@@ -77,7 +83,9 @@ export default function AboutSettingsPage() {
 
   const checkForUpdates = api.updater.checkForUpdates.useMutation();
   const quitAndInstall = api.updater.quitAndInstall.useMutation();
+  const openDownloadPage = api.updater.openDownloadPage.useMutation();
   const isReady = updateState === "downloaded";
+  const canDownload = updateState === "download-available";
 
   const buttonBusy =
     updateState === "checking" ||
@@ -88,6 +96,10 @@ export default function AboutSettingsPage() {
   function handleUpdateClick() {
     if (isReady) {
       quitAndInstall.mutate();
+      return;
+    }
+    if (canDownload) {
+      openDownloadPage.mutate();
       return;
     }
 
@@ -180,7 +192,9 @@ export default function AboutSettingsPage() {
                 />
                 {isReady
                   ? t("settings.about.update.restartButton")
-                  : t("settings.about.update.checkButton")}
+                  : canDownload
+                    ? t("updater.downloadUpdate")
+                    : t("settings.about.update.checkButton")}
               </Button>
               <div
                 role="status"

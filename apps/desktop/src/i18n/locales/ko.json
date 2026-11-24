@@ -48,7 +48,8 @@
     "versionAvailable": "사용 가능한 버전: {{version}}",
     "versionRequired": "필요한 버전: {{version}}",
     "restartAndUpdate": "재시작 후 업데이트",
-    "later": "나중에"
+    "later": "나중에",
+    "downloadUpdate": "업데이트 다운로드"
   },
   "onboarding": {
     "app": {
@@ -733,7 +734,8 @@
         "error": "업데이트 오류, 재시작 후 다시 시도해 주세요",
         "sidebarCta": "업데이트 준비됨",
         "checkButton": "업데이트 확인",
-        "restartButton": "재시작 후 설치"
+        "restartButton": "재시작 후 설치",
+        "downloadAvailable": "새 버전을 사용할 수 있습니다"
       },
       "currentVersion": "현재 버전",
       "resources": {

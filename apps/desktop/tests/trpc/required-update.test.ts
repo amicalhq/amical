@@ -34,10 +34,18 @@ describe("required update subscription", () => {
     const subscription = (await caller.updateRequirement()).subscribe({
       next: (state) => states.push(state),
     });
-    expect(states.at(-1)).toEqual({ requirement, recordingActive: true });
+    expect(states.at(-1)).toEqual({
+      requirement,
+      recordingActive: true,
+      downloadOnly: false,
+    });
     active = false;
     recorded();
-    expect(states.at(-1)).toEqual({ requirement, recordingActive: false });
+    expect(states.at(-1)).toEqual({
+      requirement,
+      recordingActive: false,
+      downloadOnly: false,
+    });
     changed();
     subscription.unsubscribe();
     expect(offConfig).toHaveBeenCalledOnce();

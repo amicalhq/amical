@@ -17,6 +17,7 @@ export function UpdatePrompt() {
   const { t } = useTranslation();
   const [prompt, setPrompt] = useState<UpdatePromptData | null>(null);
   const quitAndInstall = api.updater.quitAndInstall.useMutation();
+  const openDownloadPage = api.updater.openDownloadPage.useMutation();
   const dismiss = api.updater.dismissUpdatePrompt.useMutation();
 
   // eslint-disable-next-line deprecation/deprecation
@@ -76,9 +77,20 @@ export function UpdatePrompt() {
               {t("updater.later")}
             </Button>
           )}
-          <Button onClick={() => quitAndInstall.mutate()}>
-            {t("updater.restartAndUpdate")}
-          </Button>
+          {access?.downloadOnly ? (
+            <Button
+              onClick={() => {
+                openDownloadPage.mutate();
+                if (!isForce) handleLater();
+              }}
+            >
+              {t("updater.downloadUpdate")}
+            </Button>
+          ) : (
+            <Button onClick={() => quitAndInstall.mutate()}>
+              {t("updater.restartAndUpdate")}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

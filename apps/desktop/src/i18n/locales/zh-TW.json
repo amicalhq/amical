@@ -48,7 +48,8 @@
     "versionAvailable": "有新版本 {{version}}",
     "versionRequired": "需要版本 {{version}}",
     "restartAndUpdate": "重新啟動並更新",
-    "later": "稍後"
+    "later": "稍後",
+    "downloadUpdate": "下載更新"
   },
   "onboarding": {
     "app": {
@@ -733,7 +734,8 @@
         "error": "更新時發生錯誤，請重新啟動並重試",
         "sidebarCta": "更新已就緒",
         "checkButton": "檢查更新",
-        "restartButton": "重新啟動並安裝"
+        "restartButton": "重新啟動並安裝",
+        "downloadAvailable": "有新版本可用"
       },
       "currentVersion": "目前版本",
       "resources": {

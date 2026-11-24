@@ -48,7 +48,8 @@
     "versionAvailable": "La versión {{version}} está disponible.",
     "versionRequired": "Se requiere la versión {{version}}.",
     "restartAndUpdate": "Reiniciar y actualizar",
-    "later": "Más tarde"
+    "later": "Más tarde",
+    "downloadUpdate": "Descargar actualización"
   },
   "onboarding": {
     "app": {
@@ -733,7 +734,8 @@
         "error": "Error al actualizar, reinicia e inténtalo de nuevo",
         "sidebarCta": "Actualización lista",
         "checkButton": "Buscar actualizaciones",
-        "restartButton": "Reiniciar e instalar"
+        "restartButton": "Reiniciar e instalar",
+        "downloadAvailable": "Hay una nueva versión disponible"
       },
       "currentVersion": "Versión actual",
       "resources": {

@@ -48,7 +48,8 @@
     "versionAvailable": "Version {{version}} ist verfügbar.",
     "versionRequired": "Version {{version}} ist erforderlich.",
     "restartAndUpdate": "Neu starten & aktualisieren",
-    "later": "Später"
+    "later": "Später",
+    "downloadUpdate": "Update herunterladen"
   },
   "onboarding": {
     "app": {
@@ -733,7 +734,8 @@
         "error": "Fehler beim Aktualisieren, bitte neu starten und erneut versuchen",
         "sidebarCta": "Update bereit",
         "checkButton": "Nach Updates suchen",
-        "restartButton": "Neu starten und installieren"
+        "restartButton": "Neu starten und installieren",
+        "downloadAvailable": "Eine neue Version ist verfügbar"
       },
       "currentVersion": "Aktuelle Version",
       "resources": {

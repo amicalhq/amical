@@ -925,4 +925,70 @@ describe("AutoUpdaterService", () => {
       expect(vi.mocked(autoUpdater.quitAndInstall)).toHaveBeenCalledOnce();
     });
   });
+
+  describe("on Linux (download only)", () => {
+    const platform = process.platform;
+    let linux: AutoUpdaterService;
+
+    beforeEach(async () => {
+      Object.defineProperty(process, "platform", { value: "linux" });
+      vi.clearAllMocks();
+      linux = AutoUpdaterService.createForTests();
+      await linux.initialize(
+        settingsService as any,
+        telemetry as any,
+        remoteConfig as any,
+        recordingLifecycle as any,
+      );
+    });
+
+    afterEach(() => {
+      linux.cleanup();
+      Object.defineProperty(process, "platform", { value: platform });
+    });
+
+    it("offers a download for a silent update, with no native updater and no dialog", async () => {
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ action: "silent", version: "1.9.0" }),
+      } as any);
+
+      await linux.checkForUpdates(true);
+
+      expect(vi.mocked(net.fetch).mock.calls[0][0]).toContain(
+        `/update-meta/stable/linux-${process.arch}/0.1.0-test`,
+      );
+      expect(vi.mocked(autoUpdater.setFeedURL)).not.toHaveBeenCalled();
+      expect(vi.mocked(autoUpdater.checkForUpdates)).not.toHaveBeenCalled();
+      expect(linux.getUpdateState()).toBe("download-available");
+      expect(linux.getUpdatePrompt()).toBeNull();
+    });
+
+    it("shows the dialog at once for a prompted update", async () => {
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ action: "prompt", version: "1.9.0" }),
+      } as any);
+
+      await linux.checkForUpdates(true);
+
+      expect(linux.getUpdatePrompt()).toEqual({
+        version: "1.9.0",
+        releaseNotes: undefined,
+        action: "prompt",
+      });
+    });
+
+    it("shows nothing when no update is offered", async () => {
+      vi.mocked(net.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ action: "none" }),
+      } as any);
+
+      await linux.checkForUpdates(true);
+
+      expect(linux.getUpdateState()).toBe("not-available");
+      expect(linux.getUpdatePrompt()).toBeNull();
+    });
+  });
 });

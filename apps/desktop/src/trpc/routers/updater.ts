@@ -17,6 +17,8 @@ export const updaterRouter = createRouter({
       requirement: remoteConfig.getUpdateRequirement(),
       recordingActive:
         recording.getSnapshot().projection.publicState !== "idle",
+      // Linux: an update means opening the download page.
+      downloadOnly: ctx.services.autoUpdaterService?.downloadOnly ?? false,
     });
     return observable<ReturnType<typeof getState>>((emit) => {
       const push = () => emit.next(getState());
