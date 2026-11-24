@@ -13,14 +13,16 @@ import {
 } from "../utils/http-client";
 
 /**
- * GET an Apps V1 resource for one signed-in account. Fails if the account
- * changes during the request, and retries once after a token refresh.
+ * GET an Apps V1 resource for one signed-in account, or POST to a route that
+ * takes no body. Fails if the account changes during the request, and retries
+ * once after a token refresh.
  */
 export async function getAccountResource<A>(
   authService: AuthService,
   accountId: string,
   options: {
     path: string;
+    method?: "GET" | "POST";
     parse: (body: unknown) => A;
     accountChangedMessage: string;
     fallbackMessage: string;
@@ -44,7 +46,7 @@ export async function getAccountResource<A>(
     }
 
     const response = await fetch(getCoreApiUrl(options.path), {
-      method: "GET",
+      method: options.method ?? "GET",
       signal: signal
         ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
         : AbortSignal.timeout(15_000),

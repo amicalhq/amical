@@ -30,6 +30,7 @@ import {
 } from "../../src/types/audio-capture";
 import {
   DESKTOP_REFERRALS_FLAG,
+  DESKTOP_WIDGET_FEED_FLAG,
   DESKTOP_STAR_NUDGE_FLAG,
 } from "../../src/types/remote-config";
 
@@ -317,6 +318,7 @@ describe("RemoteConfigService", () => {
           [DESKTOP_AUTO_VOCABULARY_V2_FLAG]: false,
           [DESKTOP_STAR_NUDGE_FLAG]: true,
           [DESKTOP_REFERRALS_FLAG]: false,
+          [DESKTOP_WIDGET_FEED_FLAG]: true,
           [DESKTOP_STEREO_MIC_DOWNMIX_FLAG]: true,
           [DESKTOP_REFRESH_AUDIO_DEVICES_ON_START_FLAG]: false,
         },

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     notificationSequence: 7,
   })),
   useWidgetVisibility: vi.fn(),
+  useWidgetFeed: vi.fn(() => ({ card: null, showSequence: 2 })),
 }));
 
 vi.mock("@/hooks/useRecording", () => ({
@@ -38,6 +39,10 @@ vi.mock("@/renderer/widget/hooks/useWidgetVisibility", () => ({
   useWidgetVisibility: mocks.useWidgetVisibility,
 }));
 
+vi.mock("@/renderer/widget/hooks/useWidgetFeed", () => ({
+  useWidgetFeed: mocks.useWidgetFeed,
+}));
+
 vi.mock("@/renderer/widget/hooks/useRecordingSettingsSync", () => ({
   useRecordingSettingsSync: vi.fn(),
 }));
@@ -66,11 +71,16 @@ describe("WidgetPage visibility composition", () => {
     WidgetPage();
 
     expect(mocks.useWidgetNotifications).toHaveBeenCalledWith("idle");
+    expect(mocks.useWidgetFeed).toHaveBeenCalledWith({
+      recordingState: "idle",
+      hasVisibleToast: true,
+      hasPendingDraft: true,
+    });
     expect(mocks.useWidgetVisibility).toHaveBeenCalledWith({
       recordingState: "idle",
       hasPendingDraft: true,
       hasVisibleNotification: true,
-      notificationSequence: 7,
+      notificationSequence: 9,
     });
   });
 });

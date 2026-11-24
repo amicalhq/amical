@@ -22,6 +22,13 @@ jobs:
   build:
     name: Build ${{ matrix.os == 'macos' && 'macOS' || matrix.os == 'linux' && 'Linux' || 'Windows' }} (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        # bash, not pwsh: pwsh adds its module paths to PSModulePath, and a
+        # child powershell.exe (Expand-Archive in @posthog/cli postinstall and
+        # download-node-binaries.ts) then loads a module that fails in Windows
+        # PowerShell 5.1.
+        shell: bash
     strategy:
       matrix:
         include:
@@ -189,6 +196,8 @@ jobs:
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
           CORE_API_URL: ${{ secrets.CORE_API_URL }}
+          SEQUENZY_PUBLIC_KEY: ${{ secrets.SEQUENZY_PUBLIC_KEY }}
+          SEQUENZY_COMPANY_ID: ${{ secrets.SEQUENZY_COMPANY_ID }}
         run: |
           echo "Building macOS ${{ matrix.arch }} artifacts"
           pnpm make:${{ matrix.arch }}
@@ -232,6 +241,8 @@ jobs:
           API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
           AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
           CORE_API_URL: ${{ secrets.CORE_API_URL }}
+          SEQUENZY_PUBLIC_KEY: ${{ secrets.SEQUENZY_PUBLIC_KEY }}
+          SEQUENZY_COMPANY_ID: ${{ secrets.SEQUENZY_COMPANY_ID }}
         run: |
           echo "Packaging unsigned Windows ${{ matrix.arch }} app"
           pnpm package:windows:${{ matrix.arch }}

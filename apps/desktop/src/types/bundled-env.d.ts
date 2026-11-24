@@ -9,3 +9,5 @@ declare const __BUNDLED_API_ENDPOINT: string;
 declare const __BUNDLED_FEEDBACK_SURVEY_ID: string;
 declare const __BUNDLED_GLEAP_API_KEY: string;
 declare const __BUNDLED_AUTH_REDIRECT_URI: string;
+declare const __BUNDLED_SEQUENZY_PUBLIC_KEY: string;
+declare const __BUNDLED_SEQUENZY_COMPANY_ID: string;

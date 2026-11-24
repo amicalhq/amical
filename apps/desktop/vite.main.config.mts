@@ -29,6 +29,12 @@ export default defineConfig({
     __BUNDLED_AUTH_REDIRECT_URI: JSON.stringify(
       process.env.AUTH_REDIRECT_URI || "",
     ),
+    __BUNDLED_SEQUENZY_PUBLIC_KEY: JSON.stringify(
+      process.env.SEQUENZY_PUBLIC_KEY || "",
+    ),
+    __BUNDLED_SEQUENZY_COMPANY_ID: JSON.stringify(
+      process.env.SEQUENZY_COMPANY_ID || "",
+    ),
   },
   build: {
     rollupOptions: {
