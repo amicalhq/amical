@@ -6,6 +6,7 @@ import os from "node:os";
 // Create a fake BrowserWindow class
 class FakeBrowserWindow extends EventEmitter {
   static getAllWindows = vi.fn(() => [] as FakeBrowserWindow[]);
+  static getFocusedWindow = vi.fn(() => null as FakeBrowserWindow | null);
 
   id: number;
   webContents: any;
