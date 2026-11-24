@@ -20,7 +20,7 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.os == 'macos' && 'macOS' || 'Windows' }} (${{ matrix.arch }})
+    name: Build ${{ matrix.os == 'macos' && 'macOS' || matrix.os == 'linux' && 'Linux' || 'Windows' }} (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -37,6 +37,11 @@ jobs:
           - os: windows
             arch: arm64
             runner: windows-11-vs2026-arm
+          # Ubuntu 22.04 (glibc 2.35) is the oldest supported Linux, so what
+          # builds here runs on every supported distribution.
+          - os: linux
+            arch: x64
+            runner: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -85,6 +90,16 @@ jobs:
         uses: pnpm/action-setup@v6
         with:
           cache: true
+
+      - name: Install Linux packaging tools
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fakeroot rpm
+
+      - name: Install Rust (Linux helper)
+        if: matrix.os == 'linux'
+        # The version and components come from rust-toolchain.toml.
+        working-directory: packages/native-helpers/linux-helper
+        run: rustup toolchain install
 
       - name: Install Vulkan SDK
         if: matrix.os == 'windows' && matrix.arch == 'x64'
@@ -463,6 +478,53 @@ jobs:
         working-directory: apps/desktop
         run: pnpm verify:windows-package ${{ matrix.arch }}
 
+      # Linux packages are not signed: deb and rpm come straight from make.
+      - name: Build artifacts (Linux release)
+        if: matrix.os == 'linux' && github.event_name != 'pull_request'
+        working-directory: apps/desktop
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          POSTHOG_HOST: https://app.posthog.com
+          TELEMETRY_ENABLED: true
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          POSTHOG_SOURCE_MAP_UPLOAD: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'true' || 'false' }}
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+          POSTHOG_PROJECT_ID: ${{ secrets.POSTHOG_PROJECT_ID }}
+          FEEDBACK_SURVEY_ID: ${{ secrets.FEEDBACK_SURVEY_ID }}
+          GLEAP_API_KEY: ${{ secrets.GLEAP_API_KEY }}
+          AUTH_CLIENT_ID: ${{ secrets.AUTH_CLIENT_ID }}
+          AUTHORIZATION_ENDPOINT: ${{ secrets.AUTHORIZATION_ENDPOINT }}
+          AUTH_TOKEN_ENDPOINT: ${{ secrets.AUTH_TOKEN_ENDPOINT }}
+          API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
+          AUTH_REDIRECT_URI: ${{ secrets.AUTH_REDIRECT_URI }}
+          CORE_API_URL: ${{ secrets.CORE_API_URL }}
+        run: |
+          echo "Building Linux ${{ matrix.arch }} deb and rpm"
+          pnpm make
+
+      - name: Build artifacts (Linux PR)
+        if: matrix.os == 'linux' && github.event_name == 'pull_request'
+        working-directory: apps/desktop
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          TELEMETRY_ENABLED: "false"
+          POSTHOG_HOST: https://app.posthog.com
+          POSTHOG_API_KEY: ""
+          FEEDBACK_SURVEY_ID: ""
+          AUTH_CLIENT_ID: ""
+          AUTHORIZATION_ENDPOINT: ""
+          AUTH_TOKEN_ENDPOINT: ""
+          API_ENDPOINT: ""
+          AUTH_REDIRECT_URI: ""
+        run: |
+          echo "Building Linux ${{ matrix.arch }} PR deb and rpm"
+          pnpm make
+
+      - name: Verify Linux package
+        if: matrix.os == 'linux'
+        working-directory: apps/desktop
+        run: pnpm verify:linux-package
+
       - name: Get version from package.json
         id: package_version
         working-directory: apps/desktop
@@ -544,6 +606,24 @@ jobs:
           fi
           echo "Created $named_nupkg and $named_releases"
 
+      - name: Rename artifacts (Linux)
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          # The update server finds a Linux release by "linux" and the
+          # architecture in a .deb or .rpm name.
+          make_dir="apps/desktop/out/make"
+          shopt -s nullglob
+          for kind in deb rpm; do
+            files=("$make_dir/$kind/${{ matrix.arch }}"/*.$kind)
+            if [ ${#files[@]} -ne 1 ]; then
+              echo "::error::Expected exactly one .$kind in $make_dir/$kind/${{ matrix.arch }}, found ${#files[@]}."
+              exit 1
+            fi
+            mv "${files[0]}" "$make_dir/Amical-linux-${{ matrix.arch }}.$kind"
+            echo "Renamed ${files[0]} → $make_dir/Amical-linux-${{ matrix.arch }}.$kind"
+          done
+
       - name: Upload artifacts (macOS)
         if: matrix.os == 'macos'
         uses: actions/upload-artifact@v4
@@ -562,6 +642,15 @@ jobs:
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/Amical-windows-${{ matrix.arch }}.exe
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/*.nupkg
             apps/desktop/out/make/squirrel.windows/${{ matrix.arch }}/RELEASES*
+
+      - name: Upload artifacts (Linux)
+        if: matrix.os == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            apps/desktop/out/make/Amical-linux-${{ matrix.arch }}.deb
+            apps/desktop/out/make/Amical-linux-${{ matrix.arch }}.rpm
 
   release:
     name: Create Release
@@ -749,6 +838,10 @@ jobs:
             echo "- **Windows (x64)**: Download the .exe installer for 64-bit Windows"
             echo "- **Windows (ARM64)**: Download the ARM64 .exe installer for Windows on Arm"
             echo ""
+            echo "#### Linux"
+            echo "- **Debian, Ubuntu (x64)**: Download the .deb package"
+            echo "- **Fedora (x64)**: Download the .rpm package"
+            echo ""
             echo "### Installation"
             echo ""
             echo "**macOS**:"
@@ -759,6 +852,11 @@ jobs:
             echo "- Download and run the .exe installer"
             echo "- Follow the installation wizard"
             echo "- The app will be installed to your user AppData folder and a shortcut will be created"
+            echo ""
+            echo "**Linux**:"
+            echo "- **deb**: \`sudo apt install ./Amical-linux-x64.deb\`"
+            echo "- **rpm**: \`sudo dnf install ./Amical-linux-x64.rpm\`"
+            echo "- Amical does not update itself on Linux: when a new version is out, it shows a notice, and you install the new package the same way"
             echo ""
             echo "The ZIP files are primarily for automatic updates. We recommend using the DMG files for initial installation on macOS."
           } > release-notes.md
@@ -865,10 +963,10 @@ jobs:
       - name: List artifacts
         run: |
           echo "=== Full artifacts directory structure ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES*" \) | sort
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES*" -o -name "*.deb" -o -name "*.rpm" \) | sort
           echo ""
           echo "=== Detailed file listing ==="
-          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES*" \) -exec ls -la {} \;
+          find artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES*" -o -name "*.deb" -o -name "*.rpm" \) -exec ls -la {} \;
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -892,6 +990,8 @@ jobs:
             artifacts/windows-arm64/*.exe
             artifacts/windows-arm64/Amical-windows-arm64-*-full.nupkg
             artifacts/windows-arm64/RELEASES-windows-arm64
+            artifacts/linux-x64/Amical-linux-x64.deb
+            artifacts/linux-x64/Amical-linux-x64.rpm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -953,5 +1053,7 @@ jobs:
             artifacts/windows-arm64/*.exe
             artifacts/windows-arm64/Amical-windows-arm64-*-full.nupkg
             artifacts/windows-arm64/RELEASES-windows-arm64
+            artifacts/linux-x64/Amical-linux-x64.deb
+            artifacts/linux-x64/Amical-linux-x64.rpm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
