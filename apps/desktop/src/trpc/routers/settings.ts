@@ -264,8 +264,15 @@ export const settingsRouter = createRouter({
   // Whether global shortcuts can work in this session (false on Linux until
   // the helper has a key input backend)
   getShortcutSupport: procedure.query(({ ctx }) => {
+    const shortcutManager = ctx.services.shortcutManager;
     return {
-      available: ctx.services.shortcutManager?.shortcutsAvailable() ?? false,
+      available: shortcutManager?.shortcutsAvailable() ?? false,
+      // Linux portal shortcuts: the system binds the keys, and some hold
+      // shortcuts work as tap to start, tap to stop.
+      ...(shortcutManager?.systemShortcutSupport() ?? {
+        systemShortcuts: false,
+        holdSupport: "any" as const,
+      }),
     };
   }),
   // Replace one action's shortcut bindings

@@ -334,3 +334,87 @@ export const LINUX_KEYCODES = {
   F23: 193,
   F24: 194,
 } as const;
+
+/**
+ * Linux (evdev) key code of each KeyboardEvent.code. Both name the physical
+ * key, so the keyboard layout does not matter. On Wayland the shortcut
+ * recorder reads keys from the app's own windows with this table. Escape is
+ * left out: the shortcut manager never counts it as a shortcut key.
+ */
+export const LINUX_KEYCODES_BY_DOM_CODE: Readonly<Record<string, number>> =
+  (() => {
+    const K = LINUX_KEYCODES;
+    const codes: Record<string, number> = {
+      Minus: K.MINUS,
+      Equal: K.EQUAL,
+      Backspace: K.BACKSPACE,
+      Tab: K.TAB,
+      BracketLeft: K.LEFT_BRACKET,
+      BracketRight: K.RIGHT_BRACKET,
+      Enter: K.ENTER,
+      ControlLeft: K.CTRL,
+      Semicolon: K.SEMICOLON,
+      Quote: K.QUOTE,
+      Backquote: K.BACKTICK,
+      ShiftLeft: K.SHIFT,
+      Backslash: K.BACKSLASH,
+      Comma: K.COMMA,
+      Period: K.PERIOD,
+      Slash: K.SLASH,
+      ShiftRight: K.RSHIFT,
+      NumpadMultiply: K.KEYPAD_MULTIPLY,
+      AltLeft: K.ALT,
+      Space: K.SPACE,
+      CapsLock: K.CAPS_LOCK,
+      NumLock: K.NUM_LOCK,
+      ScrollLock: K.SCROLL_LOCK,
+      NumpadSubtract: K.KEYPAD_MINUS,
+      NumpadAdd: K.KEYPAD_PLUS,
+      NumpadDecimal: K.KEYPAD_DECIMAL,
+      NumpadEnter: K.KEYPAD_ENTER,
+      ControlRight: K.RCTRL,
+      NumpadDivide: K.KEYPAD_DIVIDE,
+      PrintScreen: K.PRINT_SCREEN,
+      AltRight: K.RALT,
+      Home: K.HOME,
+      ArrowUp: K.UP,
+      PageUp: K.PAGE_UP,
+      ArrowLeft: K.LEFT,
+      ArrowRight: K.RIGHT,
+      End: K.END,
+      ArrowDown: K.DOWN,
+      PageDown: K.PAGE_DOWN,
+      Insert: K.INSERT,
+      Delete: K.DELETE,
+      AudioVolumeMute: K.MUTE,
+      AudioVolumeDown: K.VOLUME_DOWN,
+      AudioVolumeUp: K.VOLUME_UP,
+      Pause: K.PAUSE,
+      MetaLeft: K.SUPER,
+      MetaRight: K.RSUPER,
+      ContextMenu: K.MENU,
+    };
+    const digits = [
+      "ZERO",
+      "ONE",
+      "TWO",
+      "THREE",
+      "FOUR",
+      "FIVE",
+      "SIX",
+      "SEVEN",
+      "EIGHT",
+      "NINE",
+    ] as const;
+    digits.forEach((name, digit) => {
+      codes[`Digit${digit}`] = K[name];
+      codes[`Numpad${digit}`] = K[`KEYPAD_${digit}` as keyof typeof K];
+    });
+    for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+      codes[`Key${letter}`] = K[letter as keyof typeof K];
+    }
+    for (let n = 1; n <= 24; n++) {
+      codes[`F${n}`] = K[`F${n}` as keyof typeof K];
+    }
+    return codes;
+  })();

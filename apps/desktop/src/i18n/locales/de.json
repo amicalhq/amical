@@ -907,7 +907,9 @@
         "handsFreeUpdated": "Tastenkürzel für Freisprechmodus aktualisiert",
         "pasteLastTranscriptUpdated": "Tastenkürzel zum Einfügen der letzten Transkription aktualisiert",
         "newNoteUpdated": "Tastenkürzel für neue Notiz aktualisiert",
-        "draftModeUpdated": "Entwurf-Tastenkürzel aktualisiert"
+        "draftModeUpdated": "Entwurf-Tastenkürzel aktualisiert",
+        "systemDialogClosed": "Tastenkürzel nicht geändert: Der Systemdialog wurde geschlossen",
+        "systemShortcutFailed": "Das System hat dieses Tastenkürzel nicht übernommen. Versuche andere Tasten"
       },
       "pushToTalk": {
         "label": "Push-to-Talk",
@@ -943,7 +945,8 @@
         "conflictsWithSystem": "{{shortcut}} steht in Konflikt mit einem System-Tastenkürzel",
         "addModifier": "Füge eine Modifikator-Taste wie {{mod1}}, {{mod2}} oder {{mod3}} hinzu",
         "duplicateModifierPairs": "Linke und rechte {{modifier}}-Taste können nicht gleichzeitig verwendet werden",
-        "overlapsWithPushToTalk": "Dies überschneidet sich mit deinem Push-to-Talk-Tastenkürzel und kann zu Problemen führen"
+        "overlapsWithPushToTalk": "Dies überschneidet sich mit deinem Push-to-Talk-Tastenkürzel und kann zu Problemen führen",
+        "systemShortcutShape": "Auf diesem Desktop braucht ein Tastenkürzel genau eine Taste außer Ctrl, Alt, Shift oder Super, zum Beispiel Ctrl+Alt+Space"
       },
       "input": {
         "pressKeys": "Tasten drücken...",
@@ -952,6 +955,10 @@
         "clear": "Tastenkürzel entfernen",
         "cancel": "Bearbeitung abbrechen",
         "add": "Tastenkürzel hinzufügen"
+      },
+      "systemHold": {
+        "modifierChord": "Auf diesem Desktop startet ein Tastenkürzel mit Ctrl, Alt, Shift oder Super beim ersten Tippen und stoppt beim zweiten. Zum Halten und Sprechen nutze eine einzelne Taste wie F9.",
+        "tapOnly": "Auf diesem Desktop startet dieses Tastenkürzel beim ersten Tippen und stoppt beim zweiten."
       }
     },
     "notes": {

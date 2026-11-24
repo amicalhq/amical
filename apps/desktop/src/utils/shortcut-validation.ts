@@ -41,6 +41,8 @@ export interface ValidationContext {
   candidateType: ShortcutType;
   shortcutsByType: ShortcutsConfig;
   platform: NodeJS.Platform;
+  /** The system binds the shortcuts (Linux portal shortcuts). */
+  systemShortcuts?: boolean;
 }
 
 export interface ValidationResult {
@@ -260,6 +262,24 @@ export function checkDuplicateModifierPairs(
 }
 
 /**
+ * A system (portal) shortcut is modifiers plus exactly one other key: the
+ * shortcut syntax of the desktops has no modifier-only shortcuts.
+ */
+export function checkSystemShortcutShape(
+  keys: number[],
+  platform: NodeJS.Platform,
+): ValidationResult {
+  const { modifiers } = platformKeys(platform);
+  const others = keys.filter((key) => !modifiers.has(key));
+  return others.length === 1
+    ? { valid: true }
+    : {
+        valid: false,
+        error: { key: "settings.shortcuts.validation.systemShortcutShape" },
+      };
+}
+
+/**
  * Check if toggle shortcut is a subset of PTT shortcut (soft warning)
  */
 export function checkSubsetConflict(
@@ -300,8 +320,13 @@ export function checkSubsetConflict(
 export function validateShortcutBindings(
   context: ValidationContext,
 ): ValidationResult {
-  const { candidateBindings, candidateType, shortcutsByType, platform } =
-    context;
+  const {
+    candidateBindings,
+    candidateType,
+    shortcutsByType,
+    platform,
+    systemShortcuts,
+  } = context;
 
   // An empty binding list intentionally means "unassigned" for optional
   // actions. Push-to-talk remains required.
@@ -335,6 +360,9 @@ export function validateShortcutBindings(
       checkReservedShortcut(candidateShortcut, platform),
       checkAlphanumericOnly(candidateShortcut, platform),
       checkDuplicateModifierPairs(candidateShortcut, platform),
+      ...(systemShortcuts
+        ? [checkSystemShortcutShape(candidateShortcut, platform)]
+        : []),
     ];
     const error = checks.find((result) => !result.valid);
     if (error) return error;

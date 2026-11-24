@@ -904,7 +904,9 @@
         "handsFreeUpdated": "Hands-free mode shortcut updated",
         "pasteLastTranscriptUpdated": "Paste last transcript shortcut updated",
         "newNoteUpdated": "New note shortcut updated",
-        "draftModeUpdated": "Draft shortcut updated"
+        "draftModeUpdated": "Draft shortcut updated",
+        "systemDialogClosed": "Shortcut not changed: the system dialog was closed",
+        "systemShortcutFailed": "The system did not accept this shortcut. Try other keys"
       },
       "pushToTalk": {
         "label": "Push to talk",
@@ -940,7 +942,8 @@
         "conflictsWithSystem": "{{shortcut}} conflicts with a system shortcut",
         "addModifier": "Add a modifier key like {{mod1}}, {{mod2}}, or {{mod3}}",
         "duplicateModifierPairs": "Can't use both left and right {{modifier}} together",
-        "overlapsWithPushToTalk": "This overlaps with your Push-to-talk shortcut and may cause issues"
+        "overlapsWithPushToTalk": "This overlaps with your Push-to-talk shortcut and may cause issues",
+        "systemShortcutShape": "On this desktop, a shortcut needs one key that is not Ctrl, Alt, Shift or Super, for example Ctrl+Alt+Space"
       },
       "input": {
         "pressKeys": "Press keys...",
@@ -949,6 +952,10 @@
         "clear": "Clear shortcut",
         "cancel": "Cancel editing",
         "add": "Add shortcut"
+      },
+      "systemHold": {
+        "modifierChord": "On this desktop, a shortcut with Ctrl, Alt, Shift or Super works as tap to start, tap to stop. For hold to talk, use one key such as F9.",
+        "tapOnly": "On this desktop, this shortcut works as tap to start, tap to stop."
       }
     },
     "notes": {

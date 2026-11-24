@@ -1,13 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "events";
 import { globalShortcut } from "electron";
 import { SettingsService } from "@/services/settings-service";
 import { NativeBridge } from "@/services/platform/native-bridge-service";
 import {
+  HoldSupport,
   KeyEventPayload,
   HelperEvent,
   ShortcutDescriptor,
   ShortcutsBoundEvent,
 } from "@amical/types";
+import type { AppSettingsData } from "@/db/schema";
 import { getApplicationLocale } from "@/i18n/application-locale";
 import { initMainI18n } from "@/i18n/main";
 import { logger } from "@/main/logger";
@@ -29,12 +32,15 @@ import {
   AppScopeTag,
 } from "../runtime/tags";
 import { addRelease, step, up } from "../runtime/layer-helpers";
+import { watchWindowKeys } from "./window-key-source";
 
 const log = logger.main;
 const PRESSED_KEYS_RECHECK_INTERVAL_MS = 10000;
 // Chord mode: a hold shortcut with a reliable release stops after this long
 // without one, in case the compositor lost it.
 const CHORD_HOLD_LIMIT_MS = 60_000;
+// Chord mode: how long a shortcut change waits for the system dialog.
+const SYSTEM_BIND_WAIT_MS = 5 * 60_000;
 
 // The shortcuts sent to a portal backend, with the label that the system
 // dialog shows and how each one is used.
@@ -57,6 +63,14 @@ const CHORD_SHORTCUTS = [
   },
   { type: "newNote", label: "settings.shortcuts.newNote.label", kind: "tap" },
 ] as const;
+
+type SystemShortcutIds = NonNullable<AppSettingsData["systemShortcutIds"]>;
+type ShortcutBindFailure = ShortcutsBoundEvent["payload"]["failed"][number];
+
+/** One key set's identity, independent of key order. */
+function chordKey(keyCodes: number[]): string {
+  return [...keyCodes].sort((a, b) => a - b).join("+");
+}
 
 interface KeyInfo {
   keyCode: number;
@@ -115,6 +129,20 @@ export class ShortcutManager extends EventEmitter {
   private chordHoldReliable = new Map<string, boolean>();
   private chordHold: { id: string; reliable: boolean } | null = null;
   private chordHoldTimer: NodeJS.Timeout | null = null;
+  // Chord mode: the shortcut id of each key set. The system keeps the first
+  // key that it stored for an id, so a changed key set gets a new id (one
+  // system dialog) and an unchanged one keeps its id (no dialog).
+  private systemIds: SystemShortcutIds = {};
+  // A shortcut change made in Amical waits for the system's answer.
+  private systemBindWaiter: {
+    ids: Set<string>;
+    finish: (failure: ShortcutBindFailure | null) => void;
+  } | null = null;
+  // Chord mode recording: the keys held in Amical's windows, and the keys of
+  // an Amical shortcut that the system took before the window saw them.
+  private stopWindowKeys: (() => void) | null = null;
+  private windowKeys: number[] = [];
+  private grabbedKeys: number[] = [];
 
   // Generic command kill-switch (the onboarding wizard sets it: on while the
   // wizard is open, off while a dictation try-it step is on screen). While
@@ -151,6 +179,21 @@ export class ShortcutManager extends EventEmitter {
     if (!isLinux()) return true;
     const capabilities = this.nativeBridge.getHelperCapabilities();
     return !!capabilities && capabilities.keyInputMode !== "none";
+  }
+
+  /**
+   * Chord mode facts for the Shortcuts page: whether the system binds the
+   * shortcuts, and which hold shortcuts get a reliable release.
+   */
+  systemShortcutSupport(): {
+    systemShortcuts: boolean;
+    holdSupport: HoldSupport;
+  } {
+    return {
+      systemShortcuts: this.isChordMode(),
+      holdSupport:
+        this.nativeBridge?.getHelperCapabilities()?.holdSupport ?? "any",
+    };
   }
 
   setCommandsSuppressed(suppressed: boolean) {
@@ -220,6 +263,10 @@ export class ShortcutManager extends EventEmitter {
     try {
       const shortcuts = await this.settingsService.getShortcuts();
       this.shortcuts = shortcuts;
+      if (isLinux()) {
+        this.systemIds =
+          (await this.settingsService.getSystemShortcutIds()) ?? {};
+      }
       log.info("Shortcuts loaded", { shortcuts });
     } catch (error) {
       log.error("Failed to load shortcuts", { error });
@@ -235,10 +282,10 @@ export class ShortcutManager extends EventEmitter {
    * on key-down (see SetShortcutsParamsSchema). Both groups are matched
    * identically now; the split (push-to-talk/draft vs toggle/paste/new-note) is
    * retained only as this grouping and may be collapsed later. Empty chords are
-   * dropped.
+   * dropped. Returns whether the helper took the list.
    */
-  private async syncShortcutsToNative() {
-    if (!this.nativeBridge) return;
+  private async syncShortcutsToNative(): Promise<boolean> {
+    if (!this.nativeBridge) return false;
     try {
       const subsetChords = [
         ...this.shortcuts.pushToTalk,
@@ -249,20 +296,23 @@ export class ShortcutManager extends EventEmitter {
         ...this.shortcuts.pasteLastTranscript,
         ...this.shortcuts.newNote,
       ].filter((chord) => chord.length > 0);
-      await this.nativeBridge.setShortcuts({
+      const synced = await this.nativeBridge.setShortcuts({
         subsetChords,
         exactChords,
         // A portal backend binds each shortcut by id with the compositor.
         ...(isLinux() && { shortcuts: await this.shortcutDescriptors() }),
       });
       log.info("Shortcuts synced to native helper");
+      return synced;
     } catch (error) {
       log.error("Failed to sync shortcuts to native helper", { error });
+      return false;
     }
   }
 
-  /** One descriptor per configured chord, id `${type}:${index}`. */
+  /** One descriptor per configured chord, with its stored shortcut id. */
   private async shortcutDescriptors(): Promise<ShortcutDescriptor[]> {
+    await this.refreshSystemIds();
     const i18n = await initMainI18n(getApplicationLocale());
     return CHORD_SHORTCUTS.flatMap(({ type, label, kind }) =>
       this.shortcuts[type].flatMap((keyCodes, index) =>
@@ -270,7 +320,8 @@ export class ShortcutManager extends EventEmitter {
           ? []
           : [
               {
-                id: `${type}:${index}`,
+                // refreshSystemIds gave every chord an id.
+                id: this.systemIdOf(type, keyCodes)!,
                 keyCodes,
                 label:
                   index === 0
@@ -281,6 +332,74 @@ export class ShortcutManager extends EventEmitter {
             ],
       ),
     );
+  }
+
+  /**
+   * Gives each configured chord a shortcut id, drops the ids of chords that
+   * are gone, and stores the result when it changed. Returns the new ids.
+   *
+   * A new id is random, not made from the keys: KDE stores a cancelled id
+   * with no key, so a retry with the same keys needs an id it has not seen.
+   */
+  private async refreshSystemIds(): Promise<string[]> {
+    const added: string[] = [];
+    let dropped = false;
+    const next: SystemShortcutIds = {};
+    for (const { type } of CHORD_SHORTCUTS) {
+      const known = this.systemIds[type] ?? {};
+      const ids: Record<string, string> = {};
+      for (const keyCodes of this.shortcuts[type]) {
+        if (keyCodes.length === 0) continue;
+        const key = chordKey(keyCodes);
+        ids[key] = known[key] ?? `${type}:${randomUUID().slice(0, 8)}`;
+        if (!known[key]) added.push(ids[key]);
+      }
+      if (Object.keys(known).some((key) => !ids[key])) dropped = true;
+      if (Object.keys(ids).length > 0) next[type] = ids;
+    }
+    this.systemIds = next;
+    if (added.length > 0 || dropped) {
+      try {
+        await this.settingsService.setSystemShortcutIds(next);
+      } catch (error) {
+        log.error("Failed to store the system shortcut ids", { error });
+      }
+    }
+    return added;
+  }
+
+  private systemIdOf(type: ShortcutType, keyCodes: number[]) {
+    return this.systemIds[type]?.[chordKey(keyCodes)];
+  }
+
+  /** Chord mode: the system binds the shortcuts (Linux portal shortcuts). */
+  private isChordMode(): boolean {
+    return (
+      isLinux() &&
+      this.nativeBridge?.getHelperCapabilities()?.keyInputMode === "chord"
+    );
+  }
+
+  /**
+   * Resolves with the first failure of `ids` in the system's answer, or null
+   * when all of them are bound (or after SYSTEM_BIND_WAIT_MS).
+   */
+  private waitForSystemBind(
+    ids: Set<string>,
+  ): Promise<ShortcutBindFailure | null> {
+    this.systemBindWaiter?.finish(null);
+    return new Promise((resolve) => {
+      const finish = (failure: ShortcutBindFailure | null) => {
+        clearTimeout(timer);
+        this.systemBindWaiter = null;
+        resolve(failure);
+      };
+      const timer = setTimeout(() => {
+        log.warn("No answer from the system shortcut dialog");
+        finish(null);
+      }, SYSTEM_BIND_WAIT_MS);
+      this.systemBindWaiter = { ids, finish };
+    });
   }
 
   async reloadShortcuts() {
@@ -575,11 +694,13 @@ export class ShortcutManager extends EventEmitter {
     type: ShortcutType,
     bindings: ShortcutBindings,
   ): Promise<ValidationResult> {
+    const chordMode = this.isChordMode();
     const result = validateShortcutBindings({
       candidateBindings: bindings,
       candidateType: type,
       shortcutsByType: this.shortcuts,
       platform: process.platform,
+      systemShortcuts: chordMode,
     });
 
     if (!result.valid) {
@@ -587,6 +708,8 @@ export class ShortcutManager extends EventEmitter {
     }
 
     // Persist to settings
+    const previousShortcuts = this.shortcuts;
+    const previousSystemIds = this.systemIds;
     const updatedShortcuts = {
       ...this.shortcuts,
       [type]: bindings,
@@ -597,14 +720,61 @@ export class ShortcutManager extends EventEmitter {
     this.shortcuts = updatedShortcuts;
     log.info("Shortcut bindings updated", { type, bindings });
 
-    // Sync to native helper
-    await this.syncShortcutsToNative();
+    // Chord mode: a new key set gets a new id, which the system shows in its
+    // dialog. Wait for the answer; without approval, restore the old keys
+    // (the system now has none for this session).
+    let systemAnswer: Promise<ShortcutBindFailure | null> | null = null;
+    if (chordMode) {
+      const newIds = await this.refreshSystemIds();
+      if (newIds.length > 0) {
+        systemAnswer = this.waitForSystemBind(new Set(newIds));
+      }
+    }
+
+    // Sync to native helper. A helper that did not take the list binds it
+    // when it starts; do not wait for that.
+    const synced = await this.syncShortcutsToNative();
+    if (!synced) this.systemBindWaiter?.finish(null);
+
+    const failure = systemAnswer ? await systemAnswer : null;
+    if (failure) {
+      log.warn("The system did not bind the new shortcut; restoring", {
+        type,
+        reason: failure.reason,
+      });
+      // The old keys keep their old ids, which the system binds silently.
+      await this.settingsService.setShortcuts(previousShortcuts);
+      await this.settingsService.setSystemShortcutIds(previousSystemIds);
+      this.shortcuts = previousShortcuts;
+      this.systemIds = previousSystemIds;
+      await this.syncShortcutsToNative();
+      return {
+        valid: false,
+        error: {
+          key:
+            failure.reason === "dismissed" || failure.reason === "denied"
+              ? "settings.shortcuts.toast.systemDialogClosed"
+              : "settings.shortcuts.toast.systemShortcutFailed",
+        },
+      };
+    }
 
     return result;
   }
 
   setIsRecordingShortcut(isRecording: boolean) {
     this.isRecordingShortcut = isRecording;
+    // Chord mode: the helper sees no keys; read them from Amical's windows.
+    this.stopWindowKeys?.();
+    this.stopWindowKeys = null;
+    this.windowKeys = [];
+    this.grabbedKeys = [];
+    if (isRecording && this.isChordMode()) {
+      this.stopWindowKeys = watchWindowKeys((keys) => {
+        this.windowKeys = keys;
+        this.emitRecordingKeys();
+      });
+    }
     if (isRecording) {
       this.exactMatchState.toggleRecording = false;
       this.exactMatchState.pasteLastTranscript = false;
@@ -695,12 +865,26 @@ export class ShortcutManager extends EventEmitter {
       bound: payload.bound.map(({ id }) => id),
       failed: payload.failed.map(({ id, reason }) => ({ id, reason })),
     });
+    // An answer for an older list names none of the waited-for ids.
+    const waiter = this.systemBindWaiter;
+    if (!waiter) return;
+    const failure = payload.failed.find(({ id }) => waiter.ids.has(id));
+    if (failure) {
+      waiter.finish(failure);
+    } else if (
+      [...waiter.ids].every((id) => payload.bound.some((b) => b.id === id))
+    ) {
+      waiter.finish(null);
+    }
   }
 
   // Chord mode: the compositor reports bound shortcuts by id.
   private handleChordEdge(id: string, down: boolean) {
-    if (this.isRecordingShortcut) return;
     const type = id.slice(0, id.indexOf(":"));
+    if (this.isRecordingShortcut) {
+      if (this.stopWindowKeys) this.recordGrabbedShortcut(id, down);
+      return;
+    }
     if (type === "pushToTalk" || type === "draftMode") {
       this.handleChordHold(id, type === "draftMode", down);
       return;
@@ -711,6 +895,23 @@ export class ShortcutManager extends EventEmitter {
       this.emit("paste-last-transcript-triggered");
     }
     if (type === "newNote") this.emit("open-notes-window-triggered");
+  }
+
+  // While recording, the system takes the keys of an Amical shortcut before
+  // the window sees them; its Activated stands in for them, so that the
+  // recorder sees the whole chord (and validation names the conflict).
+  private recordGrabbedShortcut(id: string, down: boolean) {
+    const keyCodes = CHORD_SHORTCUTS.flatMap(({ type }) =>
+      this.shortcuts[type].filter((keys) => this.systemIdOf(type, keys) === id),
+    )[0];
+    this.grabbedKeys = down && keyCodes ? keyCodes : [];
+    this.emitRecordingKeys();
+  }
+
+  private emitRecordingKeys() {
+    this.emit("activeKeysChanged", [
+      ...new Set([...this.windowKeys, ...this.grabbedKeys]),
+    ]);
   }
 
   // A hold shortcut with a reliable release is push to talk; without one it

@@ -379,6 +379,15 @@ export interface AppSettingsData {
     newNote?: number[][];
     draftMode?: number[][];
   };
+  // Linux portal shortcuts: the shortcut id of each key set, per action
+  // ("29+56+57" → "pushToTalk:1a2b3c4d"). The system keeps the first key
+  // that it stored for an id, so a changed key set needs a new id.
+  systemShortcutIds?: Partial<
+    Record<
+      keyof NonNullable<AppSettingsData["shortcuts"]>,
+      Record<string, string>
+    >
+  >;
 
   modelProvidersConfig?: {
     openRouter?: {

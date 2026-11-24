@@ -907,7 +907,9 @@
         "handsFreeUpdated": "Atajo de modo manos libres actualizado",
         "pasteLastTranscriptUpdated": "Atajo de pegar última transcripción actualizado",
         "newNoteUpdated": "Atajo de nueva nota actualizado",
-        "draftModeUpdated": "Atajo de Borrador actualizado"
+        "draftModeUpdated": "Atajo de Borrador actualizado",
+        "systemDialogClosed": "El atajo no cambió: se cerró el diálogo del sistema",
+        "systemShortcutFailed": "El sistema no aceptó este atajo. Prueba con otras teclas"
       },
       "pushToTalk": {
         "label": "Pulsar para hablar",
@@ -943,7 +945,8 @@
         "conflictsWithSystem": "{{shortcut}} entra en conflicto con un atajo del sistema",
         "addModifier": "Agrega una tecla modificadora como {{mod1}}, {{mod2}} o {{mod3}}",
         "duplicateModifierPairs": "No se pueden usar las teclas {{modifier}} izquierda y derecha juntas",
-        "overlapsWithPushToTalk": "Esto se superpone con tu atajo de Pulsar para hablar y puede causar problemas"
+        "overlapsWithPushToTalk": "Esto se superpone con tu atajo de Pulsar para hablar y puede causar problemas",
+        "systemShortcutShape": "En este escritorio, un atajo necesita una tecla que no sea Ctrl, Alt, Shift ni Super, por ejemplo Ctrl+Alt+Space"
       },
       "input": {
         "pressKeys": "Presiona las teclas...",
@@ -952,6 +955,10 @@
         "clear": "Quitar atajo",
         "cancel": "Cancelar edición",
         "add": "Añadir atajo"
+      },
+      "systemHold": {
+        "modifierChord": "En este escritorio, un atajo con Ctrl, Alt, Shift o Super funciona con un toque para empezar y otro para detener. Para mantener pulsado y hablar, usa una sola tecla, como F9.",
+        "tapOnly": "En este escritorio, este atajo funciona con un toque para empezar y otro para detener."
       }
     },
     "notes": {

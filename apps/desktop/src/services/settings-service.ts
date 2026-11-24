@@ -370,6 +370,16 @@ export class SettingsService extends EventEmitter {
     await updateSettingsSection("shortcuts", dataToStore);
   }
 
+  async getSystemShortcutIds(): Promise<AppSettingsData["systemShortcutIds"]> {
+    return await getSettingsSection("systemShortcutIds");
+  }
+
+  async setSystemShortcutIds(
+    ids: AppSettingsData["systemShortcutIds"],
+  ): Promise<void> {
+    await updateSettingsSection("systemShortcutIds", ids);
+  }
+
   /**
    * Get model providers configuration
    */

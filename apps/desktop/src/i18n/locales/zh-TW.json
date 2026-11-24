@@ -907,7 +907,9 @@
         "handsFreeUpdated": "免持模式快捷鍵已更新",
         "pasteLastTranscriptUpdated": "貼上最後一次轉錄內容的快捷鍵已更新",
         "newNoteUpdated": "建立新筆記的快捷鍵已更新",
-        "draftModeUpdated": "草稿快捷鍵已更新"
+        "draftModeUpdated": "草稿快捷鍵已更新",
+        "systemDialogClosed": "快捷鍵未變更：系統對話框已關閉",
+        "systemShortcutFailed": "系統未接受此快捷鍵，請改用其他按鍵"
       },
       "pushToTalk": {
         "label": "按住說話",
@@ -943,7 +945,8 @@
         "conflictsWithSystem": "{{shortcut}} 與目前的系統快捷鍵衝突",
         "addModifier": "請增加修飾鍵（如 {{mod1}}、{{mod2}} 或是 {{mod3}}）",
         "duplicateModifierPairs": "無法同時使用左側與右側的 {{modifier}}",
-        "overlapsWithPushToTalk": "這與您的「按住說話」快捷鍵重疊，可能會導致問題"
+        "overlapsWithPushToTalk": "這與您的「按住說話」快捷鍵重疊，可能會導致問題",
+        "systemShortcutShape": "在此桌面環境中，快捷鍵需要一個 Ctrl、Alt、Shift 或 Super 以外的按鍵，例如 Ctrl+Alt+Space"
       },
       "input": {
         "pressKeys": "請按下按鍵...",
@@ -952,6 +955,10 @@
         "clear": "清除快捷鍵",
         "cancel": "取消編輯",
         "add": "新增快捷鍵"
+      },
+      "systemHold": {
+        "modifierChord": "在此桌面環境中，含有 Ctrl、Alt、Shift 或 Super 的快捷鍵會改為按一下開始、再按一下停止。若要按住說話，請使用單一按鍵，例如 F9。",
+        "tapOnly": "在此桌面環境中，此快捷鍵會改為按一下開始、再按一下停止。"
       }
     },
     "notes": {

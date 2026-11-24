@@ -17,6 +17,7 @@ import {
   type ShortcutsConfig,
   type ShortcutType,
 } from "@/utils/shortcut-validation";
+import { LINUX_MODIFIER_KEYCODES } from "@/utils/shortcut-constants";
 
 const EMPTY_SHORTCUTS: ShortcutsConfig = {
   pushToTalk: [],
@@ -104,6 +105,29 @@ export function ShortcutBindingsEditor({
         </Button>
       )}
     </div>
+  );
+}
+
+// Linux portal shortcuts: some hold shortcuts get no reliable release from
+// the system and work as tap to start, tap to stop.
+function SystemHoldHint({ bindings }: { bindings: ShortcutBindings }) {
+  const { t } = useTranslation();
+  const { data: support } = api.settings.getShortcutSupport.useQuery();
+  if (!support?.systemShortcuts) return null;
+  const hasModifier = bindings.some((binding) =>
+    binding.some((key) => LINUX_MODIFIER_KEYCODES.has(key)),
+  );
+  const message =
+    support.holdSupport === "tap-only"
+      ? t("settings.shortcuts.systemHold.tapOnly")
+      : support.holdSupport === "unmodified-key-only" && hasModifier
+        ? t("settings.shortcuts.systemHold.modifierChord")
+        : null;
+  if (!message) return null;
+  return (
+    <p className="text-xs text-amber-600 dark:text-amber-500 mt-2 max-w-md">
+      {message}
+    </p>
   );
 }
 
@@ -220,6 +244,7 @@ export function ShortcutsSettingsPage() {
                   <p className="text-xs text-muted-foreground mt-1 max-w-md">
                     {t("settings.shortcuts.pushToTalk.description")}
                   </p>
+                  <SystemHoldHint bindings={shortcuts.pushToTalk} />
                 </div>
                 <ShortcutBindingsEditor
                   type="pushToTalk"
@@ -318,6 +343,7 @@ export function ShortcutsSettingsPage() {
                   <p className="text-xs text-muted-foreground mt-1 max-w-md">
                     {t("settings.shortcuts.draft.description")}
                   </p>
+                  <SystemHoldHint bindings={shortcuts.draftMode} />
                 </div>
                 <ShortcutBindingsEditor
                   type="draftMode"

@@ -907,7 +907,9 @@
         "handsFreeUpdated": "핸즈프리 모드 단축키가 업데이트되었습니다",
         "pasteLastTranscriptUpdated": "마지막 받아쓰기 내용 붙여넣기 단축키가 변경되었습니다",
         "newNoteUpdated": "새 메모 단축키가 업데이트되었습니다",
-        "draftModeUpdated": "초안 단축키가 업데이트되었습니다"
+        "draftModeUpdated": "초안 단축키가 업데이트되었습니다",
+        "systemDialogClosed": "단축키가 변경되지 않았습니다. 시스템 대화상자가 닫혔습니다",
+        "systemShortcutFailed": "시스템이 이 단축키를 받아들이지 않았습니다. 다른 키를 사용해 보세요"
       },
       "pushToTalk": {
         "label": "누르며 말하기",
@@ -943,7 +945,8 @@
         "conflictsWithSystem": "단축키 {{shortcut}} 조합이 시스템 단축키와 충돌합니다",
         "addModifier": "{{mod1}}, {{mod2}}, {{mod3}} 같은 보조 키를 추가하세요",
         "duplicateModifierPairs": "{{modifier}} 키의 왼쪽과 오른쪽을 동시에 사용할 수 없습니다",
-        "overlapsWithPushToTalk": "누르며 말하기 단축키와 겹쳐서 문제가 발생할 수 있습니다"
+        "overlapsWithPushToTalk": "누르며 말하기 단축키와 겹쳐서 문제가 발생할 수 있습니다",
+        "systemShortcutShape": "이 데스크톱에서는 단축키에 Ctrl, Alt, Shift, Super가 아닌 키가 하나 있어야 합니다(예: Ctrl+Alt+Space)"
       },
       "input": {
         "pressKeys": "키 누르기...",
@@ -952,6 +955,10 @@
         "clear": "단축키 지우기",
         "cancel": "편집 취소",
         "add": "단축키 추가"
+      },
+      "systemHold": {
+        "modifierChord": "이 데스크톱에서는 Ctrl, Alt, Shift, Super가 포함된 단축키를 한 번 누르면 시작하고 다시 누르면 멈춥니다. 누르고 있는 동안 말하려면 F9 같은 키 하나를 사용하세요.",
+        "tapOnly": "이 데스크톱에서는 이 단축키를 한 번 누르면 시작하고 다시 누르면 멈춥니다."
       }
     },
     "notes": {
