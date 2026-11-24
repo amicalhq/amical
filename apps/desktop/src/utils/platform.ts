@@ -45,8 +45,11 @@ export function matchPlatform<T>(
   return arms.darwin;
 }
 
-/** Desktop-file id of the Linux package. The portal and URL handler use it. */
-export const LINUX_APP_ID = "amical-desktop";
+/**
+ * Desktop-file id of the Linux package: the reverse-DNS id of the macOS
+ * bundle. The portals, the URL handler and the package names use it.
+ */
+export const LINUX_APP_ID = "ai.amical.desktop";
 
 /**
  * Get the native helper name for the current platform

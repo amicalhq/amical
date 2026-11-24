@@ -10,10 +10,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { LINUX_APP_ID } from "../src/utils/platform";
 
 // Ubuntu 22.04. Every ELF file in the package must run there.
 const MAX_GLIBC = [2, 35];
-const APP_DIR = "usr/lib/amical-desktop";
+const APP_DIR = `usr/lib/${LINUX_APP_ID}`;
 
 const failures: string[] = [];
 const fail = (message: string) => failures.push(message);
@@ -57,20 +58,20 @@ try {
   const relative = (path: string) => path.slice(root.length + 1);
 
   // The bin is the launcher script that adds the X11 flag.
-  const bin = join(root, "usr/bin/amical-desktop");
+  const bin = join(root, `usr/bin/${LINUX_APP_ID}`);
   const launcher = execFileSync("readlink", ["-f", bin], { encoding: "utf8" })
     .trim()
     .slice(root.length + 1);
   if (launcher !== `${APP_DIR}/resources/amical-launcher`) {
-    fail(`/usr/bin/amical-desktop points to ${launcher}, not the launcher`);
+    fail(`/usr/bin/${LINUX_APP_ID} points to ${launcher}, not the launcher`);
   }
 
   const desktopFile = readFileSync(
-    join(root, "usr/share/applications/amical-desktop.desktop"),
+    join(root, `usr/share/applications/${LINUX_APP_ID}.desktop`),
     "utf8",
   );
   if (!desktopFile.includes("MimeType=x-scheme-handler/amical;")) {
-    fail("amical-desktop.desktop does not register the amical:// handler");
+    fail(`${LINUX_APP_ID}.desktop does not register the amical:// handler`);
   }
 
   const helper = join(root, APP_DIR, "resources/bin/linux-helper");
