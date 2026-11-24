@@ -717,14 +717,17 @@ impl FakeSession {
     }
 }
 
-/// The next shortcutsBound or shortcut edge event, skipping others.
+/// The next event of `kind` that is not a pending shortcutsBound, skipping
+/// others.
 fn next_event(helper: &mut Helper, kind: &str) -> Value {
     loop {
         let line = helper
             .next_line_within(std::time::Duration::from_secs(5))
             .unwrap_or_else(|| panic!("no {kind} event"));
         let event: Value = serde_json::from_str(&line).unwrap();
-        if event["type"] == kind {
+        // A slow bind first sends shortcutsBound with pending set (a dialog
+        // may be open); the result follows.
+        if event["type"] == kind && event["payload"]["pending"] != true {
             return event;
         }
     }
@@ -869,6 +872,23 @@ async fn portal_shortcuts_bind_the_full_list_and_report_one_edge_per_press() {
             "shortcutDeactivated pushToTalk:0"
         ]
     );
+
+    // GNOME loses a release when a modifier goes up first: the next press,
+    // long after the last Activated, still counts.
+    edge("Activated").await;
+    tokio::time::sleep(std::time::Duration::from_millis(1300)).await;
+    edge("Activated").await;
+    let (helper_back, presses) = tokio::task::spawn_blocking(move || {
+        let mut presses = 0;
+        while let Some(line) = helper.next_line_within(std::time::Duration::from_millis(500)) {
+            presses += usize::from(line.contains("shortcutActivated"));
+        }
+        (helper, presses)
+    })
+    .await
+    .unwrap();
+    helper = helper_back;
+    assert_eq!(presses, 2);
 
     // A new list closes the old session before it binds again.
     let second = shortcuts(44);

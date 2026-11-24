@@ -478,8 +478,13 @@ impl RemoteDesktop {
                 &(),
             )
             .await;
-        if let Err(error) = result {
-            log!("Inject", "cannot close the session: {}", error_name(&error));
+        match result {
+            // The portal closed it already (after a refusal, for example).
+            Err(zbus::Error::MethodError(name, _, _))
+                if name.as_str() == "org.freedesktop.DBus.Error.UnknownMethod"
+                    || name.as_str() == "org.freedesktop.DBus.Error.UnknownObject" => {}
+            Err(error) => log!("Inject", "cannot close the session: {}", error_name(&error)),
+            Ok(_) => {}
         }
     }
 

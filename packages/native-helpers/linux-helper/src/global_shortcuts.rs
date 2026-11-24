@@ -21,9 +21,9 @@
 //!
 //! Key codes are never logged.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt as _;
 use zbus::fdo::DBusProxy;
@@ -43,6 +43,12 @@ const GLOBAL_SHORTCUTS: &str = "org.freedesktop.portal.GlobalShortcuts";
 const SESSION: &str = "org.freedesktop.portal.Session";
 /// GNOME's portal backend. Its grabs vanish with it.
 const GNOME_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gnome";
+/// GNOME repeats Activated while a key is held: the first repeat after the
+/// keyboard delay (500 ms by default), then every repeat interval. A later
+/// Activated for a held shortcut is a new press after a release that GNOME
+/// lost (mutter#4846: a modifier lifted before the key). A keyboard delay
+/// over this gap makes the first repeat look like a new press.
+const REPEAT_GAP: Duration = Duration::from_millis(1100);
 /// A bind that has no answer after this long shows a dialog: the desktop
 /// hears that it is pending.
 const DIALOG_HINT: Duration = Duration::from_millis(300);
@@ -81,8 +87,8 @@ struct State {
     binding: bool,
     /// The handle token of the pending BindShortcuts.
     pending: Option<String>,
-    /// Ids held now.
-    held: HashSet<String>,
+    /// Ids held now, with the time of their latest Activated.
+    held: HashMap<String, Instant>,
 }
 
 pub struct GlobalShortcuts {
@@ -552,12 +558,17 @@ impl GlobalShortcuts {
         if state.session.as_ref() != Some(session) {
             return;
         }
-        // GNOME repeats Activated while a key is held; KDE can send a
-        // Deactivated with nothing held.
+        // GNOME repeats Activated while a key is held, and KDE can send a
+        // Deactivated with nothing held. An Activated long after the last one
+        // is a new press (see REPEAT_GAP).
+        let now = Instant::now();
         let news = if down {
-            state.held.insert(id.clone())
+            state
+                .held
+                .insert(id.clone(), now)
+                .is_none_or(|previous| now.duration_since(previous) > REPEAT_GAP)
         } else {
-            state.held.remove(&id)
+            state.held.remove(&id).is_some()
         };
         drop(state);
         if !news {
