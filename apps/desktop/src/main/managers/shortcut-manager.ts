@@ -173,7 +173,7 @@ export class ShortcutManager extends EventEmitter {
       log.warn("No native helper: global shortcuts are unavailable");
       return;
     }
-    void this.resyncNativeHelper(this.nativeBridge);
+    void this.resyncNativeHelper(this.nativeBridge, "startup");
     this.setupEventListeners(this.nativeBridge);
     this.startPeriodicRecheck();
   }
@@ -579,13 +579,18 @@ export class ShortcutManager extends EventEmitter {
         case "keyUp":
           this.handleKeyUp(event.payload);
           break;
+        case "capabilitiesChanged":
+          // The Linux helper learned more after its first answer (for
+          // example, the desktop portal started late).
+          void this.resyncNativeHelper(nativeBridge, "capabilities changed");
+          break;
       }
     });
     // Each helper start (also a crash restart) emits "ready", and the new
     // process has none of the old one's state. The boot "ready" fires before
     // this subscribes; if not, the re-sync only repeats the initial sync.
     nativeBridge.on("ready", () => {
-      void this.resyncNativeHelper(nativeBridge);
+      void this.resyncNativeHelper(nativeBridge, "helper started");
     });
   }
 
@@ -593,8 +598,11 @@ export class ShortcutManager extends EventEmitter {
    * Push all helper state to a new helper process. Each push logs its own
    * failure.
    */
-  private async resyncNativeHelper(nativeBridge: NativeBridge) {
-    log.info("Native helper started, re-syncing helper state");
+  private async resyncNativeHelper(
+    nativeBridge: NativeBridge,
+    reason: string,
+  ) {
+    log.info("Re-syncing native helper state", { reason });
     // The Linux helper reports what this session allows; ask first.
     if (isLinux()) await nativeBridge.refreshHelperCapabilities();
     await this.syncShortcutsToNative();

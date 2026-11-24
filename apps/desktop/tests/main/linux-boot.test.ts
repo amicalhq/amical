@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import { systemPreferences } from "electron";
 import { Context, Effect, Exit, Layer, Scope } from "effect";
@@ -105,6 +106,46 @@ describe("Linux boot", () => {
       ...SHORTCUTS,
       toggleRecording: [[63, 49]],
     });
+  });
+
+  it("reads the capabilities again when the helper says that they changed", async () => {
+    const bridge = Object.assign(new EventEmitter(), {
+      refreshHelperCapabilities: vi.fn(async () => null),
+      getHelperCapabilities: vi.fn(() => null),
+      setShortcuts: vi.fn(async () => ({ success: true })),
+      setAllowInjectedKeys: vi.fn(async () => ({ success: true })),
+      recheckPressedKeys: vi.fn(async () => ({ staleKeyCodes: [] })),
+    });
+    scope = Effect.runSync(Scope.make());
+    await Effect.runPromise(
+      Layer.build(
+        ShortcutManager.Live.pipe(
+          Layer.provide(
+            Layer.succeed(SettingsServiceTag, {
+              getShortcuts: async () => SHORTCUTS,
+              getPreferences: async () => ({ allowInjectedKeys: false }),
+            } as never),
+          ),
+          Layer.provide(Layer.succeed(NativeBridgeTag, bridge as never)),
+          Layer.provide(
+            Layer.succeed(RecordingLifecycleTag, {
+              bindShortcutManager: vi.fn(),
+            } as never),
+          ),
+          Layer.provide(Layer.succeed(AppScopeTag, scope)),
+        ),
+      ).pipe(Scope.provide(scope)),
+    );
+    await vi.waitFor(() =>
+      expect(bridge.setShortcuts).toHaveBeenCalledTimes(1),
+    );
+
+    // For example, the desktop portal answered after the first probe.
+    bridge.emit("helperEvent", { type: "capabilitiesChanged" });
+    await vi.waitFor(() =>
+      expect(bridge.setShortcuts).toHaveBeenCalledTimes(2),
+    );
+    expect(bridge.refreshHelperCapabilities).toHaveBeenCalledTimes(2);
   });
 
   it.each([
